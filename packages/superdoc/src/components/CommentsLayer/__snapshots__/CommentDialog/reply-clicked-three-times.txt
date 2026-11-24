@@ -1,0 +1,83 @@
+step: open the reply composer holding "<p>one delayed reply</p>", click Reply three times
+
+document calls:
+comments.reply {"parentCommentId":"comment-delayed-reply","text":"one delayed reply"}
+
+store:
+{
+  "activeComment": "comment-delayed-reply",
+  "editingCommentId": null,
+  "draft": "<p>one delayed reply</p>",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "comment-delayed-reply",
+      "commentText": "Delayed reply parent"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+comment-delayed-reply: comment: Delayed reply parent
+reply composer, Reply disabled
+buttons: Reply disabled
+
+---
+
+step: the document commits the reply
+
+document calls:
+(none)
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "reply-1",
+      "parentCommentId": "comment-delayed-reply",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "one delayed reply",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+store:
+{
+  "activeComment": "comment-delayed-reply",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "comment-delayed-reply",
+      "commentText": "Delayed reply parent"
+    },
+    {
+      "commentId": "reply-1",
+      "parentCommentId": "comment-delayed-reply",
+      "commentText": "one delayed reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+comment-delayed-reply: comment: Delayed reply parent
+reply-1: comment: one delayed reply
+reply pill
+buttons: (none)
+
+---

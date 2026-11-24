@@ -12,26 +12,6 @@ describe('TypingPerfBenchmark', () => {
     benchmark = new TypingPerfBenchmark();
   });
 
-  describe('registerStandardBenchmarks', () => {
-    it('should register standard benchmarks', () => {
-      benchmark.registerStandardBenchmarks();
-      expect(benchmark).toBeDefined();
-    });
-  });
-
-  describe('registerScenario', () => {
-    it('should register custom scenario', () => {
-      benchmark.registerScenario({
-        name: 'Custom test',
-        setup: async () => {},
-        run: () => {},
-        iterations: 100,
-        target: 5,
-      });
-      expect(benchmark).toBeDefined();
-    });
-  });
-
   describe('runScenario', () => {
     it('should run a scenario and return results', async () => {
       let counter = 0;

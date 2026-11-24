@@ -250,7 +250,7 @@ const hasListMarkerProperties = (
   attrs: unknown,
 ): attrs is {
   numberingProperties: { numId?: number | string; ilvl?: number };
-  wordLayout?: { marker?: { markerText?: string; trackedChange?: TrackedChangeMeta } };
+  wordLayout?: { marker?: { markerText?: string; originalMarkerLength?: number; trackedChange?: TrackedChangeMeta } };
 } => {
   if (!attrs || typeof attrs !== 'object') return false;
   const obj = attrs as Record<string, unknown>;
@@ -404,7 +404,7 @@ export const deriveBlockVersion = (block: FlowBlock, fontConfigVersion?: number)
       ? trackedChangeMetaSignature(block.attrs.wordLayout.marker.trackedChange)
       : '';
     const markerVersion = hasListMarkerProperties(block.attrs)
-      ? `marker:${block.attrs.numberingProperties.numId ?? ''}:${block.attrs.numberingProperties.ilvl ?? 0}:${block.attrs.wordLayout?.marker?.markerText ?? ''}:${markerTrackedChangeVersion}:${markerRunVisualVersion(block.attrs.wordLayout?.marker?.run)}`
+      ? `marker:${block.attrs.numberingProperties.numId ?? ''}:${block.attrs.numberingProperties.ilvl ?? 0}:${block.attrs.wordLayout?.marker?.markerText ?? ''}:${block.attrs.wordLayout?.marker?.originalMarkerLength ?? ''}:${markerTrackedChangeVersion}:${markerRunVisualVersion(block.attrs.wordLayout?.marker?.run)}`
       : '';
 
     const runsVersion = block.runs

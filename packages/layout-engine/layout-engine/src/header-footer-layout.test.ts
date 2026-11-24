@@ -14,7 +14,6 @@ import type {
   TableBlock,
   TableFragment,
 } from '@superdoc/contracts';
-import { buildLayoutSourceIdentityForFragment } from '@superdoc/contracts';
 import {
   collectNonFlowPagePositionedParagraphFrameIds,
   computeFragmentBottom,
@@ -368,9 +367,12 @@ describe('finalizeHeaderFooterLayout', () => {
       canvasHeight,
       'footer',
     );
-    const { layoutSourceIdentity, ...fragment } = footer.pages[0].fragments[0];
-    expect(layoutSourceIdentity).toEqual(buildLayoutSourceIdentityForFragment(fragment, { kind: 'footer' }));
-    expect(layoutSourceIdentity).not.toEqual(buildLayoutSourceIdentityForFragment(fragment, { kind: 'header' }));
+    expect(footer.pages[0].fragments[0].layoutSourceIdentity).toEqual({
+      schema: 'layout-identity/1',
+      story: { kind: 'footer' },
+      blockRef: 'text',
+      fragmentId: 'footer:|text|para:0:1',
+    });
     const header = finalizeHeaderFooterLayout(
       layoutOf([para('text', 0, 0, 1)]),
       [text],
@@ -379,7 +381,11 @@ describe('finalizeHeaderFooterLayout', () => {
       canvasHeight,
       'header',
     );
-    const { layoutSourceIdentity: headerIdentity, ...headerFragment } = header.pages[0].fragments[0];
-    expect(headerIdentity).toEqual(buildLayoutSourceIdentityForFragment(headerFragment, { kind: 'header' }));
+    expect(header.pages[0].fragments[0].layoutSourceIdentity).toEqual({
+      schema: 'layout-identity/1',
+      story: { kind: 'header' },
+      blockRef: 'text',
+      fragmentId: 'header:|text|para:0:1',
+    });
   });
 });

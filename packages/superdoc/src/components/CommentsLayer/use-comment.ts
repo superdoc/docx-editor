@@ -6,12 +6,14 @@ import { comments_module_events, type CommentEvent, type Comment as CommonCommen
 import useSelection from '../../helpers/use-selection.js';
 import { DOCUMENT_EDITOR_SELECTION_SOURCE } from '../../helpers/selection-source.js';
 import type { Modules } from '../../core/types/index.js';
-import type {
-  CommentIdentity,
-  CommentInputParams,
-  CommentMention,
-  SelectionBounds,
-  TrackedChangeDecision,
+import {
+  isCommentResolved,
+  type CommentFormat,
+  type CommentIdentity,
+  type CommentInputParams,
+  type CommentMention,
+  type SelectionBounds,
+  type TrackedChangeDecision,
 } from './comment-params.js';
 
 export type UseCommentParams = CommentInputParams &
@@ -93,6 +95,7 @@ export default function useComment(params: UseCommentParams) {
   const originalXmlStructure = params.originalXmlStructure;
 
   const commentText = ref(params.commentText || '');
+  const commentFormat = ref<CommentFormat>(params.commentFormat === 'text' ? 'text' : 'html');
 
   const selection: CommentSelection = params.selection
     ? useSelection(params.selection)
@@ -128,6 +131,7 @@ export default function useComment(params: UseCommentParams) {
   const trackedChangeImagePreview = ref(params.trackedChangeImagePreview || null);
   const customAttributes = ref(params.customAttributes ?? null);
 
+  const isResolved = ref(params.isResolved);
   const resolvedTime = ref(params.resolvedTime || null);
   const resolvedById = ref<string | null>(params.resolvedById || null);
   const resolvedByEmail = ref<string | null | undefined>(params.resolvedByEmail || null);
@@ -149,7 +153,8 @@ export default function useComment(params: UseCommentParams) {
   }: ResolveCommentParams): ReadOnlyMutationOutcome | undefined => {
     const isCanonicalReconciliation = reconciliationToken === COMMENT_RECONCILIATION_TOKEN;
     if (commentsAreReadOnly(superdoc) && !isCanonicalReconciliation) return readOnlyMutationOutcome();
-    if (resolvedTime.value) return;
+    if (isCommentResolved({ isResolved: isResolved.value, resolvedTime: resolvedTime.value })) return;
+    if (isResolved.value !== undefined) isResolved.value = true;
     resolvedTime.value = Date.now();
     resolvedById.value = id ?? null;
     resolvedByEmail.value = email;
@@ -193,6 +198,7 @@ export default function useComment(params: UseCommentParams) {
   const setText = ({ text, superdoc, suppressUpdate }: SetTextParams): ReadOnlyMutationOutcome | undefined => {
     if (!suppressUpdate && commentsAreReadOnly(superdoc)) return readOnlyMutationOutcome();
     commentText.value = text;
+    commentFormat.value = 'html';
 
     // Track mentions
     mentions.value = extractMentions(text);
@@ -309,6 +315,7 @@ export default function useComment(params: UseCommentParams) {
       docxCommentJSON: docxCommentJSON.value,
       isInternal: isInternal.value,
       commentText: commentText.value,
+      commentFormat: commentFormat.value,
       selection: selection ? selection.getValues() : null,
       trackedChange: trackedChange.value,
       trackedChangeText: trackedChangeText.value,
@@ -328,6 +335,7 @@ export default function useComment(params: UseCommentParams) {
       trackedChangeImagePreview: trackedChangeImagePreview.value,
       customAttributes: customAttributes.value,
       deletedText: deletedText.value,
+      ...(isResolved.value !== undefined ? { isResolved: isResolved.value } : {}),
       resolvedTime: resolvedTime.value,
       resolvedById: resolvedById.value,
       resolvedByEmail: resolvedByEmail.value,
@@ -360,6 +368,7 @@ export default function useComment(params: UseCommentParams) {
     createdTime,
     isInternal,
     commentText,
+    commentFormat,
     selection,
     floatingPosition,
     trackedChange,
@@ -380,6 +389,7 @@ export default function useComment(params: UseCommentParams) {
     trackedChangeDetailLines,
     trackedChangeImagePreview,
     customAttributes,
+    isResolved,
     resolvedTime,
     resolvedById,
     resolvedByEmail,

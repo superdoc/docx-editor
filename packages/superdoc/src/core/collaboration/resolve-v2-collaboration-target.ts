@@ -75,7 +75,7 @@ export interface NormalizedV2CollaborationTarget {
   /** Maximum initial synchronization wait in milliseconds. */
   syncTimeoutMs?: number;
   /** Explicit room operation; join is the default at the untrusted input boundary. */
-  roomMode: 'join' | 'create';
+  roomMode: 'join' | 'create' | 'create-or-join';
   expectedRevisionScope?: 'session' | 'room';
 }
 
@@ -194,9 +194,9 @@ function normalizeParams(value: unknown): Record<string, string> | undefined {
   return Object.keys(params).length > 0 ? params : undefined;
 }
 
-function normalizeRoomMode(value: unknown): 'join' | 'create' | null {
+function normalizeRoomMode(value: unknown): NormalizedV2CollaborationTarget['roomMode'] | null {
   if (value === undefined) return 'join';
-  return value === 'join' || value === 'create' ? value : null;
+  return value === 'join' || value === 'create' || value === 'create-or-join' ? value : null;
 }
 
 function normalizeSyncTimeoutMs(value: unknown): number | null | undefined {
@@ -216,7 +216,7 @@ function invalidRoomMode(): V2CollaborationTargetResolution {
   return {
     ok: false,
     reason: 'invalid-room-mode',
-    message: 'SuperDoc v2 collaboration roomMode must be either "join" or "create".',
+    message: 'SuperDoc v2 collaboration roomMode must be "join", "create", or "create-or-join".',
   };
 }
 

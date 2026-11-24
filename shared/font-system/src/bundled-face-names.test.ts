@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from 'vite-plus/test';
+import { describe, expect, it } from 'vite-plus/test';
 import { installBundledSubstitutes } from './bundled';
 import { BASELINE_BUNDLED, FontRegistry, createBundledActivation, createFontResolver, type FaceKey } from './index';
+import type { FontFaceLike, FontSetLike } from './registry';
+
+type CreatedFace = { family: string; source: unknown; descriptors?: FontFaceDescriptors };
 
 const reviewedFaces = [
   ['Caladea', ['Caladea', 'Caladea-Regular'], '400', 'normal', 'Caladea-Regular.woff2'],
@@ -52,12 +55,25 @@ const reviewedFaces = [
 ] as const;
 
 function setup() {
-  const registry = new FontRegistry({ fontSet: null, FontFaceCtor: null });
-  const register = vi.spyOn(registry, 'register');
+  const faces: CreatedFace[] = [];
+  class RecordingFontFace implements FontFaceLike {
+    constructor(family: string, source: unknown, descriptors?: FontFaceDescriptors) {
+      faces.push({ family, source, descriptors });
+    }
+    load(): Promise<FontFaceLike> {
+      return Promise.resolve(this);
+    }
+  }
+  const fontSet: FontSetLike = { add: () => {}, load: () => Promise.resolve([]), check: () => false };
+  const registry = new FontRegistry({ fontSet, FontFaceCtor: RecordingFontFace });
   installBundledSubstitutes(registry, { assetBaseUrl: '/reviewed-fonts/' });
   const resolver = createFontResolver();
   const hasFace = registry.hasFace.bind(registry);
-  return { registry, register, resolver, hasFace };
+  const sourceFor = (family: string, weight: string, style: string) =>
+    faces.find(
+      (face) => face.family === family && face.descriptors?.weight === weight && face.descriptors?.style === style,
+    )?.source;
+  return { registry, sourceFor, resolver, hasFace };
 }
 
 describe('SD-6689 reviewed face names preserve effective document axes', () => {
@@ -65,30 +81,14 @@ describe('SD-6689 reviewed face names preserve effective document axes', () => {
     for (const [, , weight, style, file] of reviewedFaces.filter(([family]) => family === canonical)) {
       for (const name of names) {
         it(`${name} selects ${file} for ${weight}/${style}`, () => {
-          const { register, resolver, hasFace } = setup();
+          const { sourceFor, resolver, hasFace } = setup();
           const face = { weight, style };
           const canonicalResolution = resolver.resolveFace(canonical, face, hasFace);
           expect(canonicalResolution.physicalFamily).toBe(canonical);
           expect(canonicalResolution.reason).toBe('registered_face');
-          const canonicalProvider = register.mock.calls
-            .map(([input]) => input)
-            .find(
-              (input) =>
-                input.family === canonical &&
-                ['700', 'bold'].includes(String(input.descriptors?.weight)) === (weight === '700') &&
-                input.descriptors?.style === style,
-            );
-          expect(canonicalProvider?.source).toBe(`url(/reviewed-fonts/${file})`);
+          expect(sourceFor(canonical, weight, style)).toBe(`url(/reviewed-fonts/${file})`);
           const resolution = resolver.resolveFace(name, face, hasFace);
-          const provider = register.mock.calls
-            .map(([input]) => input)
-            .find(
-              (input) =>
-                input.family === resolution.physicalFamily &&
-                ['700', 'bold'].includes(String(input.descriptors?.weight)) === (weight === '700') &&
-                input.descriptors?.style === style,
-            );
-          expect(provider?.source).toBe(`url(/reviewed-fonts/${file})`);
+          expect(sourceFor(resolution.physicalFamily, weight, style)).toBe(`url(/reviewed-fonts/${file})`);
           expect(resolution.logicalFamily).toBe(name);
           expect(hasFace(resolution.physicalFamily, weight, style)).toBe(true);
           expect(resolver.resolvePhysicalFamilyForFace(`"${name}", "Fallback, Inc.", serif`, face, hasFace)).toContain(
@@ -122,17 +122,11 @@ describe('SD-6689 reviewed face names preserve effective document axes', () => {
   });
 
   it('loads the independently specified bold asset through the existing explicit-map control', () => {
-    const { register, resolver, hasFace } = setup();
+    const { sourceFor, resolver, hasFace } = setup();
     resolver.map('Caladea-Bold', 'Caladea');
     const resolution = resolver.resolveFace('Caladea-Bold', { weight: '700', style: 'normal' }, hasFace);
     expect(resolution.physicalFamily).toBe('Caladea');
-    const source = register.mock.calls
-      .map(([input]) => input)
-      .find(
-        (input) =>
-          input.family === 'Caladea' && input.descriptors?.weight === 'bold' && input.descriptors?.style === 'normal',
-      );
-    expect(source?.source).toBe('url(/reviewed-fonts/Caladea-Bold.woff2)');
+    expect(sourceFor('Caladea', '700', 'normal')).toBe('url(/reviewed-fonts/Caladea-Bold.woff2)');
   });
 
   it.each([{ include: ['Calibri'] }, { include: ['Cambria'] }, { exclude: ['Calibri'] }])(

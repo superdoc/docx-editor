@@ -1,0 +1,16 @@
+input:
+{
+  "name": "shape",
+  "font": "Inter, sans-serif",
+  "radius": "8px",
+  "shadow": "0 2px 8px rgba(0,0,0,0.1)"
+}
+
+className: sd-theme-shape
+
+css:
+.sd-theme-shape {
+  --sd-ui-font-family: Inter, sans-serif;
+  --sd-ui-radius: 8px;
+  --sd-ui-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}

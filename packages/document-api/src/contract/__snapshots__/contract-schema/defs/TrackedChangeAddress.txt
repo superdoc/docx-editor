@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "entityType": {
+      "const": "trackedChange"
+    },
+    "kind": {
+      "const": "entity"
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "kind",
+    "entityType",
+    "entityId"
+  ],
+  "type": "object"
+}

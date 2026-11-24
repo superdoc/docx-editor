@@ -1,0 +1,1142 @@
+{
+  "definition": {
+    "description": "Insert a parsed clipboard plan, v2 fragment, or raw ClipboardPayload through the v2 pasteFragment kernel operation.",
+    "expectedResult": "Returns a ClipboardInsertResult with inserted refs, diagnostics, and one paste transaction receipt, or a named fail-closed reason.",
+    "memberPath": "clipboard.insert",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_INPUT",
+        "INVALID_TARGET",
+        "INVALID_PAYLOAD",
+        "EMPTY_FRAGMENT",
+        "INVALID_FRAGMENT",
+        "CAPABILITY_UNSUPPORTED",
+        "CAPABILITY_UNAVAILABLE",
+        "REVISION_MISMATCH",
+        "PRECONDITION_FAILED"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "clipboard/insert.mdx",
+    "referenceGroup": "clipboard",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_INPUT",
+                "INVALID_TARGET",
+                "INVALID_PAYLOAD",
+                "EMPTY_FRAGMENT",
+                "INVALID_FRAGMENT",
+                "CAPABILITY_UNSUPPORTED",
+                "CAPABILITY_UNAVAILABLE",
+                "REVISION_MISMATCH",
+                "PRECONDITION_FAILED"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "changeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "fallback": {
+          "enum": [
+            "reject-rich",
+            "plain-with-warning"
+          ]
+        },
+        "fragment": {
+          "type": "object"
+        },
+        "payload": {
+          "type": "object"
+        },
+        "plan": {
+          "type": "object"
+        },
+        "target": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "affectedStories": {
+              "items": {
+                "$ref": "#/$defs/StoryLocator"
+              },
+              "type": "array"
+            },
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "changeTag": {
+              "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+              "type": "string"
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "diagnostics": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "cause": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "conversion-normalized-construct",
+                          "conversion-unsupported-construct",
+                          "conversion-dropped-style",
+                          "conversion-unsafe-content",
+                          "conversion-unsafe-url",
+                          "conversion-source-limit-exceeded",
+                          "conversion-depth-limit-exceeded",
+                          "conversion-malformed-input",
+                          "conversion-empty-result"
+                        ]
+                      },
+                      "construct": {
+                        "enum": [
+                          "document",
+                          "source",
+                          "text",
+                          "paragraph",
+                          "emptyParagraph",
+                          "softBreak",
+                          "lineBreak",
+                          "heading",
+                          "bold",
+                          "italic",
+                          "underline",
+                          "strike",
+                          "hyperlink",
+                          "list",
+                          "table",
+                          "tableHeader",
+                          "colSpan",
+                          "rowSpan",
+                          "horizontalRule",
+                          "inlineCode",
+                          "codeBlock",
+                          "blockquote",
+                          "taskList",
+                          "image",
+                          "footnote",
+                          "rawHtml",
+                          "unknownWrapper",
+                          "script",
+                          "style",
+                          "eventHandler"
+                        ]
+                      },
+                      "disposition": {
+                        "enum": [
+                          "preserved",
+                          "normalized",
+                          "downgraded",
+                          "dropped",
+                          "rejected"
+                        ]
+                      },
+                      "lossy": {
+                        "type": "boolean"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "type": "array"
+                      },
+                      "severity": {
+                        "enum": [
+                          "error",
+                          "warning",
+                          "info"
+                        ]
+                      },
+                      "source": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "format": {
+                            "enum": [
+                              "html",
+                              "markdown"
+                            ]
+                          },
+                          "range": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "endColumn": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "endLine": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "endOffset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "startColumn": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "startLine": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "startOffset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "startOffset",
+                              "endOffset"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "format"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message",
+                      "construct",
+                      "disposition",
+                      "lossy",
+                      "source"
+                    ],
+                    "type": "object"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "construct": {
+                    "enum": [
+                      "document",
+                      "source",
+                      "text",
+                      "paragraph",
+                      "emptyParagraph",
+                      "softBreak",
+                      "lineBreak",
+                      "heading",
+                      "bold",
+                      "italic",
+                      "underline",
+                      "strike",
+                      "hyperlink",
+                      "list",
+                      "table",
+                      "tableHeader",
+                      "colSpan",
+                      "rowSpan",
+                      "horizontalRule",
+                      "inlineCode",
+                      "codeBlock",
+                      "blockquote",
+                      "taskList",
+                      "image",
+                      "footnote",
+                      "rawHtml",
+                      "unknownWrapper",
+                      "script",
+                      "style",
+                      "eventHandler"
+                    ]
+                  },
+                  "disposition": {
+                    "enum": [
+                      "preserved",
+                      "normalized",
+                      "downgraded",
+                      "dropped",
+                      "rejected"
+                    ]
+                  },
+                  "lossy": {
+                    "type": "boolean"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "reason": {
+                    "enum": [
+                      "paste-empty",
+                      "paste-payload-too-large",
+                      "paste-depth-exceeded",
+                      "paste-source-unsupported",
+                      "paste-fragment-version-unsupported",
+                      "paste-no-faithful-representation",
+                      "paste-structure-unsupported",
+                      "paste-media-unsupported-type",
+                      "paste-media-bad-magic",
+                      "paste-media-too-large",
+                      "paste-tracked-structural-unsupported",
+                      "paste-cross-story-unsupported",
+                      "paste-target-unsupported",
+                      "paste-legacy-slice-unsupported",
+                      "paste-security-rejected"
+                    ]
+                  },
+                  "severity": {
+                    "enum": [
+                      "error",
+                      "warning",
+                      "info"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "format": {
+                        "enum": [
+                          "html",
+                          "markdown"
+                        ]
+                      },
+                      "range": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "endColumn": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "endLine": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "endOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "startColumn": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "startLine": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "startOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "startOffset",
+                          "endOffset"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "format"
+                    ],
+                    "type": "object"
+                  },
+                  "sourceKind": {
+                    "enum": [
+                      "superdoc-v2-fragment",
+                      "superdoc-v1-slice",
+                      "html",
+                      "rtf",
+                      "image",
+                      "file",
+                      "plain-text",
+                      "empty",
+                      "unknown"
+                    ]
+                  }
+                },
+                "required": [
+                  "code",
+                  "severity",
+                  "message",
+                  "reason"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "effects": {
+              "$ref": "#/$defs/ReceiptEffects"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inserted": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "invalidatedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRef"
+              },
+              "type": "array"
+            },
+            "plan": {
+              "additionalProperties": false,
+              "properties": {
+                "assetCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "blockCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "imageRefCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "plainFallback": {
+                  "type": "boolean"
+                },
+                "sourceKind": {
+                  "enum": [
+                    "superdoc-v2-fragment",
+                    "superdoc-v1-slice",
+                    "html",
+                    "rtf",
+                    "image",
+                    "file",
+                    "plain-text",
+                    "empty",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "sourceKind",
+                "blockCount",
+                "assetCount",
+                "imageRefCount",
+                "plainFallback"
+              ],
+              "type": "object"
+            },
+            "remappedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRefRemapping"
+              },
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "status": {
+              "const": "NO_OP"
+            },
+            "success": {
+              "const": true
+            },
+            "temporary": {
+              "additionalProperties": false,
+              "properties": {
+                "cancelledBy": {
+                  "const": "native-edit",
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "onNativeEdit": {
+                  "enum": [
+                    "cancel",
+                    "preserve"
+                  ],
+                  "type": "string"
+                },
+                "phase": {
+                  "enum": [
+                    "begin",
+                    "replace",
+                    "rollback",
+                    "commit"
+                  ]
+                },
+                "tag": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "phase",
+                "tag"
+              ],
+              "type": "object"
+            },
+            "textRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TextRangeShift"
+              },
+              "type": "array"
+            },
+            "trackedChangeCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "type": "array"
+            },
+            "trackedTextRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TrackedTextRangeShift"
+              },
+              "type": "array"
+            },
+            "txId": {
+              "type": "string"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "warnings": {
+              "items": {
+                "$ref": "#/$defs/ReviewWarning"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success",
+            "plan",
+            "diagnostics"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "INVALID_INPUT",
+                    "INVALID_TARGET",
+                    "INVALID_PAYLOAD",
+                    "EMPTY_FRAGMENT",
+                    "INVALID_FRAGMENT",
+                    "CAPABILITY_UNSUPPORTED",
+                    "CAPABILITY_UNAVAILABLE",
+                    "REVISION_MISMATCH",
+                    "PRECONDITION_FAILED"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "changeTag": {
+          "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "diagnostics": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "cause": {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "conversion-normalized-construct",
+                      "conversion-unsupported-construct",
+                      "conversion-dropped-style",
+                      "conversion-unsafe-content",
+                      "conversion-unsafe-url",
+                      "conversion-source-limit-exceeded",
+                      "conversion-depth-limit-exceeded",
+                      "conversion-malformed-input",
+                      "conversion-empty-result"
+                    ]
+                  },
+                  "construct": {
+                    "enum": [
+                      "document",
+                      "source",
+                      "text",
+                      "paragraph",
+                      "emptyParagraph",
+                      "softBreak",
+                      "lineBreak",
+                      "heading",
+                      "bold",
+                      "italic",
+                      "underline",
+                      "strike",
+                      "hyperlink",
+                      "list",
+                      "table",
+                      "tableHeader",
+                      "colSpan",
+                      "rowSpan",
+                      "horizontalRule",
+                      "inlineCode",
+                      "codeBlock",
+                      "blockquote",
+                      "taskList",
+                      "image",
+                      "footnote",
+                      "rawHtml",
+                      "unknownWrapper",
+                      "script",
+                      "style",
+                      "eventHandler"
+                    ]
+                  },
+                  "disposition": {
+                    "enum": [
+                      "preserved",
+                      "normalized",
+                      "downgraded",
+                      "dropped",
+                      "rejected"
+                    ]
+                  },
+                  "lossy": {
+                    "type": "boolean"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "severity": {
+                    "enum": [
+                      "error",
+                      "warning",
+                      "info"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "format": {
+                        "enum": [
+                          "html",
+                          "markdown"
+                        ]
+                      },
+                      "range": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "endColumn": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "endLine": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "endOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "startColumn": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "startLine": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "startOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "startOffset",
+                          "endOffset"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "format"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "code",
+                  "severity",
+                  "message",
+                  "construct",
+                  "disposition",
+                  "lossy",
+                  "source"
+                ],
+                "type": "object"
+              },
+              "code": {
+                "type": "string"
+              },
+              "construct": {
+                "enum": [
+                  "document",
+                  "source",
+                  "text",
+                  "paragraph",
+                  "emptyParagraph",
+                  "softBreak",
+                  "lineBreak",
+                  "heading",
+                  "bold",
+                  "italic",
+                  "underline",
+                  "strike",
+                  "hyperlink",
+                  "list",
+                  "table",
+                  "tableHeader",
+                  "colSpan",
+                  "rowSpan",
+                  "horizontalRule",
+                  "inlineCode",
+                  "codeBlock",
+                  "blockquote",
+                  "taskList",
+                  "image",
+                  "footnote",
+                  "rawHtml",
+                  "unknownWrapper",
+                  "script",
+                  "style",
+                  "eventHandler"
+                ]
+              },
+              "disposition": {
+                "enum": [
+                  "preserved",
+                  "normalized",
+                  "downgraded",
+                  "dropped",
+                  "rejected"
+                ]
+              },
+              "lossy": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "reason": {
+                "enum": [
+                  "paste-empty",
+                  "paste-payload-too-large",
+                  "paste-depth-exceeded",
+                  "paste-source-unsupported",
+                  "paste-fragment-version-unsupported",
+                  "paste-no-faithful-representation",
+                  "paste-structure-unsupported",
+                  "paste-media-unsupported-type",
+                  "paste-media-bad-magic",
+                  "paste-media-too-large",
+                  "paste-tracked-structural-unsupported",
+                  "paste-cross-story-unsupported",
+                  "paste-target-unsupported",
+                  "paste-legacy-slice-unsupported",
+                  "paste-security-rejected"
+                ]
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              },
+              "source": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "enum": [
+                      "html",
+                      "markdown"
+                    ]
+                  },
+                  "range": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "endColumn": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "endLine": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "endOffset": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "startColumn": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "startLine": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "startOffset": {
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "startOffset",
+                      "endOffset"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "format"
+                ],
+                "type": "object"
+              },
+              "sourceKind": {
+                "enum": [
+                  "superdoc-v2-fragment",
+                  "superdoc-v1-slice",
+                  "html",
+                  "rtf",
+                  "image",
+                  "file",
+                  "plain-text",
+                  "empty",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/ReceiptEffects"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "plan": {
+          "additionalProperties": false,
+          "properties": {
+            "assetCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "blockCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "imageRefCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "plainFallback": {
+              "type": "boolean"
+            },
+            "sourceKind": {
+              "enum": [
+                "superdoc-v2-fragment",
+                "superdoc-v1-slice",
+                "html",
+                "rtf",
+                "image",
+                "file",
+                "plain-text",
+                "empty",
+                "unknown"
+              ]
+            }
+          },
+          "required": [
+            "sourceKind",
+            "blockCount",
+            "assetCount",
+            "imageRefCount",
+            "plainFallback"
+          ],
+          "type": "object"
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "NO_OP"
+        },
+        "success": {
+          "const": true
+        },
+        "temporary": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelledBy": {
+              "const": "native-edit",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "onNativeEdit": {
+              "enum": [
+                "cancel",
+                "preserve"
+              ],
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "begin",
+                "replace",
+                "rollback",
+                "commit"
+              ]
+            },
+            "tag": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "phase",
+            "tag"
+          ],
+          "type": "object"
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/ReviewWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "plan",
+        "diagnostics"
+      ],
+      "type": "object"
+    }
+  }
+}

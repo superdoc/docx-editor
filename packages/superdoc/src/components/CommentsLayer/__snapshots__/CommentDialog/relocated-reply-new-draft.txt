@@ -1,0 +1,139 @@
+step: open the reply composer, type "Submitted during layout switch", click Reply
+
+document calls:
+comments.reply {"parentCommentId":"layout-root","text":"Submitted during layout switch"}
+
+store:
+{
+  "activeComment": "layout-root",
+  "editingCommentId": null,
+  "draft": "Submitted during layout switch",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "layout-root",
+      "commentText": "Original"
+    }
+  ]
+}
+
+original dialog:
+classes: is-active
+layout-root: comment: Original
+reply composer, Reply disabled
+buttons: Reply disabled
+
+---
+
+step: layout moves the thread into a new dialog while the document holds the write
+
+document calls:
+(none)
+
+store:
+{
+  "activeComment": "layout-root",
+  "editingCommentId": null,
+  "draft": "Submitted during layout switch",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "layout-root",
+      "commentText": "Original"
+    }
+  ]
+}
+
+relocated dialog:
+classes: is-active
+layout-root: comment: Original
+reply composer, Reply disabled
+buttons: Reply disabled
+
+---
+
+step: type "Newer unsaved draft"
+
+document calls:
+(none)
+
+store:
+{
+  "activeComment": "layout-root",
+  "editingCommentId": null,
+  "draft": "Newer unsaved draft",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "layout-root",
+      "commentText": "Original"
+    }
+  ]
+}
+
+relocated dialog:
+classes: is-active
+layout-root: comment: Original
+reply composer, Reply disabled
+buttons: Reply disabled
+
+---
+
+step: the document commits the write
+
+document calls:
+(none)
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "reply-1",
+      "parentCommentId": "layout-root",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Submitted during layout switch",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+store:
+{
+  "activeComment": "layout-root",
+  "editingCommentId": null,
+  "draft": "Newer unsaved draft",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "layout-root",
+      "commentText": "Original"
+    },
+    {
+      "commentId": "reply-1",
+      "parentCommentId": "layout-root",
+      "commentText": "Submitted during layout switch"
+    }
+  ]
+}
+
+relocated dialog:
+classes: is-active
+layout-root: comment: Original
+reply-1: comment: Submitted during layout switch
+reply composer, Reply enabled
+buttons: Reply enabled
+
+---

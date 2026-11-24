@@ -1,0 +1,337 @@
+{
+  "definition": {
+    "description": "Read the effective reusable style of a list, including instance-level overrides. Returns a ListStyle that can be applied to other lists via lists.applyStyle.",
+    "expectedResult": "Returns a ListsGetStyleResult containing the captured style.",
+    "memberPath": "lists.getStyle",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "INVALID_INPUT",
+        "LEVEL_OUT_OF_RANGE"
+      ],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "lists/get-style.mdx",
+    "referenceGroup": "lists",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_TARGET",
+                "INVALID_INPUT",
+                "LEVEL_OUT_OF_RANGE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "levels": {
+          "items": {
+            "maximum": 8,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "target": {
+          "$ref": "#/$defs/ListItemAddress"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "style": {
+              "additionalProperties": false,
+              "properties": {
+                "levels": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alignment": {
+                        "enum": [
+                          "left",
+                          "center",
+                          "right"
+                        ]
+                      },
+                      "customFormat": {
+                        "type": "string"
+                      },
+                      "indents": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "firstLine": {
+                            "type": "integer"
+                          },
+                          "hanging": {
+                            "type": "integer"
+                          },
+                          "left": {
+                            "type": "integer"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "level": {
+                        "maximum": 8,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "lvlRestart": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "lvlText": {
+                        "type": "string"
+                      },
+                      "markerFont": {
+                        "type": "string"
+                      },
+                      "numFmt": {
+                        "type": "string"
+                      },
+                      "pictureBulletId": {
+                        "type": "integer"
+                      },
+                      "start": {
+                        "type": "integer"
+                      },
+                      "tabStopAt": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "trailingCharacter": {
+                        "enum": [
+                          "tab",
+                          "space",
+                          "nothing"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "level"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "version": {
+                  "const": 1
+                }
+              },
+              "required": [
+                "version",
+                "levels"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "style"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "INVALID_TARGET",
+                    "INVALID_INPUT",
+                    "LEVEL_OUT_OF_RANGE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "style": {
+          "additionalProperties": false,
+          "properties": {
+            "levels": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "alignment": {
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ]
+                  },
+                  "customFormat": {
+                    "type": "string"
+                  },
+                  "indents": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "firstLine": {
+                        "type": "integer"
+                      },
+                      "hanging": {
+                        "type": "integer"
+                      },
+                      "left": {
+                        "type": "integer"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "level": {
+                    "maximum": 8,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lvlRestart": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "lvlText": {
+                    "type": "string"
+                  },
+                  "markerFont": {
+                    "type": "string"
+                  },
+                  "numFmt": {
+                    "type": "string"
+                  },
+                  "pictureBulletId": {
+                    "type": "integer"
+                  },
+                  "start": {
+                    "type": "integer"
+                  },
+                  "tabStopAt": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "trailingCharacter": {
+                    "enum": [
+                      "tab",
+                      "space",
+                      "nothing"
+                    ]
+                  }
+                },
+                "required": [
+                  "level"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "levels"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "style"
+      ],
+      "type": "object"
+    }
+  }
+}

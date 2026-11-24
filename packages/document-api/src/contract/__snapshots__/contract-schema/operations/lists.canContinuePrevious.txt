@@ -1,0 +1,63 @@
+{
+  "definition": {
+    "description": "Check whether the target sequence can continue numbering from a previous compatible sequence.",
+    "expectedResult": "Returns a ListsCanContinuePreviousResult indicating feasibility.",
+    "memberPath": "lists.canContinuePrevious",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "lists/can-continue-previous.mdx",
+    "referenceGroup": "lists",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/ListItemAddress"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "canContinue": {
+          "type": "boolean"
+        },
+        "previousListId": {
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "NO_PREVIOUS_LIST",
+            "INCOMPATIBLE_DEFINITIONS",
+            "ALREADY_CONTINUOUS"
+          ]
+        }
+      },
+      "required": [
+        "canContinue"
+      ],
+      "type": "object"
+    }
+  }
+}

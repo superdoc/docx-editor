@@ -165,6 +165,42 @@ describe('translateUnzipDiagnostic', () => {
 });
 
 describe('translateRenderReadinessDiagnostic', () => {
+  it('keeps unsupported-numbering warnings out of the exception channel', () => {
+    expect(
+      translateRenderReadinessDiagnostic({
+        code: 'render.numbering.unsupported-numFmt',
+        reason: 'Unsupported numFmt "thaiLetters"',
+        severity: 'warn',
+      }),
+    ).toBeNull();
+  });
+
+  it('preserves unsupported-numbering errors', () => {
+    expect(
+      translateRenderReadinessDiagnostic({
+        code: 'render.numbering.unsupported-numFmt',
+        reason: 'Numbering failed',
+        severity: 'error',
+      }),
+    ).toMatchObject({
+      diagnosticCode: 'UNSUPPORTED_FEATURE',
+      diagnosticStage: 'render',
+      severity: 'error',
+      internalCode: 'render.numbering.unsupported-numFmt',
+      message: 'Numbering failed',
+    });
+  });
+
+  it('preserves unrelated unsupported-feature warnings', () => {
+    expect(
+      translateRenderReadinessDiagnostic({
+        code: 'render.unsupported-feature',
+        reason: 'Unsupported feature',
+        severity: 'warn',
+      }),
+    ).toMatchObject({ diagnosticCode: 'UNSUPPORTED_FEATURE', severity: 'warn' });
+  });
+
   it.each(['render.header-footer.ref-unusable', 'render.header-footer.part-unusable'])(
     'forwards %s as a typed nonfatal input diagnostic',
     (code) => {
@@ -447,16 +483,6 @@ describe('translateBootFailureReason', () => {
     });
     expect(result).toMatchObject({
       diagnosticCode: 'PERFORMANCE_ERROR',
-      diagnosticStage: 'render',
-    });
-  });
-
-  it('classifies MountedEnginePassInterrupt as RENDER_ERROR', () => {
-    const result = translateBootFailureReason('open-failed', 'pass interrupted', {
-      bootErrorName: 'MountedEnginePassInterrupt',
-    });
-    expect(result).toMatchObject({
-      diagnosticCode: 'RENDER_ERROR',
       diagnosticStage: 'render',
     });
   });

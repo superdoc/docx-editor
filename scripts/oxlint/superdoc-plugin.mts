@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import type { Comment, Context, CreateRule, ESTree, Plugin } from '@oxlint/plugins';
 import { disableDirectiveReason } from './disable-directive-reason.mts';
 import { noComments } from './no-comments.mts';
+import { noHandCopiedOutput, noPieceByPieceOutput } from './no-hand-copied-output.mts';
+import { noSourceTextAssertions } from './no-source-text-assertions.mts';
 
 type MaybeNode = ESTree.Node | null | undefined;
 type GuardedFunction = ESTree.Function | ESTree.ArrowFunctionExpression;
@@ -228,7 +230,10 @@ export default {
   rules: {
     'disable-directive-reason': disableDirectiveReason,
     'no-comments': noComments,
+    'no-hand-copied-output': noHandCopiedOutput,
     'no-local-object-guard': noLocalObjectGuard,
+    'no-piece-by-piece-output': noPieceByPieceOutput,
+    'no-source-text-assertions': noSourceTextAssertions,
     'no-ts-comment-in-js': noTsCommentInJs,
   },
 } satisfies Plugin;

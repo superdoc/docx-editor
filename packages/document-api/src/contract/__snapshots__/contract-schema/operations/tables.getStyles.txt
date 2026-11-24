@@ -1,0 +1,116 @@
+{
+  "definition": {
+    "description": "List all table styles and the document-level default table style setting.",
+    "expectedResult": "Returns a TablesGetStylesOutput with the style catalog, explicit default, and effective default.",
+    "memberPath": "tables.getStyles",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "tables/get-styles.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "effectiveDefaultSource": {
+          "type": "string"
+        },
+        "effectiveDefaultStyleId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "explicitDefaultStyleId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "styles": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "basedOn": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "conditionalRegions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "isCustom": {
+                "type": "boolean"
+              },
+              "isDefault": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "quickFormat": {
+                "type": "boolean"
+              },
+              "uiPriority": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "basedOn",
+              "isDefault",
+              "isCustom",
+              "uiPriority",
+              "hidden",
+              "quickFormat",
+              "conditionalRegions"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "explicitDefaultStyleId",
+        "effectiveDefaultStyleId",
+        "effectiveDefaultSource",
+        "styles"
+      ],
+      "type": "object"
+    }
+  }
+}

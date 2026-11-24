@@ -286,7 +286,7 @@ describe('SuperDoc.upgradeToCollaboration', () => {
       'SuperDoc: collaboration upgrade did not attach the expected room and document',
     );
 
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledExactlyOnceWith({ purpose: 'working-copy' });
     expect(upgradeToCollaboration).toHaveBeenCalledWith(saved, expect.objectContaining({ roomMode: 'create' }));
     expect(saved).not.toBe(before.configDoc.data);
     const after = snapshotState();

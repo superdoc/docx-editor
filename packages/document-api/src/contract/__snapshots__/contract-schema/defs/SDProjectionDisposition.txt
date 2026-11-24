@@ -1,0 +1,10 @@
+{
+  "enum": [
+    "preserved",
+    "normalized",
+    "downgraded",
+    "placeholder",
+    "omitted",
+    "rejected"
+  ]
+}

@@ -1,0 +1,20 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "liveblocks",
+    "documentId": "room-1",
+    "authEndpoint": "/api/liveblocks-auth"
+  },
+  "authEndpointBaseUrl": "https://app.example.com/documents/123"
+}
+
+result:
+{
+  "ok": true,
+  "target": {
+    "providerFamily": "liveblocks",
+    "documentId": "room-1",
+    "roomMode": "join",
+    "authEndpoint": "https://app.example.com/api/liveblocks-auth"
+  }
+}

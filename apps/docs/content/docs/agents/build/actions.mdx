@@ -8,6 +8,8 @@ description: The arguments, selectors, placements, and receipts behind superdoc_
 
 The `core` preset advertises two tools. `superdoc_inspect` reads a deterministic snapshot. `superdoc_perform_action` runs one named action with flat arguments and returns a receipt. This page documents both from the action registry in `@superdoc/sdk`, and the same definitions are served over MCP under `MCP_PRESET=core`.
 
+The [full preset](/agents/build/full-preset) advertises the same two tools, adds four helper actions to `superdoc_perform_action`, and adds two tools for the rest of the Document API.
+
 The registry changes across SDK releases without changing the preset id. Pin the SDK version when your integration depends on a specific action set, and read the advertised schema after upgrading:
 
 ```ts

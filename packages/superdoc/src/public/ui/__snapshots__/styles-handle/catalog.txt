@@ -1,0 +1,11 @@
+doc.styles.getCatalog calls:
+  {"includePreview":true}
+  {"view":"quickGallery","includePreview":true}
+
+quickGallery:
+  Heading1: Heading1 name
+
+byId:
+  Normal: Normal name (quickGallery true)
+  Heading1: Heading1 name (quickGallery true)
+  Quote: Quote name (quickGallery false)

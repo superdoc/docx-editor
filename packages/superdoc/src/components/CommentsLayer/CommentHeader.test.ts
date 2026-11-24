@@ -1,28 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vite-plus/test';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h, nextTick, reactive } from 'vue';
+import { defineComponent, h, nextTick, reactive, toRaw } from 'vue';
+import { PERMISSIONS } from '@superdoc/core/collaboration/permissions.js';
 
 let commentsStoreStub;
-let isAllowedMock;
-
-const { PERMISSIONS } = vi.hoisted(() => ({
-  PERMISSIONS: {
-    RESOLVE_OWN: 'RESOLVE_OWN',
-    RESOLVE_OTHER: 'RESOLVE_OTHER',
-    REJECT_OWN: 'REJECT_OWN',
-    REJECT_OTHER: 'REJECT_OTHER',
-    COMMENTS_DELETE_OWN: 'COMMENTS_DELETE_OWN',
-    COMMENTS_DELETE_OTHER: 'COMMENTS_DELETE_OTHER',
-  },
-}));
+let allowedPermissions;
 
 vi.mock('@superdoc/stores/comments-store', () => ({
   useCommentsStore: () => commentsStoreStub,
-}));
-
-vi.mock('@superdoc/core/collaboration/permissions.js', () => ({
-  PERMISSIONS,
-  isAllowed: (...args) => isAllowedMock(...args),
 }));
 
 vi.mock('@superdoc/composables/useUiFontFamily.js', () => ({
@@ -55,11 +40,13 @@ vi.mock('./CommentsDropdown.vue', () => ({
 
 import CommentHeader from './CommentHeader.vue';
 
+const CREATED_TIME = 1767225600000;
+
 const makeComment = (overrides = {}) => ({
   creatorId: 'alice-id',
   creatorEmail: 'shared@example.com',
   creatorName: 'Alice',
-  createdTime: Date.now(),
+  createdTime: CREATED_TIME,
   resolvedTime: null,
   trackedChange: false,
   parentCommentId: null,
@@ -70,8 +57,18 @@ const makeComment = (overrides = {}) => ({
   ...overrides,
 });
 
-const mountHeader = ({ currentUser, comment, config = { readOnly: false }, interactionConfig, extraProps = {} }) =>
-  mount(CommentHeader, {
+const mountHeader = ({ currentUser, comment, config = { readOnly: false }, interactionConfig, extraProps = {} }) => {
+  const permissionResolver = vi.fn(({ permission }) => allowedPermissions.includes(permission));
+  const superdoc = {
+    interactionConfig,
+    config: {
+      role: 'editor',
+      isInternal: false,
+      user: currentUser,
+      permissionResolver,
+    },
+  };
+  const wrapper = mount(CommentHeader, {
     props: {
       config,
       comment,
@@ -81,44 +78,70 @@ const mountHeader = ({ currentUser, comment, config = { readOnly: false }, inter
     global: {
       config: {
         globalProperties: {
-          $superdoc: {
-            interactionConfig,
-            config: {
-              role: 'editor',
-              isInternal: false,
-              user: currentUser,
-            },
-          },
+          $superdoc: superdoc,
         },
       },
     },
   });
+  return { wrapper, permissionResolver, superdoc };
+};
+
+function record(value) {
+  return JSON.stringify(value, (_key, field) => (typeof field === 'function' ? `[Function ${field.name}]` : field), 2);
+}
+
+const describePayloadField = (key, value, inputs) => {
+  if (key === 'comment' && toRaw(value) === inputs.comment) return 'the comment prop';
+  if (key === 'currentUser' && toRaw(value) === inputs.currentUser) return 'the configured user';
+  if (key === 'superdoc' && toRaw(value) === inputs.superdoc) return 'the SuperDoc instance';
+  return value;
+};
+
+const recordHeader = ({ currentUser, comment }) => {
+  const { wrapper, permissionResolver, superdoc } = mountHeader({ currentUser, comment });
+  const inputs = { comment, currentUser, superdoc };
+  const resolverCalls = [];
+  permissionResolver.mock.calls.forEach(([payload], index) => {
+    const call = Object.fromEntries(
+      Object.entries(payload).map(([key, value]) => [key, describePayloadField(key, value, inputs)]),
+    );
+    const entry = record({ ...call, returned: permissionResolver.mock.results[index].value });
+    if (!resolverCalls.includes(entry)) resolverCalls.push(entry);
+  });
+  const actions = wrapper.findAll('[data-comment-action]').map((action) => action.attributes('data-comment-action'));
+  const overflow = wrapper.find('.options-labels');
+  return [
+    `role: editor, isInternal: false, allowed permissions: ${allowedPermissions.join(', ')}`,
+    `current user: ${record(currentUser)}`,
+    `comment: ${record(comment)}`,
+    '',
+    `resolver calls:\n${resolverCalls.join('\n')}`,
+    '',
+    `actions: ${actions.join(', ') || '(none)'}`,
+    `overflow options: ${overflow.exists() ? overflow.text() : '(none)'}`,
+    '',
+  ].join('\n');
+};
 
 describe('CommentHeader.vue', () => {
   beforeEach(() => {
     commentsStoreStub = {
       pendingComment: null,
     };
-    isAllowedMock = vi.fn((permission) => permission === PERMISSIONS.COMMENTS_DELETE_OWN);
+    allowedPermissions = [PERMISSIONS.COMMENTS_DELETE_OWN];
   });
 
-  it('does not treat same-email different-id comments as own comments', () => {
-    const wrapper = mountHeader({
+  it('does not treat same-email different-id comments as own comments', async () => {
+    const recording = recordHeader({
       currentUser: { id: 'bob-id', email: 'shared@example.com', name: 'Bob' },
       comment: makeComment(),
     });
 
-    expect(wrapper.find('.comments-dropdown-stub').exists()).toBe(false);
-    expect(isAllowedMock).toHaveBeenCalledWith(
-      PERMISSIONS.COMMENTS_DELETE_OTHER,
-      'editor',
-      false,
-      expect.objectContaining({ comment: expect.any(Object) }),
-    );
+    await expect(recording).toMatchFileSnapshot('./__snapshots__/CommentHeader/same-email-different-id.txt');
   });
 
   it('allows the anonymous default user to edit comments created in the same session', () => {
-    const wrapper = mountHeader({
+    const { wrapper } = mountHeader({
       currentUser: { id: null, email: null, name: 'Default SuperDoc user' },
       comment: makeComment({
         creatorId: null,
@@ -132,7 +155,7 @@ describe('CommentHeader.vue', () => {
   });
 
   it('keeps the imported tag for a different actor even when emails match', () => {
-    const wrapper = mountHeader({
+    const { wrapper } = mountHeader({
       currentUser: { id: 'bob-id', email: 'shared@example.com', name: 'Bob' },
       comment: makeComment({ origin: 'word' }),
     });
@@ -141,8 +164,8 @@ describe('CommentHeader.vue', () => {
   });
 
   it('does not show resolve for legacy tracked-change thread members', () => {
-    isAllowedMock = vi.fn(() => true);
-    const wrapper = mountHeader({
+    allowedPermissions = Object.values(PERMISSIONS);
+    const { wrapper } = mountHeader({
       currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
       comment: makeComment({
         trackedChangeParentId: 'tc-1',
@@ -156,7 +179,7 @@ describe('CommentHeader.vue', () => {
 
   describe('read-only review actions (SD-3164)', () => {
     beforeEach(() => {
-      isAllowedMock = vi.fn(() => true);
+      allowedPermissions = Object.values(PERMISSIONS);
     });
 
     it.each([
@@ -164,7 +187,7 @@ describe('CommentHeader.vue', () => {
       ['tracked insertion', makeComment({ trackedChange: true, trackedChangeType: 'trackInsert' })],
       ['tracked deletion', makeComment({ trackedChange: true, trackedChangeType: 'trackDelete' })],
     ])('removes every mutation control for a read-only %s', (_label, comment) => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment,
         config: { readOnly: true, allowResolve: true },
@@ -177,7 +200,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('removes reopen for a resolved read-only comment', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ resolvedTime: Date.now() }),
         config: { readOnly: true, allowResolve: true },
@@ -188,7 +211,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('keeps writable capability failures visible but disabled', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ trackedChange: true }),
         config: { readOnly: false, allowResolve: true },
@@ -207,7 +230,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('honors allowResolve for ordinary lifecycle actions without hiding unrelated writes', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment(),
         config: { readOnly: false, allowResolve: false },
@@ -220,7 +243,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('does not apply allowResolve to tracked-change decisions', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ trackedChange: true }),
         config: { readOnly: false, allowResolve: false },
@@ -231,7 +254,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('keeps tracked-change decisions visible when comment capability is read-only', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ trackedChange: true }),
         config: { readOnly: true, allowResolve: false },
@@ -246,7 +269,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('hides tracked-change decisions without hiding writable comment actions', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ trackedChange: true }),
         config: { readOnly: false, allowResolve: true },
@@ -262,7 +285,7 @@ describe('CommentHeader.vue', () => {
 
     it('removes an already-rendered action surface when config flips to read-only', async () => {
       const config = reactive({ readOnly: false, allowResolve: true });
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment(),
         config,
@@ -278,8 +301,7 @@ describe('CommentHeader.vue', () => {
   });
 
   describe('tracked-change own vs other permissions (SD-3845)', () => {
-    const mikeLegalResolver = (permission) =>
-      permission === PERMISSIONS.RESOLVE_OTHER || permission === PERMISSIONS.REJECT_OTHER;
+    const mikeLegalPermissions = [PERMISSIONS.RESOLVE_OTHER, PERMISSIONS.REJECT_OTHER];
 
     const otherUserTrackedChange = () =>
       makeComment({
@@ -297,68 +319,41 @@ describe('CommentHeader.vue', () => {
         trackedChangeType: 'trackInsert',
       });
 
-    it('requests OTHER permissions and shows Accept and Reject for another user tracked change', () => {
-      isAllowedMock = vi.fn(mikeLegalResolver);
-      const wrapper = mountHeader({
+    it('requests OTHER permissions and shows Accept and Reject for another user tracked change', async () => {
+      allowedPermissions = mikeLegalPermissions;
+      const recording = recordHeader({
         currentUser: { id: 'bob-id', email: 'bob@mikelegal.test', name: 'Bob' },
         comment: otherUserTrackedChange(),
       });
 
-      expect(isAllowedMock).toHaveBeenCalledWith(
-        PERMISSIONS.RESOLVE_OTHER,
-        'editor',
-        false,
-        expect.objectContaining({ comment: expect.objectContaining({ trackedChange: true }) }),
-      );
-      expect(isAllowedMock).toHaveBeenCalledWith(
-        PERMISSIONS.REJECT_OTHER,
-        'editor',
-        false,
-        expect.objectContaining({ comment: expect.objectContaining({ trackedChange: true }) }),
-      );
-      expect(wrapper.find('[data-comment-action="resolve"]').exists()).toBe(true);
-      expect(wrapper.find('[data-comment-action="reject"]').exists()).toBe(true);
+      await expect(recording).toMatchFileSnapshot('./__snapshots__/CommentHeader/other-tracked-change.txt');
     });
 
-    it('hides Accept and Reject for the current user tracked change when OWN is denied', () => {
-      isAllowedMock = vi.fn(mikeLegalResolver);
-      const wrapper = mountHeader({
+    it('hides Accept and Reject for the current user tracked change when OWN is denied', async () => {
+      allowedPermissions = mikeLegalPermissions;
+      const recording = recordHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: ownTrackedChange(),
       });
 
-      expect(isAllowedMock).toHaveBeenCalledWith(PERMISSIONS.RESOLVE_OWN, 'editor', false, expect.any(Object));
-      expect(isAllowedMock).toHaveBeenCalledWith(PERMISSIONS.REJECT_OWN, 'editor', false, expect.any(Object));
-      expect(wrapper.find('[data-comment-action="resolve"]').exists()).toBe(false);
-      expect(wrapper.find('[data-comment-action="reject"]').exists()).toBe(false);
+      await expect(recording).toMatchFileSnapshot('./__snapshots__/CommentHeader/own-tracked-change-denied.txt');
     });
 
-    it('hides Reject for another user tracked change when REJECT_OTHER is denied', () => {
-      isAllowedMock = vi.fn((permission) => permission === PERMISSIONS.RESOLVE_OTHER);
-      const wrapper = mountHeader({
+    it('hides Reject for another user tracked change when REJECT_OTHER is denied', async () => {
+      allowedPermissions = [PERMISSIONS.RESOLVE_OTHER];
+      const recording = recordHeader({
         currentUser: { id: 'bob-id', email: 'bob@mikelegal.test', name: 'Bob' },
         comment: otherUserTrackedChange(),
       });
 
-      expect(wrapper.find('[data-comment-action="resolve"]').exists()).toBe(true);
-      expect(wrapper.find('[data-comment-action="reject"]').exists()).toBe(false);
-      expect(isAllowedMock).toHaveBeenCalledWith(
-        PERMISSIONS.RESOLVE_OTHER,
-        'editor',
-        false,
-        expect.objectContaining({ comment: expect.objectContaining({ trackedChange: true }) }),
-      );
-      expect(isAllowedMock).toHaveBeenCalledWith(
-        PERMISSIONS.REJECT_OTHER,
-        'editor',
-        false,
-        expect.objectContaining({ comment: expect.objectContaining({ trackedChange: true }) }),
+      await expect(recording).toMatchFileSnapshot(
+        './__snapshots__/CommentHeader/other-tracked-change-reject-denied.txt',
       );
     });
 
-    it('classifies an unattributed tracked change as OWN when both sides lack id and email', () => {
-      isAllowedMock = vi.fn(mikeLegalResolver);
-      const wrapper = mountHeader({
+    it('classifies an unattributed tracked change as OWN when both sides lack id and email', async () => {
+      allowedPermissions = mikeLegalPermissions;
+      const recording = recordHeader({
         currentUser: { id: null, email: null, name: 'Alice' },
         comment: makeComment({
           trackedChange: true,
@@ -370,15 +365,12 @@ describe('CommentHeader.vue', () => {
         }),
       });
 
-      expect(isAllowedMock).toHaveBeenCalledWith(PERMISSIONS.RESOLVE_OWN, 'editor', false, expect.any(Object));
-      expect(isAllowedMock).toHaveBeenCalledWith(PERMISSIONS.REJECT_OWN, 'editor', false, expect.any(Object));
-      expect(wrapper.find('[data-comment-action="resolve"]').exists()).toBe(false);
-      expect(wrapper.find('[data-comment-action="reject"]').exists()).toBe(false);
+      await expect(recording).toMatchFileSnapshot('./__snapshots__/CommentHeader/unattributed-tracked-change.txt');
     });
 
-    it('classifies a name-only imported tracked change as OWN when names match', () => {
-      isAllowedMock = vi.fn(mikeLegalResolver);
-      const wrapper = mountHeader({
+    it('classifies a name-only imported tracked change as OWN when names match', async () => {
+      allowedPermissions = mikeLegalPermissions;
+      const recording = recordHeader({
         currentUser: { id: null, email: null, name: 'Alice Owner' },
         comment: makeComment({
           trackedChange: true,
@@ -392,22 +384,19 @@ describe('CommentHeader.vue', () => {
         }),
       });
 
-      expect(isAllowedMock).toHaveBeenCalledWith(PERMISSIONS.RESOLVE_OWN, 'editor', false, expect.any(Object));
-      expect(isAllowedMock).toHaveBeenCalledWith(PERMISSIONS.REJECT_OWN, 'editor', false, expect.any(Object));
-      expect(wrapper.find('[data-comment-action="resolve"]').exists()).toBe(false);
-      expect(wrapper.find('[data-comment-action="reject"]').exists()).toBe(false);
+      await expect(recording).toMatchFileSnapshot(
+        './__snapshots__/CommentHeader/name-only-imported-tracked-change.txt',
+      );
     });
   });
 
   describe('when allowResolve is omitted from a writable config', () => {
     beforeEach(() => {
-      isAllowedMock = vi.fn(
-        (permission) => permission === PERMISSIONS.RESOLVE_OWN || permission === PERMISSIONS.RESOLVE_OTHER,
-      );
+      allowedPermissions = [PERMISSIONS.RESOLVE_OWN, PERMISSIONS.RESOLVE_OTHER];
     });
 
     it('offers resolve and emits it on click', async () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment(),
         config: { readOnly: false },
@@ -423,13 +412,11 @@ describe('CommentHeader.vue', () => {
   describe('reopen affordance (row 864)', () => {
     beforeEach(() => {
       // Reopen reuses the resolve permission; allow it for these cases.
-      isAllowedMock = vi.fn(
-        (permission) => permission === PERMISSIONS.RESOLVE_OWN || permission === PERMISSIONS.RESOLVE_OTHER,
-      );
+      allowedPermissions = [PERMISSIONS.RESOLVE_OWN, PERMISSIONS.RESOLVE_OTHER];
     });
 
     it('exposes a reopen action for a resolved root comment when v2 reopen is supported', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ resolvedTime: Date.now() }),
         extraProps: { reopenSupported: true },
@@ -438,7 +425,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('emits reopen when the affordance is clicked and not disabled', async () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ resolvedTime: Date.now() }),
         extraProps: { reopenSupported: true },
@@ -448,7 +435,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('does not show reopen for unresolved comments and keeps resolve/delete behavior', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ resolvedTime: null }),
         extraProps: { reopenSupported: true },
@@ -459,7 +446,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('does not show reopen when reopen is not supported (v1)', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ resolvedTime: Date.now() }),
         extraProps: { reopenSupported: false },
@@ -468,7 +455,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('does not show reopen for resolved replies', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ resolvedTime: Date.now(), parentCommentId: 'root-1' }),
         extraProps: { reopenSupported: true },
@@ -477,7 +464,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('does not show reopen for legacy tracked-change thread members', () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({
           resolvedTime: Date.now(),
@@ -490,7 +477,7 @@ describe('CommentHeader.vue', () => {
     });
 
     it('renders reopen disabled and does not emit when a disabled reason is set', async () => {
-      const wrapper = mountHeader({
+      const { wrapper } = mountHeader({
         currentUser: { id: 'alice-id', email: 'shared@example.com', name: 'Alice' },
         comment: makeComment({ resolvedTime: Date.now() }),
         extraProps: { reopenSupported: true, reopenDisabledReason: 'author-required' },

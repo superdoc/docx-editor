@@ -1,0 +1,465 @@
+{
+  "definition": {
+    "description": "Set page border configuration for a section.",
+    "expectedResult": "Returns a SectionMutationResult receipt; reports NO_OP if page border configuration already matches.",
+    "memberPath": "sections.setPageBorders",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "sections/set-page-borders.mdx",
+    "referenceGroup": "sections",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "borders": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "display"
+              ]
+            },
+            {
+              "required": [
+                "offsetFrom"
+              ]
+            },
+            {
+              "required": [
+                "zOrder"
+              ]
+            },
+            {
+              "required": [
+                "top"
+              ]
+            },
+            {
+              "required": [
+                "right"
+              ]
+            },
+            {
+              "required": [
+                "bottom"
+              ]
+            },
+            {
+              "required": [
+                "left"
+              ]
+            }
+          ],
+          "properties": {
+            "bottom": {
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "style"
+                  ]
+                },
+                {
+                  "required": [
+                    "size"
+                  ]
+                },
+                {
+                  "required": [
+                    "space"
+                  ]
+                },
+                {
+                  "required": [
+                    "color"
+                  ]
+                },
+                {
+                  "required": [
+                    "shadow"
+                  ]
+                },
+                {
+                  "required": [
+                    "frame"
+                  ]
+                }
+              ],
+              "properties": {
+                "color": {
+                  "type": "string"
+                },
+                "frame": {
+                  "type": "boolean"
+                },
+                "shadow": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "space": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "style": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "display": {
+              "enum": [
+                "allPages",
+                "firstPage",
+                "notFirstPage"
+              ]
+            },
+            "left": {
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "style"
+                  ]
+                },
+                {
+                  "required": [
+                    "size"
+                  ]
+                },
+                {
+                  "required": [
+                    "space"
+                  ]
+                },
+                {
+                  "required": [
+                    "color"
+                  ]
+                },
+                {
+                  "required": [
+                    "shadow"
+                  ]
+                },
+                {
+                  "required": [
+                    "frame"
+                  ]
+                }
+              ],
+              "properties": {
+                "color": {
+                  "type": "string"
+                },
+                "frame": {
+                  "type": "boolean"
+                },
+                "shadow": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "space": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "style": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "offsetFrom": {
+              "enum": [
+                "page",
+                "text"
+              ]
+            },
+            "right": {
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "style"
+                  ]
+                },
+                {
+                  "required": [
+                    "size"
+                  ]
+                },
+                {
+                  "required": [
+                    "space"
+                  ]
+                },
+                {
+                  "required": [
+                    "color"
+                  ]
+                },
+                {
+                  "required": [
+                    "shadow"
+                  ]
+                },
+                {
+                  "required": [
+                    "frame"
+                  ]
+                }
+              ],
+              "properties": {
+                "color": {
+                  "type": "string"
+                },
+                "frame": {
+                  "type": "boolean"
+                },
+                "shadow": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "space": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "style": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "top": {
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "style"
+                  ]
+                },
+                {
+                  "required": [
+                    "size"
+                  ]
+                },
+                {
+                  "required": [
+                    "space"
+                  ]
+                },
+                {
+                  "required": [
+                    "color"
+                  ]
+                },
+                {
+                  "required": [
+                    "shadow"
+                  ]
+                },
+                {
+                  "required": [
+                    "frame"
+                  ]
+                }
+              ],
+              "properties": {
+                "color": {
+                  "type": "string"
+                },
+                "frame": {
+                  "type": "boolean"
+                },
+                "shadow": {
+                  "type": "boolean"
+                },
+                "size": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "space": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "style": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "zOrder": {
+              "enum": [
+                "front",
+                "back"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "target": {
+          "$ref": "#/$defs/SectionAddress"
+        }
+      },
+      "required": [
+        "target",
+        "borders"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "section"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "section"
+      ],
+      "type": "object"
+    }
+  }
+}

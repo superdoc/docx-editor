@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import {
-  IMAGE_PICKER_ACCEPT,
-  createImageFilePicker,
-  fileToDataUri,
-  isSupportedImageFile,
-  resolveImageSrc,
-} from './image-upload.js';
+import { createImageFilePicker, fileToDataUri, isSupportedImageFile, resolveImageSrc } from './image-upload.js';
 
 const PNG_BYTES = Uint8Array.from(
   atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
@@ -113,7 +107,7 @@ describe('createImageFilePicker', () => {
     const picker = createImageFilePicker({});
     expect(picker.input.isConnected).toBe(true);
     expect(picker.input.getAttribute('data-superdoc-image-picker')).toBe('true');
-    expect(picker.input.accept).toBe(IMAGE_PICKER_ACCEPT);
+    expect(picker.input.accept).toBe('.png,.jpg,.jpeg,image/png,image/jpeg');
     expect(picker.input.hidden).toBe(true);
     picker.destroy();
     expect(picker.input.isConnected).toBe(false);

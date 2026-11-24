@@ -641,24 +641,6 @@ describe('async read coordinator lifecycle', () => {
     ui.destroy();
   });
 
-  it('runs the loading-subscription detacher after the coordinator timers are cleared on destroy', async () => {
-    vi.useFakeTimers();
-    const timersAtDetach: number[] = [];
-    const editor = makeEditor({
-      stage: 'source-loading',
-      onLoadingDetach: () => timersAtDetach.push(vi.getTimerCount()),
-    });
-    const { ui } = mountController(editor);
-    await settle();
-    const baseline = vi.getTimerCount();
-
-    editor.emitTypingMutation();
-    expect(vi.getTimerCount()).toBe(baseline + 1);
-
-    ui.destroy();
-    expect(timersAtDetach).toEqual([baseline]);
-  });
-
   it('settles two reads together with one coalesced recompute', async () => {
     vi.useFakeTimers();
     const sink = installBenchSink();

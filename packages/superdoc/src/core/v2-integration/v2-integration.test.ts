@@ -15,7 +15,6 @@ describe('createDefaultV2Integration', () => {
     await loadDefaultV2Integration();
     const integration = createDefaultV2Integration();
     expect(integration.version).toBe(3);
-    expect(integration.EditorComponent).toBeTruthy();
     expect(hasRealV2Integration(integration)).toBe(true);
     expect(typeof integration.createGeometryPublisher).toBe('function');
     expect(typeof integration.createReviewWindowController).toBe('function');

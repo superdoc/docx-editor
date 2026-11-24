@@ -1,0 +1,12 @@
+choose tableActions option addRowBefore -> executeAsync("table-add-row-before", undefined)
+choose tableActions option addRowAfter -> executeAsync("table-add-row-after", undefined)
+choose tableActions option deleteRow -> executeAsync("table-delete-row", undefined)
+choose tableActions option addColumnBefore -> executeAsync("table-add-column-before", undefined)
+choose tableActions option addColumnAfter -> executeAsync("table-add-column-after", undefined)
+choose tableActions option deleteColumn -> executeAsync("table-delete-column", undefined)
+choose tableActions option deleteTable -> executeAsync("table-delete", undefined)
+choose tableActions option deleteCellAndTableBorders -> executeAsync("table-remove-borders", undefined)
+choose tableActions option mergeCells -> executeAsync("table-merge-cells", undefined)
+choose tableActions option splitCell -> executeAsync("table-split-cell", undefined)
+choose tableActions option fixTables -> executeAsync("table-fix", undefined)
+choose tableActions option notAnOption -> nothing, exception "[superdoc toolbar] Command not handled: executeTableCommand"

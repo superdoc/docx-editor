@@ -1,0 +1,1186 @@
+row fields not listed below match this blank row
+  fileId="doc-1"
+  fileType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  mentions=[]
+  commentElement=null
+  isFocused=false
+  creatorId=null
+  creatorEmail=null
+  creatorName=null
+  creatorImage=null
+  createdTime=1700000000000
+  isInternal=true
+  commentText=""
+  commentFormat="html"
+  selection={"documentId":"doc-1","page":1,"selectionBounds":{}}
+  floatingPosition={"top":0,"left":0,"right":0,"bottom":0}
+  deletedText=null
+  trackedChangeType=null
+  trackedChangeText=null
+  trackedChangeDisplayType=null
+  semanticColorKey=null
+  semanticColor=null
+  trackedChangeStory=null
+  trackedChangeStoryKind=null
+  trackedChangeStoryLabel=""
+  trackedChangeAnchorKey=null
+  trackedChangeCanonicalId=null
+  trackedChangePositionAliases=[]
+  trackedChangeDecision=null
+  trackedChangeLabel=null
+  trackedChangeDetailLines=null
+  trackedChangeImagePreview=null
+  customAttributes=null
+  resolvedTime=null
+  resolvedById=null
+  resolvedByEmail=null
+  resolvedByName=null
+  importedAuthor=null
+  docxCommentJSON=null
+  getValues.commentElement=undefined
+  getValues.isFocused=undefined
+  getValues.floatingPosition=undefined
+
+version 1: apply prepared rows prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0
+  result.ok: true
+  result.commentItems: 0
+  result.trackedItems: 8
+  active: null
+  instance: null
+  editing: null
+  pending: null
+  text: ""
+  mentions: []
+  selectionPosition: null
+  presentations.doc-1.epoch: "epoch-1"
+  presentations.doc-1.baseVersion: 0
+  presentations.doc-1.version: 1
+  presentations.doc-1.catalogVersion: 1
+  presentations.doc-1.coordinate.documentEpoch: "epoch-1"
+  presentations.doc-1.coordinate.mountId: "mount-1"
+  presentations.doc-1.coordinate.reviewVersion: 1
+  presentations.doc-1.coordinate.commitSequence: 1
+  presentations.doc-1.rowVersions.prepared-13: 2
+  presentations.doc-1.rowVersions.prepared-14: 1
+  presentations.doc-1.rowVersions.prepared-15: 3
+  presentations.doc-1.rowVersions.prepared-16: 3
+  presentations.doc-1.rowVersions.prepared-17: 2
+  presentations.doc-1.rowVersions.prepared-18: 3
+  presentations.doc-1.rowVersions.prepared-19: 1
+  presentations.doc-1.rowVersions.prepared-0: 2
+  presentations.doc-1.instances: [{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":0},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":20},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":40},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":60},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":80},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":100},{"id":"prepared-19","rowId":"prepared-19","threadId":"prepared-19","top":120},{"id":"prepared-0","rowId":"prepared-0","threadId":"prepared-0","top":140}]
+  presentations.doc-1.groupOrder.open: ["prepared-13","prepared-14","prepared-15","prepared-16","prepared-17","prepared-18","prepared-19","prepared-0"]
+  presentations.doc-1.groupOrder.resolved: []
+  events: []
+  order: prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0
+  row prepared-13 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-13-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-13" trackedChangeCanonicalId="prepared-13" trackedChangePositionAliases=["source-prepared-13"] trackedChange=true
+  row prepared-14 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-14-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-14" trackedChangeCanonicalId="prepared-14" trackedChangePositionAliases=["source-prepared-14"] trackedChange=true
+  row prepared-15 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-15-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-15" trackedChangeCanonicalId="prepared-15" trackedChangePositionAliases=["source-prepared-15"] trackedChange=true
+  row prepared-16 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-16-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-16" trackedChangeCanonicalId="prepared-16" trackedChangePositionAliases=["source-prepared-16"] trackedChange=true
+  row prepared-17 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-17-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-17" trackedChangeCanonicalId="prepared-17" trackedChangePositionAliases=["source-prepared-17"] trackedChange=true
+  row prepared-18 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-18-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-18" trackedChangeCanonicalId="prepared-18" trackedChangePositionAliases=["source-prepared-18"] trackedChange=true
+  row prepared-19 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-19-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-19" trackedChangeCanonicalId="prepared-19" trackedChangePositionAliases=["source-prepared-19"] trackedChange=true
+  row prepared-0 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-0-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-0" trackedChangeCanonicalId="prepared-0" trackedChangePositionAliases=["source-prepared-0"] trackedChange=true
+
+version 2: apply prepared rows prepared-3 prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12
+  result.trackedItems: 10
+  presentations.doc-1.baseVersion: 1
+  presentations.doc-1.version: 2
+  presentations.doc-1.coordinate.reviewVersion: 2
+  presentations.doc-1.coordinate.commitSequence: 2
+  presentations.doc-1.rowVersions.prepared-3: 2
+  presentations.doc-1.rowVersions.prepared-4: 3
+  presentations.doc-1.rowVersions.prepared-5: 3
+  presentations.doc-1.rowVersions.prepared-6: 3
+  presentations.doc-1.rowVersions.prepared-7: 1
+  presentations.doc-1.rowVersions.prepared-8: 2
+  presentations.doc-1.rowVersions.prepared-9: 2
+  presentations.doc-1.rowVersions.prepared-10: 3
+  presentations.doc-1.rowVersions.prepared-11: 2
+  presentations.doc-1.rowVersions.prepared-12: 3
+  presentations.doc-1.instances: [{"id":"prepared-3","rowId":"prepared-3","threadId":"prepared-3","top":0},{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":20},{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":40},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":60},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":80},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":100},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":120},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":140},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":160},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-3","prepared-4","prepared-5","prepared-6","prepared-7","prepared-8","prepared-9","prepared-10","prepared-11","prepared-12"]
+  order: prepared-3 prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12
+  presentations.doc-1.rowVersions.prepared-13 removed
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  presentations.doc-1.rowVersions.prepared-17 removed
+  presentations.doc-1.rowVersions.prepared-18 removed
+  presentations.doc-1.rowVersions.prepared-19 removed
+  presentations.doc-1.rowVersions.prepared-0 removed
+  row prepared-3 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-3-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-3" trackedChangeCanonicalId="prepared-3" trackedChangePositionAliases=["source-prepared-3"] trackedChange=true
+  row prepared-4 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-4-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-4" trackedChangeCanonicalId="prepared-4" trackedChangePositionAliases=["source-prepared-4"] trackedChange=true
+  row prepared-5 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-5-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-5" trackedChangeCanonicalId="prepared-5" trackedChangePositionAliases=["source-prepared-5"] trackedChange=true
+  row prepared-6 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-6-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-6" trackedChangeCanonicalId="prepared-6" trackedChangePositionAliases=["source-prepared-6"] trackedChange=true
+  row prepared-7 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-7-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-7" trackedChangeCanonicalId="prepared-7" trackedChangePositionAliases=["source-prepared-7"] trackedChange=true
+  row prepared-8 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-8-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-8" trackedChangeCanonicalId="prepared-8" trackedChangePositionAliases=["source-prepared-8"] trackedChange=true
+  row prepared-9 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-9-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-9" trackedChangeCanonicalId="prepared-9" trackedChangePositionAliases=["source-prepared-9"] trackedChange=true
+  row prepared-10 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-10-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-10" trackedChangeCanonicalId="prepared-10" trackedChangePositionAliases=["source-prepared-10"] trackedChange=true
+  row prepared-11 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-11-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-11" trackedChangeCanonicalId="prepared-11" trackedChangePositionAliases=["source-prepared-11"] trackedChange=true
+  row prepared-12 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-12-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-12" trackedChangeCanonicalId="prepared-12" trackedChangePositionAliases=["source-prepared-12"] trackedChange=true
+  row prepared-13 removed
+  row prepared-14 removed
+  row prepared-15 removed
+  row prepared-16 removed
+  row prepared-17 removed
+  row prepared-18 removed
+  row prepared-19 removed
+  row prepared-0 removed
+
+version 3: apply prepared rows prepared-2 prepared-3 prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11
+  presentations.doc-1.baseVersion: 2
+  presentations.doc-1.version: 3
+  presentations.doc-1.coordinate.reviewVersion: 3
+  presentations.doc-1.coordinate.commitSequence: 3
+  presentations.doc-1.rowVersions.prepared-2: 2
+  presentations.doc-1.rowVersions.prepared-3: 1
+  presentations.doc-1.rowVersions.prepared-4: 1
+  presentations.doc-1.rowVersions.prepared-5: 1
+  presentations.doc-1.rowVersions.prepared-6: 2
+  presentations.doc-1.rowVersions.prepared-7: 2
+  presentations.doc-1.rowVersions.prepared-8: 1
+  presentations.doc-1.rowVersions.prepared-10: 1
+  presentations.doc-1.rowVersions.prepared-11: 3
+  presentations.doc-1.instances: [{"id":"prepared-2","rowId":"prepared-2","threadId":"prepared-2","top":0},{"id":"prepared-3","rowId":"prepared-3","threadId":"prepared-3","top":20},{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":40},{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":60},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":80},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":100},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":120},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":140},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":160},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-2","prepared-3","prepared-4","prepared-5","prepared-6","prepared-7","prepared-8","prepared-9","prepared-10","prepared-11"]
+  order: prepared-3 prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-2
+  presentations.doc-1.rowVersions.prepared-12 removed
+  row prepared-3 changed createdTime=null trackedChangeText="prepared-3-1"
+  row prepared-4 changed createdTime=null
+  row prepared-5 changed createdTime=null trackedChangeText="prepared-5-1"
+  row prepared-6 changed createdTime=null
+  row prepared-7 changed createdTime=null
+  row prepared-8 changed createdTime=null trackedChangeText="prepared-8-2"
+  row prepared-10 changed createdTime=null trackedChangeText="prepared-10-2"
+  row prepared-11 changed createdTime=null
+  row prepared-2 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-2-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-2" trackedChangeCanonicalId="prepared-2" trackedChangePositionAliases=["source-prepared-2"] trackedChange=true
+  row prepared-12 removed
+
+version 4: apply prepared rows prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13 prepared-14
+  active: "prepared-9"
+  presentations.doc-1.baseVersion: 3
+  presentations.doc-1.version: 4
+  presentations.doc-1.coordinate.reviewVersion: 4
+  presentations.doc-1.coordinate.commitSequence: 4
+  presentations.doc-1.rowVersions.prepared-5: 3
+  presentations.doc-1.rowVersions.prepared-6: 1
+  presentations.doc-1.rowVersions.prepared-7: 3
+  presentations.doc-1.rowVersions.prepared-8: 3
+  presentations.doc-1.rowVersions.prepared-9: 3
+  presentations.doc-1.rowVersions.prepared-10: 2
+  presentations.doc-1.rowVersions.prepared-12: 2
+  presentations.doc-1.rowVersions.prepared-13: 2
+  presentations.doc-1.rowVersions.prepared-14: 1
+  presentations.doc-1.instances: [{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":0},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":20},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":40},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":60},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":80},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":100},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":120},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":140},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":160},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-5","prepared-6","prepared-7","prepared-8","prepared-9","prepared-10","prepared-11","prepared-12","prepared-13","prepared-14"]
+  order: prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13 prepared-14
+  presentations.doc-1.rowVersions.prepared-2 removed
+  presentations.doc-1.rowVersions.prepared-3 removed
+  presentations.doc-1.rowVersions.prepared-4 removed
+  row prepared-5 changed trackedChangeText="prepared-5-2"
+  row prepared-6 changed trackedChangeText="prepared-6-0"
+  row prepared-7 changed trackedChangeText="prepared-7-1"
+  row prepared-8 changed trackedChangeText="prepared-8-0"
+  row prepared-9 changed createdTime=null
+  row prepared-10 changed trackedChangeText="prepared-10-0"
+  row prepared-12 returns trackedChangeText="prepared-12-2"
+  row prepared-13 returns trackedChangeText="prepared-13-0"
+  row prepared-14 returns trackedChangeText="prepared-14-2"
+  row prepared-3 removed
+  row prepared-4 removed
+  row prepared-2 removed
+
+version 5: apply prepared rows prepared-14 prepared-15 prepared-16 prepared-17 prepared-18
+  result.trackedItems: 5
+  active: null
+  presentations.doc-1.baseVersion: 4
+  presentations.doc-1.version: 5
+  presentations.doc-1.coordinate.reviewVersion: 5
+  presentations.doc-1.coordinate.commitSequence: 5
+  presentations.doc-1.rowVersions.prepared-15: 2
+  presentations.doc-1.rowVersions.prepared-16: 3
+  presentations.doc-1.rowVersions.prepared-17: 3
+  presentations.doc-1.rowVersions.prepared-18: 3
+  presentations.doc-1.instances: [{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":0},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":20},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":40},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":60},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-14","prepared-15","prepared-16","prepared-17","prepared-18"]
+  order: prepared-14 prepared-15 prepared-16 prepared-17 prepared-18
+  presentations.doc-1.rowVersions.prepared-5 removed
+  presentations.doc-1.rowVersions.prepared-6 removed
+  presentations.doc-1.rowVersions.prepared-7 removed
+  presentations.doc-1.rowVersions.prepared-8 removed
+  presentations.doc-1.rowVersions.prepared-9 removed
+  presentations.doc-1.rowVersions.prepared-10 removed
+  presentations.doc-1.rowVersions.prepared-11 removed
+  presentations.doc-1.rowVersions.prepared-12 removed
+  presentations.doc-1.rowVersions.prepared-13 removed
+  row prepared-15 returns trackedChangeText="prepared-15-0" trackedChangePositionAliases=[]
+  row prepared-16 returns trackedChangePositionAliases=[]
+  row prepared-17 returns trackedChangeText="prepared-17-0" trackedChangePositionAliases=[]
+  row prepared-18 returns trackedChangePositionAliases=[]
+  row prepared-5 removed
+  row prepared-6 removed
+  row prepared-7 removed
+  row prepared-8 removed
+  row prepared-9 removed
+  row prepared-10 removed
+  row prepared-11 removed
+  row prepared-12 removed
+  row prepared-13 removed
+
+version 6: apply prepared rows prepared-13 prepared-14 prepared-15 prepared-16
+  result.trackedItems: 4
+  presentations.doc-1.baseVersion: 5
+  presentations.doc-1.version: 6
+  presentations.doc-1.coordinate.reviewVersion: 6
+  presentations.doc-1.coordinate.commitSequence: 6
+  presentations.doc-1.rowVersions.prepared-13: 2
+  presentations.doc-1.rowVersions.prepared-15: 1
+  presentations.doc-1.rowVersions.prepared-16: 1
+  presentations.doc-1.instances: [{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":0},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":20},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":40},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-13","prepared-14","prepared-15","prepared-16"]
+  order: prepared-14 prepared-15 prepared-16 prepared-13
+  presentations.doc-1.rowVersions.prepared-17 removed
+  presentations.doc-1.rowVersions.prepared-18 removed
+  row prepared-15 changed createdTime=null trackedChangeText="prepared-15-2" trackedChangePositionAliases=["source-prepared-15"]
+  row prepared-16 changed createdTime=null trackedChangePositionAliases=["source-prepared-16"]
+  row prepared-13 returns trackedChangeText="prepared-13-2"
+  row prepared-17 removed
+  row prepared-18 removed
+
+version 7: apply prepared rows prepared-1 prepared-2 prepared-3 prepared-4 prepared-5
+  result.trackedItems: 5
+  presentations.doc-1.baseVersion: 6
+  presentations.doc-1.version: 7
+  presentations.doc-1.coordinate.reviewVersion: 7
+  presentations.doc-1.coordinate.commitSequence: 7
+  presentations.doc-1.rowVersions.prepared-1: 3
+  presentations.doc-1.rowVersions.prepared-2: 1
+  presentations.doc-1.rowVersions.prepared-3: 2
+  presentations.doc-1.rowVersions.prepared-4: 2
+  presentations.doc-1.rowVersions.prepared-5: 2
+  presentations.doc-1.instances: [{"id":"prepared-1","rowId":"prepared-1","threadId":"prepared-1","top":0},{"id":"prepared-2","rowId":"prepared-2","threadId":"prepared-2","top":20},{"id":"prepared-3","rowId":"prepared-3","threadId":"prepared-3","top":40},{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":60},{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-1","prepared-2","prepared-3","prepared-4","prepared-5"]
+  order: prepared-1 prepared-2 prepared-3 prepared-4 prepared-5
+  presentations.doc-1.rowVersions.prepared-13 removed
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  row prepared-1 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="prepared-1-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::prepared-1" trackedChangeCanonicalId="prepared-1" trackedChange=true
+  row prepared-2 returns trackedChangePositionAliases=[]
+  row prepared-3 returns createdTime=1700000000000 trackedChangeText="prepared-3-2" trackedChangePositionAliases=[]
+  row prepared-4 returns createdTime=1700000000000 trackedChangePositionAliases=[]
+  row prepared-5 returns createdTime=1700000000000 trackedChangeText="prepared-5-1" trackedChangePositionAliases=[]
+  row prepared-14 removed
+  row prepared-15 removed
+  row prepared-16 removed
+  row prepared-13 removed
+
+version 8: apply prepared rows prepared-13 prepared-14 prepared-15 prepared-16
+  result.trackedItems: 4
+  active: "prepared-2"
+  presentations.doc-1.baseVersion: 7
+  presentations.doc-1.version: 8
+  presentations.doc-1.coordinate.reviewVersion: 8
+  presentations.doc-1.coordinate.commitSequence: 8
+  presentations.doc-1.rowVersions.prepared-13: 2
+  presentations.doc-1.rowVersions.prepared-14: 3
+  presentations.doc-1.rowVersions.prepared-15: 3
+  presentations.doc-1.rowVersions.prepared-16: 1
+  presentations.doc-1.instances: [{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":0},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":20},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":40},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-13","prepared-14","prepared-15","prepared-16"]
+  order: prepared-2 prepared-13 prepared-14 prepared-15 prepared-16
+  presentations.doc-1.rowVersions.prepared-1 removed
+  presentations.doc-1.rowVersions.prepared-2 removed
+  presentations.doc-1.rowVersions.prepared-3 removed
+  presentations.doc-1.rowVersions.prepared-4 removed
+  presentations.doc-1.rowVersions.prepared-5 removed
+  row prepared-13 returns
+  row prepared-14 returns trackedChangeText="prepared-14-0"
+  row prepared-15 returns createdTime=1700000000000 trackedChangeText="prepared-15-1"
+  row prepared-16 returns createdTime=1700000000000 trackedChangeText="prepared-16-2"
+  row prepared-1 removed
+  row prepared-3 removed
+  row prepared-4 removed
+  row prepared-5 removed
+
+version 8: republish the same version with the catalog reused
+  result.ok: false
+  result.reason: "review-catalog-stale"
+  result.commentItems removed
+  result.trackedItems removed
+
+version 9: apply prepared rows prepared-14 prepared-15 prepared-16 prepared-17 prepared-18
+  result.ok: true
+  result.commentItems: 0
+  result.trackedItems: 5
+  active: null
+  presentations.doc-1.baseVersion: 8
+  presentations.doc-1.version: 9
+  presentations.doc-1.coordinate.reviewVersion: 9
+  presentations.doc-1.coordinate.commitSequence: 9
+  presentations.doc-1.rowVersions.prepared-14: 1
+  presentations.doc-1.rowVersions.prepared-16: 2
+  presentations.doc-1.rowVersions.prepared-17: 3
+  presentations.doc-1.rowVersions.prepared-18: 2
+  presentations.doc-1.instances: [{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":0},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":20},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":40},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":60},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-14","prepared-15","prepared-16","prepared-17","prepared-18"]
+  order: prepared-14 prepared-15 prepared-16 prepared-17 prepared-18
+  result.reason removed
+  presentations.doc-1.rowVersions.prepared-13 removed
+  row prepared-14 changed createdTime=null trackedChangeText="prepared-14-2" trackedChangePositionAliases=[]
+  row prepared-16 changed createdTime=null trackedChangeText="prepared-16-1" trackedChangePositionAliases=[]
+  row prepared-17 returns trackedChangeText="prepared-17-1"
+  row prepared-18 returns trackedChangeText="prepared-18-1"
+  row prepared-2 removed
+  row prepared-13 removed
+
+version 10: apply prepared rows prepared-14 prepared-15 prepared-16 prepared-17
+  result.trackedItems: 4
+  presentations.doc-1.baseVersion: 9
+  presentations.doc-1.version: 10
+  presentations.doc-1.coordinate.reviewVersion: 10
+  presentations.doc-1.coordinate.commitSequence: 10
+  presentations.doc-1.rowVersions.prepared-15: 1
+  presentations.doc-1.rowVersions.prepared-16: 1
+  presentations.doc-1.instances: [{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":0},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":20},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":40},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-14","prepared-15","prepared-16","prepared-17"]
+  order: prepared-14 prepared-15 prepared-16 prepared-17
+  presentations.doc-1.rowVersions.prepared-18 removed
+  row prepared-15 changed createdTime=null
+  row prepared-16 changed trackedChangeText="prepared-16-0" trackedChangePositionAliases=["source-prepared-16"]
+  row prepared-18 removed
+
+version 11: apply prepared rows prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13
+  result.trackedItems: 10
+  presentations.doc-1.baseVersion: 10
+  presentations.doc-1.version: 11
+  presentations.doc-1.coordinate.reviewVersion: 11
+  presentations.doc-1.coordinate.commitSequence: 11
+  presentations.doc-1.rowVersions.prepared-4: 2
+  presentations.doc-1.rowVersions.prepared-5: 2
+  presentations.doc-1.rowVersions.prepared-6: 3
+  presentations.doc-1.rowVersions.prepared-7: 1
+  presentations.doc-1.rowVersions.prepared-8: 2
+  presentations.doc-1.rowVersions.prepared-9: 3
+  presentations.doc-1.rowVersions.prepared-10: 2
+  presentations.doc-1.rowVersions.prepared-11: 2
+  presentations.doc-1.rowVersions.prepared-12: 2
+  presentations.doc-1.rowVersions.prepared-13: 1
+  presentations.doc-1.instances: [{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":0},{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":20},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":40},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":60},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":80},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":100},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":120},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":140},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":160},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-4","prepared-5","prepared-6","prepared-7","prepared-8","prepared-9","prepared-10","prepared-11","prepared-12","prepared-13"]
+  order: prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  presentations.doc-1.rowVersions.prepared-17 removed
+  row prepared-4 returns trackedChangePositionAliases=["source-prepared-4"]
+  row prepared-5 returns trackedChangeText="prepared-5-0" trackedChangePositionAliases=["source-prepared-5"]
+  row prepared-6 returns createdTime=1700000000000 trackedChangeText="prepared-6-2"
+  row prepared-7 returns createdTime=1700000000000 trackedChangeText="prepared-7-2"
+  row prepared-8 returns createdTime=1700000000000
+  row prepared-9 returns createdTime=1700000000000 trackedChangeText="prepared-9-0"
+  row prepared-10 returns createdTime=1700000000000 trackedChangeText="prepared-10-2"
+  row prepared-11 returns createdTime=1700000000000 trackedChangeText="prepared-11-0"
+  row prepared-12 returns trackedChangeText="prepared-12-1"
+  row prepared-13 returns trackedChangeText="prepared-13-1"
+  row prepared-14 removed
+  row prepared-15 removed
+  row prepared-16 removed
+  row prepared-17 removed
+
+version 12: apply prepared rows prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13 prepared-14 prepared-15
+  active: "prepared-4"
+  presentations.doc-1.baseVersion: 11
+  presentations.doc-1.version: 12
+  presentations.doc-1.coordinate.reviewVersion: 12
+  presentations.doc-1.coordinate.commitSequence: 12
+  presentations.doc-1.rowVersions.prepared-7: 2
+  presentations.doc-1.rowVersions.prepared-8: 1
+  presentations.doc-1.rowVersions.prepared-9: 2
+  presentations.doc-1.rowVersions.prepared-11: 1
+  presentations.doc-1.rowVersions.prepared-12: 3
+  presentations.doc-1.rowVersions.prepared-13: 3
+  presentations.doc-1.rowVersions.prepared-14: 2
+  presentations.doc-1.rowVersions.prepared-15: 2
+  presentations.doc-1.instances: [{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":0},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":20},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":40},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":60},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":80},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":100},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":120},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":140},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":160},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-6","prepared-7","prepared-8","prepared-9","prepared-10","prepared-11","prepared-12","prepared-13","prepared-14","prepared-15"]
+  order: prepared-4 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13 prepared-14 prepared-15
+  presentations.doc-1.rowVersions.prepared-4 removed
+  presentations.doc-1.rowVersions.prepared-5 removed
+  row prepared-7 changed createdTime=null trackedChangeText="prepared-7-1"
+  row prepared-8 changed createdTime=null
+  row prepared-9 changed createdTime=null trackedChangePositionAliases=["source-prepared-9","manual-12"]
+  row prepared-11 changed createdTime=null trackedChangeText="prepared-11-1"
+  row prepared-12 changed createdTime=null trackedChangeText="prepared-12-2"
+  row prepared-13 changed createdTime=null trackedChangeText="prepared-13-2"
+  row prepared-14 returns createdTime=1700000000000 trackedChangeText="prepared-14-1" trackedChangePositionAliases=["source-prepared-14"]
+  row prepared-15 returns createdTime=1700000000000 trackedChangeText="prepared-15-0"
+  row prepared-5 removed
+
+version 13: apply prepared rows prepared-5 prepared-6 prepared-7 prepared-8
+  result.trackedItems: 4
+  active: null
+  presentations.doc-1.baseVersion: 12
+  presentations.doc-1.version: 13
+  presentations.doc-1.coordinate.reviewVersion: 13
+  presentations.doc-1.coordinate.commitSequence: 13
+  presentations.doc-1.rowVersions.prepared-5: 1
+  presentations.doc-1.rowVersions.prepared-8: 2
+  presentations.doc-1.instances: [{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":0},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":20},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":40},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-5","prepared-6","prepared-7","prepared-8"]
+  order: prepared-6 prepared-7 prepared-8 prepared-5
+  presentations.doc-1.rowVersions.prepared-9 removed
+  presentations.doc-1.rowVersions.prepared-10 removed
+  presentations.doc-1.rowVersions.prepared-11 removed
+  presentations.doc-1.rowVersions.prepared-12 removed
+  presentations.doc-1.rowVersions.prepared-13 removed
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  row prepared-8 changed trackedChangeText="prepared-8-2"
+  row prepared-5 returns trackedChangeText="prepared-5-2"
+  row prepared-4 removed
+  row prepared-9 removed
+  row prepared-10 removed
+  row prepared-11 removed
+  row prepared-12 removed
+  row prepared-13 removed
+  row prepared-14 removed
+  row prepared-15 removed
+
+version 14: apply prepared rows prepared-1 prepared-2 prepared-3 prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10
+  result.trackedItems: 10
+  presentations.doc-1.baseVersion: 13
+  presentations.doc-1.version: 14
+  presentations.doc-1.coordinate.reviewVersion: 14
+  presentations.doc-1.coordinate.commitSequence: 14
+  presentations.doc-1.rowVersions.prepared-1: 2
+  presentations.doc-1.rowVersions.prepared-2: 3
+  presentations.doc-1.rowVersions.prepared-3: 2
+  presentations.doc-1.rowVersions.prepared-4: 1
+  presentations.doc-1.rowVersions.prepared-6: 1
+  presentations.doc-1.rowVersions.prepared-7: 1
+  presentations.doc-1.rowVersions.prepared-9: 3
+  presentations.doc-1.rowVersions.prepared-10: 2
+  presentations.doc-1.instances: [{"id":"prepared-1","rowId":"prepared-1","threadId":"prepared-1","top":0},{"id":"prepared-2","rowId":"prepared-2","threadId":"prepared-2","top":20},{"id":"prepared-3","rowId":"prepared-3","threadId":"prepared-3","top":40},{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":60},{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":80},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":100},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":120},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":140},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":160},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-1","prepared-2","prepared-3","prepared-4","prepared-5","prepared-6","prepared-7","prepared-8","prepared-9","prepared-10"]
+  order: prepared-6 prepared-7 prepared-8 prepared-5 prepared-1 prepared-2 prepared-3 prepared-4 prepared-9 prepared-10
+  row prepared-6 changed createdTime=null trackedChangeText="prepared-6-1"
+  row prepared-7 changed trackedChangeText="prepared-7-0"
+  row prepared-1 returns trackedChangeText="prepared-1-2" trackedChangePositionAliases=["source-prepared-1"]
+  row prepared-2 returns trackedChangeText="prepared-2-0" trackedChangePositionAliases=["source-prepared-2"]
+  row prepared-3 returns trackedChangeText="prepared-3-0" trackedChangePositionAliases=["source-prepared-3"]
+  row prepared-4 returns trackedChangeText="prepared-4-1"
+  row prepared-9 returns createdTime=1700000000000 trackedChangeText="prepared-9-2" trackedChangePositionAliases=["source-prepared-9"]
+  row prepared-10 returns
+
+version 15: apply prepared rows prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17
+  presentations.doc-1.baseVersion: 14
+  presentations.doc-1.version: 15
+  presentations.doc-1.coordinate.reviewVersion: 15
+  presentations.doc-1.coordinate.commitSequence: 15
+  presentations.doc-1.rowVersions.prepared-8: 3
+  presentations.doc-1.rowVersions.prepared-9: 2
+  presentations.doc-1.rowVersions.prepared-10: 1
+  presentations.doc-1.rowVersions.prepared-11: 2
+  presentations.doc-1.rowVersions.prepared-12: 1
+  presentations.doc-1.rowVersions.prepared-13: 1
+  presentations.doc-1.rowVersions.prepared-14: 1
+  presentations.doc-1.rowVersions.prepared-15: 1
+  presentations.doc-1.rowVersions.prepared-16: 1
+  presentations.doc-1.rowVersions.prepared-17: 2
+  presentations.doc-1.instances: [{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":0},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":20},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":40},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":60},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":80},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":100},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":120},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":140},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":160},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-8","prepared-9","prepared-10","prepared-11","prepared-12","prepared-13","prepared-14","prepared-15","prepared-16","prepared-17"]
+  order: prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17
+  presentations.doc-1.rowVersions.prepared-1 removed
+  presentations.doc-1.rowVersions.prepared-2 removed
+  presentations.doc-1.rowVersions.prepared-3 removed
+  presentations.doc-1.rowVersions.prepared-4 removed
+  presentations.doc-1.rowVersions.prepared-5 removed
+  presentations.doc-1.rowVersions.prepared-6 removed
+  presentations.doc-1.rowVersions.prepared-7 removed
+  row prepared-8 changed trackedChangeText="prepared-8-0"
+  row prepared-9 changed createdTime=null trackedChangeText="prepared-9-0"
+  row prepared-10 changed createdTime=null
+  row prepared-11 returns createdTime=1700000000000 trackedChangeText="prepared-11-2"
+  row prepared-12 returns createdTime=1700000000000 trackedChangeText="prepared-12-0"
+  row prepared-13 returns createdTime=1700000000000 trackedChangeText="prepared-13-0"
+  row prepared-14 returns trackedChangeText="prepared-14-0"
+  row prepared-15 returns trackedChangeText="prepared-15-1"
+  row prepared-16 returns createdTime=1700000000000
+  row prepared-17 returns trackedChangeText="prepared-17-0" trackedChangePositionAliases=["source-prepared-17"]
+  row prepared-6 removed
+  row prepared-7 removed
+  row prepared-5 removed
+  row prepared-1 removed
+  row prepared-2 removed
+  row prepared-3 removed
+  row prepared-4 removed
+
+version 16: apply prepared rows prepared-0 prepared-1 prepared-2 prepared-3 prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9
+  active: "prepared-16"
+  presentations.doc-1.baseVersion: 15
+  presentations.doc-1.version: 16
+  presentations.doc-1.coordinate.reviewVersion: 16
+  presentations.doc-1.coordinate.commitSequence: 16
+  presentations.doc-1.rowVersions.prepared-0: 3
+  presentations.doc-1.rowVersions.prepared-1: 2
+  presentations.doc-1.rowVersions.prepared-2: 3
+  presentations.doc-1.rowVersions.prepared-3: 2
+  presentations.doc-1.rowVersions.prepared-4: 3
+  presentations.doc-1.rowVersions.prepared-5: 2
+  presentations.doc-1.rowVersions.prepared-6: 2
+  presentations.doc-1.rowVersions.prepared-7: 2
+  presentations.doc-1.rowVersions.prepared-8: 2
+  presentations.doc-1.rowVersions.prepared-9: 1
+  presentations.doc-1.instances: [{"id":"prepared-0","rowId":"prepared-0","threadId":"prepared-0","top":0},{"id":"prepared-1","rowId":"prepared-1","threadId":"prepared-1","top":20},{"id":"prepared-2","rowId":"prepared-2","threadId":"prepared-2","top":40},{"id":"prepared-3","rowId":"prepared-3","threadId":"prepared-3","top":60},{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":80},{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":100},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":120},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":140},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":160},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-0","prepared-1","prepared-2","prepared-3","prepared-4","prepared-5","prepared-6","prepared-7","prepared-8","prepared-9"]
+  order: prepared-8 prepared-9 prepared-16 prepared-0 prepared-1 prepared-2 prepared-3 prepared-4 prepared-5 prepared-6 prepared-7
+  presentations.doc-1.rowVersions.prepared-10 removed
+  presentations.doc-1.rowVersions.prepared-11 removed
+  presentations.doc-1.rowVersions.prepared-12 removed
+  presentations.doc-1.rowVersions.prepared-13 removed
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  presentations.doc-1.rowVersions.prepared-17 removed
+  row prepared-8 changed trackedChangeText="prepared-8-2"
+  row prepared-9 changed trackedChangeText="prepared-9-1"
+  row prepared-0 returns
+  row prepared-1 returns
+  row prepared-2 returns trackedChangeText="prepared-2-1"
+  row prepared-3 returns trackedChangeText="prepared-3-2"
+  row prepared-4 returns trackedChangeText="prepared-4-0"
+  row prepared-5 returns
+  row prepared-6 returns createdTime=1700000000000 trackedChangeText="prepared-6-2"
+  row prepared-7 returns createdTime=1700000000000 trackedChangeText="prepared-7-2"
+  row prepared-10 removed
+  row prepared-11 removed
+  row prepared-12 removed
+  row prepared-13 removed
+  row prepared-14 removed
+  row prepared-15 removed
+  row prepared-17 removed
+
+version 16: republish the same version with the catalog reused
+  result.ok: false
+  result.reason: "review-catalog-stale"
+  result.commentItems removed
+  result.trackedItems removed
+
+version 17: apply prepared rows prepared-0 prepared-1 prepared-2 prepared-3 prepared-4
+  result.ok: true
+  result.commentItems: 0
+  result.trackedItems: 5
+  active: null
+  presentations.doc-1.baseVersion: 16
+  presentations.doc-1.version: 17
+  presentations.doc-1.coordinate.reviewVersion: 17
+  presentations.doc-1.coordinate.commitSequence: 17
+  presentations.doc-1.rowVersions.prepared-0: 2
+  presentations.doc-1.rowVersions.prepared-1: 3
+  presentations.doc-1.instances: [{"id":"prepared-0","rowId":"prepared-0","threadId":"prepared-0","top":0},{"id":"prepared-1","rowId":"prepared-1","threadId":"prepared-1","top":20},{"id":"prepared-2","rowId":"prepared-2","threadId":"prepared-2","top":40},{"id":"prepared-3","rowId":"prepared-3","threadId":"prepared-3","top":60},{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-0","prepared-1","prepared-2","prepared-3","prepared-4"]
+  order: prepared-0 prepared-1 prepared-2 prepared-3 prepared-4
+  result.reason removed
+  presentations.doc-1.rowVersions.prepared-5 removed
+  presentations.doc-1.rowVersions.prepared-6 removed
+  presentations.doc-1.rowVersions.prepared-7 removed
+  presentations.doc-1.rowVersions.prepared-8 removed
+  presentations.doc-1.rowVersions.prepared-9 removed
+  row prepared-0 changed createdTime=null trackedChangePositionAliases=[]
+  row prepared-1 changed createdTime=null trackedChangeText="prepared-1-1" trackedChangePositionAliases=[]
+  row prepared-8 removed
+  row prepared-9 removed
+  row prepared-16 removed
+  row prepared-5 removed
+  row prepared-6 removed
+  row prepared-7 removed
+
+version 18: apply prepared rows prepared-13 prepared-14 prepared-15 prepared-16
+  result.trackedItems: 4
+  presentations.doc-1.baseVersion: 17
+  presentations.doc-1.version: 18
+  presentations.doc-1.coordinate.reviewVersion: 18
+  presentations.doc-1.coordinate.commitSequence: 18
+  presentations.doc-1.rowVersions.prepared-13: 3
+  presentations.doc-1.rowVersions.prepared-14: 3
+  presentations.doc-1.rowVersions.prepared-15: 3
+  presentations.doc-1.rowVersions.prepared-16: 2
+  presentations.doc-1.instances: [{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":0},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":20},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":40},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-13","prepared-14","prepared-15","prepared-16"]
+  order: prepared-13 prepared-14 prepared-15 prepared-16
+  presentations.doc-1.rowVersions.prepared-0 removed
+  presentations.doc-1.rowVersions.prepared-1 removed
+  presentations.doc-1.rowVersions.prepared-2 removed
+  presentations.doc-1.rowVersions.prepared-3 removed
+  presentations.doc-1.rowVersions.prepared-4 removed
+  row prepared-13 returns
+  row prepared-14 returns trackedChangeText="prepared-14-1"
+  row prepared-15 returns trackedChangeText="prepared-15-0"
+  row prepared-16 returns trackedChangeText="prepared-16-1"
+  row prepared-0 removed
+  row prepared-1 removed
+  row prepared-2 removed
+  row prepared-3 removed
+  row prepared-4 removed
+
+version 19: apply prepared rows prepared-14 prepared-15 prepared-16 prepared-17 prepared-18
+  result.trackedItems: 5
+  presentations.doc-1.baseVersion: 18
+  presentations.doc-1.version: 19
+  presentations.doc-1.coordinate.reviewVersion: 19
+  presentations.doc-1.coordinate.commitSequence: 19
+  presentations.doc-1.rowVersions.prepared-16: 3
+  presentations.doc-1.rowVersions.prepared-17: 1
+  presentations.doc-1.rowVersions.prepared-18: 3
+  presentations.doc-1.instances: [{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":0},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":20},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":40},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":60},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-14","prepared-15","prepared-16","prepared-17","prepared-18"]
+  order: prepared-14 prepared-15 prepared-16 prepared-17 prepared-18
+  presentations.doc-1.rowVersions.prepared-13 removed
+  row prepared-16 changed createdTime=null trackedChangeText="prepared-16-2" trackedChangePositionAliases=[]
+  row prepared-17 returns trackedChangePositionAliases=[]
+  row prepared-18 returns trackedChangeText="prepared-18-0"
+  row prepared-13 removed
+
+version 20: apply prepared rows prepared-1 prepared-2 prepared-3 prepared-4
+  result.trackedItems: 4
+  active: "prepared-15"
+  presentations.doc-1.baseVersion: 19
+  presentations.doc-1.version: 20
+  presentations.doc-1.coordinate.reviewVersion: 20
+  presentations.doc-1.coordinate.commitSequence: 20
+  presentations.doc-1.rowVersions.prepared-1: 1
+  presentations.doc-1.rowVersions.prepared-2: 1
+  presentations.doc-1.rowVersions.prepared-3: 1
+  presentations.doc-1.rowVersions.prepared-4: 2
+  presentations.doc-1.instances: [{"id":"prepared-1","rowId":"prepared-1","threadId":"prepared-1","top":0},{"id":"prepared-2","rowId":"prepared-2","threadId":"prepared-2","top":20},{"id":"prepared-3","rowId":"prepared-3","threadId":"prepared-3","top":40},{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-1","prepared-2","prepared-3","prepared-4"]
+  order: prepared-15 prepared-1 prepared-2 prepared-3 prepared-4
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  presentations.doc-1.rowVersions.prepared-17 removed
+  presentations.doc-1.rowVersions.prepared-18 removed
+  row prepared-1 returns createdTime=1700000000000 trackedChangePositionAliases=["source-prepared-1"]
+  row prepared-2 returns trackedChangeText="prepared-2-2"
+  row prepared-3 returns
+  row prepared-4 returns trackedChangeText="prepared-4-2"
+  row prepared-14 removed
+  row prepared-16 removed
+  row prepared-17 removed
+  row prepared-18 removed
+
+version 21: apply prepared rows prepared-14 prepared-15 prepared-16 prepared-17 prepared-18
+  result.trackedItems: 5
+  active: null
+  presentations.doc-1.baseVersion: 20
+  presentations.doc-1.version: 21
+  presentations.doc-1.coordinate.reviewVersion: 21
+  presentations.doc-1.coordinate.commitSequence: 21
+  presentations.doc-1.rowVersions.prepared-14: 2
+  presentations.doc-1.rowVersions.prepared-15: 1
+  presentations.doc-1.rowVersions.prepared-16: 2
+  presentations.doc-1.rowVersions.prepared-17: 3
+  presentations.doc-1.rowVersions.prepared-18: 1
+  presentations.doc-1.instances: [{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":0},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":20},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":40},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":60},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-14","prepared-15","prepared-16","prepared-17","prepared-18"]
+  order: prepared-15 prepared-14 prepared-16 prepared-17 prepared-18
+  presentations.doc-1.rowVersions.prepared-1 removed
+  presentations.doc-1.rowVersions.prepared-2 removed
+  presentations.doc-1.rowVersions.prepared-3 removed
+  presentations.doc-1.rowVersions.prepared-4 removed
+  row prepared-15 changed createdTime=null trackedChangePositionAliases=[]
+  row prepared-14 returns trackedChangeText="prepared-14-2" trackedChangePositionAliases=[]
+  row prepared-16 returns createdTime=1700000000000
+  row prepared-17 returns trackedChangeText="prepared-17-2"
+  row prepared-18 returns trackedChangeText="prepared-18-1"
+  row prepared-1 removed
+  row prepared-2 removed
+  row prepared-3 removed
+  row prepared-4 removed
+
+version 22: apply prepared rows prepared-2 prepared-3 prepared-4 prepared-5
+  result.trackedItems: 4
+  presentations.doc-1.baseVersion: 21
+  presentations.doc-1.version: 22
+  presentations.doc-1.coordinate.reviewVersion: 22
+  presentations.doc-1.coordinate.commitSequence: 22
+  presentations.doc-1.rowVersions.prepared-2: 3
+  presentations.doc-1.rowVersions.prepared-3: 1
+  presentations.doc-1.rowVersions.prepared-4: 1
+  presentations.doc-1.rowVersions.prepared-5: 1
+  presentations.doc-1.instances: [{"id":"prepared-2","rowId":"prepared-2","threadId":"prepared-2","top":0},{"id":"prepared-3","rowId":"prepared-3","threadId":"prepared-3","top":20},{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":40},{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-2","prepared-3","prepared-4","prepared-5"]
+  order: prepared-2 prepared-3 prepared-4 prepared-5
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  presentations.doc-1.rowVersions.prepared-17 removed
+  presentations.doc-1.rowVersions.prepared-18 removed
+  row prepared-2 returns trackedChangeText="prepared-2-0"
+  row prepared-3 returns trackedChangeText="prepared-3-1"
+  row prepared-4 returns trackedChangeText="prepared-4-1"
+  row prepared-5 returns trackedChangeText="prepared-5-0"
+  row prepared-15 removed
+  row prepared-14 removed
+  row prepared-16 removed
+  row prepared-17 removed
+  row prepared-18 removed
+
+version 23: apply prepared rows prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0 prepared-1 prepared-2
+  result.trackedItems: 10
+  presentations.doc-1.baseVersion: 22
+  presentations.doc-1.version: 23
+  presentations.doc-1.coordinate.reviewVersion: 23
+  presentations.doc-1.coordinate.commitSequence: 23
+  presentations.doc-1.rowVersions.prepared-13: 3
+  presentations.doc-1.rowVersions.prepared-14: 2
+  presentations.doc-1.rowVersions.prepared-15: 2
+  presentations.doc-1.rowVersions.prepared-16: 2
+  presentations.doc-1.rowVersions.prepared-17: 1
+  presentations.doc-1.rowVersions.prepared-18: 3
+  presentations.doc-1.rowVersions.prepared-19: 1
+  presentations.doc-1.rowVersions.prepared-0: 3
+  presentations.doc-1.rowVersions.prepared-1: 1
+  presentations.doc-1.rowVersions.prepared-2: 1
+  presentations.doc-1.instances: [{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":0},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":20},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":40},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":60},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":80},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":100},{"id":"prepared-19","rowId":"prepared-19","threadId":"prepared-19","top":120},{"id":"prepared-0","rowId":"prepared-0","threadId":"prepared-0","top":140},{"id":"prepared-1","rowId":"prepared-1","threadId":"prepared-1","top":160},{"id":"prepared-2","rowId":"prepared-2","threadId":"prepared-2","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-13","prepared-14","prepared-15","prepared-16","prepared-17","prepared-18","prepared-19","prepared-0","prepared-1","prepared-2"]
+  order: prepared-2 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0 prepared-1
+  presentations.doc-1.rowVersions.prepared-3 removed
+  presentations.doc-1.rowVersions.prepared-4 removed
+  presentations.doc-1.rowVersions.prepared-5 removed
+  row prepared-2 changed createdTime=null trackedChangeText="prepared-2-2"
+  row prepared-13 returns
+  row prepared-14 returns trackedChangePositionAliases=["source-prepared-14"]
+  row prepared-15 returns createdTime=1700000000000 trackedChangeText="prepared-15-1" trackedChangePositionAliases=["source-prepared-15"]
+  row prepared-16 returns trackedChangeText="prepared-16-0" trackedChangePositionAliases=["source-prepared-16"]
+  row prepared-17 returns trackedChangeText="prepared-17-1" trackedChangePositionAliases=["source-prepared-17"]
+  row prepared-18 returns trackedChangePositionAliases=["source-prepared-18"]
+  row prepared-19 returns trackedChangeText="prepared-19-0"
+  row prepared-0 returns createdTime=1700000000000 trackedChangeText="prepared-0-1" trackedChangePositionAliases=["source-prepared-0"]
+  row prepared-1 returns
+  row prepared-3 removed
+  row prepared-4 removed
+  row prepared-5 removed
+
+version 24: apply prepared rows prepared-9 prepared-10 prepared-11 prepared-12 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18
+  active: "prepared-14"
+  presentations.doc-1.baseVersion: 23
+  presentations.doc-1.version: 24
+  presentations.doc-1.coordinate.reviewVersion: 24
+  presentations.doc-1.coordinate.commitSequence: 24
+  presentations.doc-1.rowVersions.prepared-9: 1
+  presentations.doc-1.rowVersions.prepared-10: 2
+  presentations.doc-1.rowVersions.prepared-11: 2
+  presentations.doc-1.rowVersions.prepared-12: 3
+  presentations.doc-1.rowVersions.prepared-13: 2
+  presentations.doc-1.rowVersions.prepared-15: 1
+  presentations.doc-1.rowVersions.prepared-17: 2
+  presentations.doc-1.rowVersions.prepared-18: 2
+  presentations.doc-1.instances: [{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":0},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":20},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":40},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":60},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":80},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":100},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":120},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":140},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":160},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-9","prepared-10","prepared-11","prepared-12","prepared-13","prepared-14","prepared-15","prepared-16","prepared-17","prepared-18"]
+  order: prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-9 prepared-10 prepared-11 prepared-12
+  presentations.doc-1.rowVersions.prepared-19 removed
+  presentations.doc-1.rowVersions.prepared-0 removed
+  presentations.doc-1.rowVersions.prepared-1 removed
+  presentations.doc-1.rowVersions.prepared-2 removed
+  row prepared-13 changed createdTime=null trackedChangeText="prepared-13-1"
+  row prepared-15 changed createdTime=null trackedChangeText="prepared-15-2"
+  row prepared-17 changed createdTime=null
+  row prepared-18 changed createdTime=null
+  row prepared-9 returns createdTime=1700000000000
+  row prepared-10 returns createdTime=1700000000000 trackedChangeText="prepared-10-1"
+  row prepared-11 returns
+  row prepared-12 returns trackedChangeText="prepared-12-1"
+  row prepared-2 removed
+  row prepared-19 removed
+  row prepared-0 removed
+  row prepared-1 removed
+
+version 24: republish the same version with the catalog reused
+  result.ok: false
+  result.reason: "review-catalog-stale"
+  result.commentItems removed
+  result.trackedItems removed
+
+version 25: apply prepared rows prepared-7 prepared-8 prepared-9 prepared-10
+  result.ok: true
+  result.commentItems: 0
+  result.trackedItems: 4
+  active: null
+  presentations.doc-1.baseVersion: 24
+  presentations.doc-1.version: 25
+  presentations.doc-1.coordinate.reviewVersion: 25
+  presentations.doc-1.coordinate.commitSequence: 25
+  presentations.doc-1.rowVersions.prepared-7: 1
+  presentations.doc-1.rowVersions.prepared-8: 3
+  presentations.doc-1.instances: [{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":0},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":20},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":40},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-7","prepared-8","prepared-9","prepared-10"]
+  order: prepared-9 prepared-10 prepared-7 prepared-8
+  result.reason removed
+  presentations.doc-1.rowVersions.prepared-11 removed
+  presentations.doc-1.rowVersions.prepared-12 removed
+  presentations.doc-1.rowVersions.prepared-13 removed
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  presentations.doc-1.rowVersions.prepared-17 removed
+  presentations.doc-1.rowVersions.prepared-18 removed
+  row prepared-7 returns trackedChangeText="prepared-7-0"
+  row prepared-8 returns createdTime=1700000000000
+  row prepared-13 removed
+  row prepared-14 removed
+  row prepared-15 removed
+  row prepared-16 removed
+  row prepared-17 removed
+  row prepared-18 removed
+  row prepared-11 removed
+  row prepared-12 removed
+
+version 26: apply prepared rows prepared-12 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0 prepared-1
+  result.trackedItems: 10
+  presentations.doc-1.baseVersion: 25
+  presentations.doc-1.version: 26
+  presentations.doc-1.coordinate.reviewVersion: 26
+  presentations.doc-1.coordinate.commitSequence: 26
+  presentations.doc-1.rowVersions.prepared-12: 2
+  presentations.doc-1.rowVersions.prepared-13: 2
+  presentations.doc-1.rowVersions.prepared-14: 1
+  presentations.doc-1.rowVersions.prepared-15: 2
+  presentations.doc-1.rowVersions.prepared-16: 1
+  presentations.doc-1.rowVersions.prepared-17: 1
+  presentations.doc-1.rowVersions.prepared-18: 1
+  presentations.doc-1.rowVersions.prepared-19: 1
+  presentations.doc-1.rowVersions.prepared-0: 2
+  presentations.doc-1.rowVersions.prepared-1: 3
+  presentations.doc-1.instances: [{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":0},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":20},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":40},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":60},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":80},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":100},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":120},{"id":"prepared-19","rowId":"prepared-19","threadId":"prepared-19","top":140},{"id":"prepared-0","rowId":"prepared-0","threadId":"prepared-0","top":160},{"id":"prepared-1","rowId":"prepared-1","threadId":"prepared-1","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-12","prepared-13","prepared-14","prepared-15","prepared-16","prepared-17","prepared-18","prepared-19","prepared-0","prepared-1"]
+  order: prepared-12 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0 prepared-1
+  presentations.doc-1.rowVersions.prepared-7 removed
+  presentations.doc-1.rowVersions.prepared-8 removed
+  presentations.doc-1.rowVersions.prepared-9 removed
+  presentations.doc-1.rowVersions.prepared-10 removed
+  row prepared-12 returns trackedChangeText="prepared-12-0"
+  row prepared-13 returns createdTime=1700000000000 trackedChangeText="prepared-13-2"
+  row prepared-14 returns trackedChangeText="prepared-14-0"
+  row prepared-15 returns createdTime=1700000000000
+  row prepared-16 returns
+  row prepared-17 returns createdTime=1700000000000 trackedChangeText="prepared-17-2"
+  row prepared-18 returns createdTime=1700000000000 trackedChangeText="prepared-18-2"
+  row prepared-19 returns
+  row prepared-0 returns trackedChangeText="prepared-0-0"
+  row prepared-1 returns trackedChangeText="prepared-1-2"
+  row prepared-9 removed
+  row prepared-10 removed
+  row prepared-7 removed
+  row prepared-8 removed
+
+version 27: apply prepared rows prepared-11 prepared-12 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0
+  presentations.doc-1.baseVersion: 26
+  presentations.doc-1.version: 27
+  presentations.doc-1.coordinate.reviewVersion: 27
+  presentations.doc-1.coordinate.commitSequence: 27
+  presentations.doc-1.rowVersions.prepared-11: 3
+  presentations.doc-1.rowVersions.prepared-12: 1
+  presentations.doc-1.rowVersions.prepared-13: 1
+  presentations.doc-1.rowVersions.prepared-14: 2
+  presentations.doc-1.rowVersions.prepared-16: 3
+  presentations.doc-1.rowVersions.prepared-17: 2
+  presentations.doc-1.rowVersions.prepared-18: 3
+  presentations.doc-1.rowVersions.prepared-19: 2
+  presentations.doc-1.rowVersions.prepared-0: 1
+  presentations.doc-1.instances: [{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":0},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":20},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":40},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":60},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":80},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":100},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":120},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":140},{"id":"prepared-19","rowId":"prepared-19","threadId":"prepared-19","top":160},{"id":"prepared-0","rowId":"prepared-0","threadId":"prepared-0","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-11","prepared-12","prepared-13","prepared-14","prepared-15","prepared-16","prepared-17","prepared-18","prepared-19","prepared-0"]
+  order: prepared-12 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0 prepared-11
+  presentations.doc-1.rowVersions.prepared-1 removed
+  row prepared-12 changed createdTime=null trackedChangeText="prepared-12-1"
+  row prepared-13 changed createdTime=null trackedChangeText="prepared-13-1"
+  row prepared-14 changed createdTime=null trackedChangeText="prepared-14-2"
+  row prepared-16 changed createdTime=null trackedChangeText="prepared-16-2"
+  row prepared-17 changed createdTime=null trackedChangeText="prepared-17-0"
+  row prepared-18 changed createdTime=null
+  row prepared-19 changed createdTime=null trackedChangeText="prepared-19-2"
+  row prepared-0 changed createdTime=null trackedChangeText="prepared-0-2"
+  row prepared-11 returns trackedChangeText="prepared-11-1"
+  row prepared-1 removed
+
+version 28: apply prepared rows prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13 prepared-14
+  active: "prepared-14"
+  presentations.doc-1.baseVersion: 27
+  presentations.doc-1.version: 28
+  presentations.doc-1.coordinate.reviewVersion: 28
+  presentations.doc-1.coordinate.commitSequence: 28
+  presentations.doc-1.rowVersions.prepared-5: 1
+  presentations.doc-1.rowVersions.prepared-6: 1
+  presentations.doc-1.rowVersions.prepared-7: 3
+  presentations.doc-1.rowVersions.prepared-8: 3
+  presentations.doc-1.rowVersions.prepared-9: 2
+  presentations.doc-1.rowVersions.prepared-10: 1
+  presentations.doc-1.rowVersions.prepared-12: 2
+  presentations.doc-1.rowVersions.prepared-13: 2
+  presentations.doc-1.rowVersions.prepared-14: 3
+  presentations.doc-1.instances: [{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":0},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":20},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":40},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":60},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":80},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":100},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":120},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":140},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":160},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-5","prepared-6","prepared-7","prepared-8","prepared-9","prepared-10","prepared-11","prepared-12","prepared-13","prepared-14"]
+  order: prepared-12 prepared-13 prepared-14 prepared-11 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  presentations.doc-1.rowVersions.prepared-17 removed
+  presentations.doc-1.rowVersions.prepared-18 removed
+  presentations.doc-1.rowVersions.prepared-19 removed
+  presentations.doc-1.rowVersions.prepared-0 removed
+  row prepared-12 changed trackedChangeText="prepared-12-2"
+  row prepared-13 changed trackedChangeText="prepared-13-2"
+  row prepared-14 changed trackedChangeText="prepared-14-1"
+  row prepared-5 returns trackedChangeText="prepared-5-1"
+  row prepared-6 returns
+  row prepared-7 returns trackedChangeText="prepared-7-2"
+  row prepared-8 returns trackedChangeText="prepared-8-1"
+  row prepared-9 returns trackedChangeText="prepared-9-2"
+  row prepared-10 returns trackedChangeText="prepared-10-2"
+  row prepared-15 removed
+  row prepared-16 removed
+  row prepared-17 removed
+  row prepared-18 removed
+  row prepared-19 removed
+  row prepared-0 removed
+
+version 29: apply prepared rows prepared-11 prepared-12 prepared-13 prepared-14 prepared-15
+  result.trackedItems: 5
+  active: null
+  presentations.doc-1.baseVersion: 28
+  presentations.doc-1.version: 29
+  presentations.doc-1.coordinate.reviewVersion: 29
+  presentations.doc-1.coordinate.commitSequence: 29
+  presentations.doc-1.rowVersions.prepared-11: 2
+  presentations.doc-1.rowVersions.prepared-13: 1
+  presentations.doc-1.rowVersions.prepared-14: 1
+  presentations.doc-1.rowVersions.prepared-15: 3
+  presentations.doc-1.instances: [{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":0},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":20},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":40},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":60},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-11","prepared-12","prepared-13","prepared-14","prepared-15"]
+  order: prepared-12 prepared-13 prepared-14 prepared-11 prepared-15
+  presentations.doc-1.rowVersions.prepared-5 removed
+  presentations.doc-1.rowVersions.prepared-6 removed
+  presentations.doc-1.rowVersions.prepared-7 removed
+  presentations.doc-1.rowVersions.prepared-8 removed
+  presentations.doc-1.rowVersions.prepared-9 removed
+  presentations.doc-1.rowVersions.prepared-10 removed
+  row prepared-13 changed trackedChangeText="prepared-13-0" trackedChangePositionAliases=[]
+  row prepared-14 changed trackedChangeText="prepared-14-2" trackedChangePositionAliases=[]
+  row prepared-11 changed createdTime=null trackedChangePositionAliases=[]
+  row prepared-15 returns trackedChangePositionAliases=[]
+  row prepared-5 removed
+  row prepared-6 removed
+  row prepared-7 removed
+  row prepared-8 removed
+  row prepared-9 removed
+  row prepared-10 removed
+
+version 30: apply prepared rows prepared-13 prepared-14 prepared-15 prepared-16
+  result.trackedItems: 4
+  presentations.doc-1.baseVersion: 29
+  presentations.doc-1.version: 30
+  presentations.doc-1.coordinate.reviewVersion: 30
+  presentations.doc-1.coordinate.commitSequence: 30
+  presentations.doc-1.rowVersions.prepared-13: 3
+  presentations.doc-1.rowVersions.prepared-14: 3
+  presentations.doc-1.rowVersions.prepared-16: 1
+  presentations.doc-1.instances: [{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":0},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":20},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":40},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-13","prepared-14","prepared-15","prepared-16"]
+  order: prepared-13 prepared-14 prepared-15 prepared-16
+  presentations.doc-1.rowVersions.prepared-11 removed
+  presentations.doc-1.rowVersions.prepared-12 removed
+  row prepared-13 changed trackedChangeText="prepared-13-1" trackedChangePositionAliases=["source-prepared-13"]
+  row prepared-14 changed trackedChangeText="prepared-14-0" trackedChangePositionAliases=["source-prepared-14"]
+  row prepared-16 returns createdTime=1700000000000 trackedChangeText="prepared-16-0"
+  row prepared-12 removed
+  row prepared-11 removed
+
+version 31: apply prepared rows prepared-9 prepared-10 prepared-11 prepared-12 prepared-13
+  result.trackedItems: 5
+  presentations.doc-1.baseVersion: 30
+  presentations.doc-1.version: 31
+  presentations.doc-1.coordinate.reviewVersion: 31
+  presentations.doc-1.coordinate.commitSequence: 31
+  presentations.doc-1.rowVersions.prepared-9: 3
+  presentations.doc-1.rowVersions.prepared-10: 1
+  presentations.doc-1.rowVersions.prepared-11: 1
+  presentations.doc-1.rowVersions.prepared-12: 3
+  presentations.doc-1.rowVersions.prepared-13: 1
+  presentations.doc-1.instances: [{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":0},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":20},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":40},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":60},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-9","prepared-10","prepared-11","prepared-12","prepared-13"]
+  order: prepared-13 prepared-9 prepared-10 prepared-11 prepared-12
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  row prepared-13 changed trackedChangePositionAliases=[]
+  row prepared-9 returns trackedChangeText="prepared-9-0" trackedChangePositionAliases=[]
+  row prepared-10 returns trackedChangeText="prepared-10-1" trackedChangePositionAliases=[]
+  row prepared-11 returns createdTime=1700000000000 trackedChangeText="prepared-11-0"
+  row prepared-12 returns createdTime=1700000000000 trackedChangePositionAliases=[]
+  row prepared-14 removed
+  row prepared-15 removed
+  row prepared-16 removed
+
+version 32: apply prepared rows prepared-9 prepared-10 prepared-11 prepared-12
+  result.trackedItems: 4
+  active: "prepared-12"
+  presentations.doc-1.baseVersion: 31
+  presentations.doc-1.version: 32
+  presentations.doc-1.coordinate.reviewVersion: 32
+  presentations.doc-1.coordinate.commitSequence: 32
+  presentations.doc-1.rowVersions.prepared-9: 1
+  presentations.doc-1.rowVersions.prepared-11: 3
+  presentations.doc-1.rowVersions.prepared-12: 1
+  presentations.doc-1.instances: [{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":0},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":20},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":40},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-9","prepared-10","prepared-11","prepared-12"]
+  order: prepared-9 prepared-10 prepared-11 prepared-12
+  presentations.doc-1.rowVersions.prepared-13 removed
+  row prepared-9 changed createdTime=null trackedChangeText="prepared-9-2" trackedChangePositionAliases=["source-prepared-9"]
+  row prepared-11 changed createdTime=null trackedChangeText="prepared-11-2" trackedChangePositionAliases=["source-prepared-11"]
+  row prepared-12 changed createdTime=null trackedChangeText="prepared-12-0" trackedChangePositionAliases=["source-prepared-12"]
+  row prepared-13 removed
+
+version 32: republish the same version with the catalog reused
+  result.ok: false
+  result.reason: "review-catalog-stale"
+  result.commentItems removed
+  result.trackedItems removed
+
+version 33: apply prepared rows prepared-5 prepared-6 prepared-7 prepared-8 prepared-9
+  result.ok: true
+  result.commentItems: 0
+  result.trackedItems: 5
+  active: null
+  presentations.doc-1.baseVersion: 32
+  presentations.doc-1.version: 33
+  presentations.doc-1.coordinate.reviewVersion: 33
+  presentations.doc-1.coordinate.commitSequence: 33
+  presentations.doc-1.rowVersions.prepared-5: 2
+  presentations.doc-1.rowVersions.prepared-6: 1
+  presentations.doc-1.rowVersions.prepared-7: 2
+  presentations.doc-1.rowVersions.prepared-8: 2
+  presentations.doc-1.rowVersions.prepared-9: 3
+  presentations.doc-1.instances: [{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":0},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":20},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":40},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":60},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":80}]
+  presentations.doc-1.groupOrder.open: ["prepared-5","prepared-6","prepared-7","prepared-8","prepared-9"]
+  order: prepared-9 prepared-5 prepared-6 prepared-7 prepared-8
+  result.reason removed
+  presentations.doc-1.rowVersions.prepared-10 removed
+  presentations.doc-1.rowVersions.prepared-11 removed
+  presentations.doc-1.rowVersions.prepared-12 removed
+  row prepared-9 changed trackedChangePositionAliases=[]
+  row prepared-5 returns trackedChangeText="prepared-5-0" trackedChangePositionAliases=[]
+  row prepared-6 returns trackedChangeText="prepared-6-0" trackedChangePositionAliases=[]
+  row prepared-7 returns trackedChangePositionAliases=[]
+  row prepared-8 returns trackedChangeText="prepared-8-2" trackedChangePositionAliases=[]
+  row prepared-10 removed
+  row prepared-11 removed
+  row prepared-12 removed
+
+version 34: apply prepared rows prepared-13 prepared-14 prepared-15 prepared-16
+  result.trackedItems: 4
+  presentations.doc-1.baseVersion: 33
+  presentations.doc-1.version: 34
+  presentations.doc-1.coordinate.reviewVersion: 34
+  presentations.doc-1.coordinate.commitSequence: 34
+  presentations.doc-1.rowVersions.prepared-13: 3
+  presentations.doc-1.rowVersions.prepared-14: 2
+  presentations.doc-1.rowVersions.prepared-15: 3
+  presentations.doc-1.rowVersions.prepared-16: 3
+  presentations.doc-1.instances: [{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":0},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":20},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":40},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":60}]
+  presentations.doc-1.groupOrder.open: ["prepared-13","prepared-14","prepared-15","prepared-16"]
+  order: prepared-13 prepared-14 prepared-15 prepared-16
+  presentations.doc-1.rowVersions.prepared-5 removed
+  presentations.doc-1.rowVersions.prepared-6 removed
+  presentations.doc-1.rowVersions.prepared-7 removed
+  presentations.doc-1.rowVersions.prepared-8 removed
+  presentations.doc-1.rowVersions.prepared-9 removed
+  row prepared-13 returns createdTime=1700000000000 trackedChangeText="prepared-13-2" trackedChangePositionAliases=["source-prepared-13"]
+  row prepared-14 returns createdTime=1700000000000
+  row prepared-15 returns trackedChangeText="prepared-15-1" trackedChangePositionAliases=["source-prepared-15"]
+  row prepared-16 returns trackedChangeText="prepared-16-1"
+  row prepared-9 removed
+  row prepared-5 removed
+  row prepared-6 removed
+  row prepared-7 removed
+  row prepared-8 removed
+
+version 35: apply prepared rows prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12 prepared-13
+  result.trackedItems: 10
+  presentations.doc-1.baseVersion: 34
+  presentations.doc-1.version: 35
+  presentations.doc-1.coordinate.reviewVersion: 35
+  presentations.doc-1.coordinate.commitSequence: 35
+  presentations.doc-1.rowVersions.prepared-4: 3
+  presentations.doc-1.rowVersions.prepared-5: 2
+  presentations.doc-1.rowVersions.prepared-6: 2
+  presentations.doc-1.rowVersions.prepared-7: 2
+  presentations.doc-1.rowVersions.prepared-8: 3
+  presentations.doc-1.rowVersions.prepared-9: 1
+  presentations.doc-1.rowVersions.prepared-10: 1
+  presentations.doc-1.rowVersions.prepared-11: 2
+  presentations.doc-1.rowVersions.prepared-12: 1
+  presentations.doc-1.rowVersions.prepared-13: 2
+  presentations.doc-1.instances: [{"id":"prepared-4","rowId":"prepared-4","threadId":"prepared-4","top":0},{"id":"prepared-5","rowId":"prepared-5","threadId":"prepared-5","top":20},{"id":"prepared-6","rowId":"prepared-6","threadId":"prepared-6","top":40},{"id":"prepared-7","rowId":"prepared-7","threadId":"prepared-7","top":60},{"id":"prepared-8","rowId":"prepared-8","threadId":"prepared-8","top":80},{"id":"prepared-9","rowId":"prepared-9","threadId":"prepared-9","top":100},{"id":"prepared-10","rowId":"prepared-10","threadId":"prepared-10","top":120},{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":140},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":160},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-4","prepared-5","prepared-6","prepared-7","prepared-8","prepared-9","prepared-10","prepared-11","prepared-12","prepared-13"]
+  order: prepared-13 prepared-4 prepared-5 prepared-6 prepared-7 prepared-8 prepared-9 prepared-10 prepared-11 prepared-12
+  presentations.doc-1.rowVersions.prepared-14 removed
+  presentations.doc-1.rowVersions.prepared-15 removed
+  presentations.doc-1.rowVersions.prepared-16 removed
+  row prepared-13 changed createdTime=null trackedChangeText="prepared-13-0"
+  row prepared-4 returns trackedChangeText="prepared-4-2"
+  row prepared-5 returns trackedChangeText="prepared-5-2" trackedChangePositionAliases=["source-prepared-5"]
+  row prepared-6 returns trackedChangeText="prepared-6-2" trackedChangePositionAliases=["source-prepared-6"]
+  row prepared-7 returns trackedChangeText="prepared-7-0" trackedChangePositionAliases=["source-prepared-7"]
+  row prepared-8 returns trackedChangePositionAliases=["source-prepared-8"]
+  row prepared-9 returns createdTime=1700000000000 trackedChangePositionAliases=["source-prepared-9"]
+  row prepared-10 returns trackedChangePositionAliases=["source-prepared-10"]
+  row prepared-11 returns createdTime=1700000000000 trackedChangeText="prepared-11-0"
+  row prepared-12 returns createdTime=1700000000000
+  row prepared-14 removed
+  row prepared-15 removed
+  row prepared-16 removed
+
+version 36: apply prepared rows prepared-11 prepared-12 prepared-13 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0
+  active: "prepared-11"
+  presentations.doc-1.baseVersion: 35
+  presentations.doc-1.version: 36
+  presentations.doc-1.coordinate.reviewVersion: 36
+  presentations.doc-1.coordinate.commitSequence: 36
+  presentations.doc-1.rowVersions.prepared-11: 3
+  presentations.doc-1.rowVersions.prepared-12: 3
+  presentations.doc-1.rowVersions.prepared-13: 3
+  presentations.doc-1.rowVersions.prepared-14: 2
+  presentations.doc-1.rowVersions.prepared-15: 2
+  presentations.doc-1.rowVersions.prepared-16: 1
+  presentations.doc-1.rowVersions.prepared-17: 1
+  presentations.doc-1.rowVersions.prepared-18: 1
+  presentations.doc-1.rowVersions.prepared-19: 1
+  presentations.doc-1.rowVersions.prepared-0: 2
+  presentations.doc-1.instances: [{"id":"prepared-11","rowId":"prepared-11","threadId":"prepared-11","top":0},{"id":"prepared-12","rowId":"prepared-12","threadId":"prepared-12","top":20},{"id":"prepared-13","rowId":"prepared-13","threadId":"prepared-13","top":40},{"id":"prepared-14","rowId":"prepared-14","threadId":"prepared-14","top":60},{"id":"prepared-15","rowId":"prepared-15","threadId":"prepared-15","top":80},{"id":"prepared-16","rowId":"prepared-16","threadId":"prepared-16","top":100},{"id":"prepared-17","rowId":"prepared-17","threadId":"prepared-17","top":120},{"id":"prepared-18","rowId":"prepared-18","threadId":"prepared-18","top":140},{"id":"prepared-19","rowId":"prepared-19","threadId":"prepared-19","top":160},{"id":"prepared-0","rowId":"prepared-0","threadId":"prepared-0","top":180}]
+  presentations.doc-1.groupOrder.open: ["prepared-11","prepared-12","prepared-13","prepared-14","prepared-15","prepared-16","prepared-17","prepared-18","prepared-19","prepared-0"]
+  order: prepared-13 prepared-11 prepared-12 prepared-14 prepared-15 prepared-16 prepared-17 prepared-18 prepared-19 prepared-0
+  presentations.doc-1.rowVersions.prepared-4 removed
+  presentations.doc-1.rowVersions.prepared-5 removed
+  presentations.doc-1.rowVersions.prepared-6 removed
+  presentations.doc-1.rowVersions.prepared-7 removed
+  presentations.doc-1.rowVersions.prepared-8 removed
+  presentations.doc-1.rowVersions.prepared-9 removed
+  presentations.doc-1.rowVersions.prepared-10 removed
+  row prepared-13 changed trackedChangeText="prepared-13-1"
+  row prepared-11 changed createdTime=null trackedChangeText="prepared-11-1"
+  row prepared-12 changed createdTime=null trackedChangeText="prepared-12-1"
+  row prepared-14 returns trackedChangeText="prepared-14-2"
+  row prepared-15 returns trackedChangeText="prepared-15-2"
+  row prepared-16 returns trackedChangeText="prepared-16-0"
+  row prepared-17 returns createdTime=1700000000000 trackedChangeText="prepared-17-1"
+  row prepared-18 returns createdTime=1700000000000
+  row prepared-19 returns createdTime=1700000000000
+  row prepared-0 returns createdTime=1700000000000 trackedChangeText="prepared-0-1"
+  row prepared-4 removed
+  row prepared-5 removed
+  row prepared-6 removed
+  row prepared-7 removed
+  row prepared-8 removed
+  row prepared-9 removed
+  row prepared-10 removed

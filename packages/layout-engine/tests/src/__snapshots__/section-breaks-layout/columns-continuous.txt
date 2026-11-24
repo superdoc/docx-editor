@@ -1,0 +1,10 @@
+page 1 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=0 sectionRefs={-}
+  "Single 1" x=48 y=48
+  "Single 2" x=48 y=68
+  "Two-column 1" x=48 y=88
+  "Two-column 2" x=48 y=108
+  "Two-column 3" x=48 y=128
+  "Two-column 4" x=264 y=88
+  "Two-column 5" x=264 y=108
+  "Two-column 6" x=264 y=128
+  "Single again" x=48 y=148

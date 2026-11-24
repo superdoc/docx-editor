@@ -149,6 +149,23 @@ A native `base-revision-drift` can mean the live base changed, but it also requi
 
 A document-level proposal or versioned review session has different review semantics from native Word redlines. Use that API only when its preview, accept/reject behavior and preservation of the relevant document structures have been verified for the input. A recommendation in an error message does not qualify a replacement workflow.
 
+For settings or numbering, pass `settingsChangeMode: 'direct'` or
+`numberingChangeMode: 'direct'` to both `diff.compare` and `diff.apply`. You can
+supply both when both parts differ:
+
+```typescript
+const policy = { settingsChangeMode: 'direct', numberingChangeMode: 'direct' } as const;
+const diff = await baseDoc.diff.compare({ targetSnapshot, ...policy });
+const result = await baseDoc.diff.apply({ diff, changeMode: 'tracked', ...policy });
+```
+
+The apply result reports directly adopted parts in `settingsChanges` and
+`numberingChanges`. Accepting or rejecting body revisions leaves those
+definitions in effect. Review may clean up unused numbering definitions.
+Numbering adoption requires the existing numbering instances and list levels
+to remain available for retained and rejectable content. Settings that depend on
+unproven external parts or relationships are refused before the document changes.
+
 ## Review and decide
 
 A comparison-generated change is reviewed and decided exactly like an authored one. Follow [List and inspect changes](/document-api/tracked-changes#list-and-inspect-changes) and [Accept or reject one change](/document-api/tracked-changes#accept-or-reject-one-change) — the same `trackChanges.list()`, `trackChanges.get()`, and `trackChanges.decide()` operations apply regardless of whether the change came from a rewrite or a comparison.

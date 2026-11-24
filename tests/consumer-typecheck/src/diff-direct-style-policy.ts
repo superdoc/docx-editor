@@ -23,3 +23,14 @@ void trackedResult;
 
 // @ts-expect-error Unknown style policies remain invalid.
 api.diff.apply({ diff, styleChangeMode: 'unknown' });
+
+const definitionPolicy: Pick<Parameters<typeof api.diff.compare>[0], 'settingsChangeMode' | 'numberingChangeMode'> = {
+  settingsChangeMode: 'direct',
+  numberingChangeMode: 'direct',
+};
+const definitions = api.diff.compare({ targetSnapshot, ...definitionPolicy });
+const adopted = api.diff.apply({ diff: definitions, ...definitionPolicy }, { changeMode: 'tracked' });
+const settings: { changeMode: 'direct'; partUris: string[] } | undefined = adopted.settingsChanges;
+const numbering: { changeMode: 'direct'; partUris: string[] } | undefined = adopted.numberingChanges;
+void settings;
+void numbering;

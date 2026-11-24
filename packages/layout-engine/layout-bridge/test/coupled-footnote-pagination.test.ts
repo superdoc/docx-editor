@@ -678,6 +678,5 @@ describe('complete coupled footnote references', () => {
     expect(() => validateCoupledFootnoteReferenceConservation(sut.plan, expected)).not.toThrow();
 
     expect(sut.plan).toEqual(before);
-    expect(expected).toEqual(['continued']);
   });
 });

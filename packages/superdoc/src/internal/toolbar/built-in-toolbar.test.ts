@@ -45,6 +45,8 @@ function makeHost(overrides: Record<string, unknown> = {}) {
     emit: (event: string) => {
       for (const handler of listeners.get(event) ?? []) handler();
     },
+    registeredListeners: () =>
+      [...listeners].flatMap(([event, handlers]) => [...handlers].map((handler) => ({ event, handler }))),
     toggleRuler: vi.fn(),
     toggleFormattingMarks: vi.fn(),
     setShowFormattingMarks: vi.fn(),
@@ -317,7 +319,12 @@ describe('BuiltInToolbar', () => {
     let layout = { requested: 'sidebar', effective: 'sidebar' };
     const host = makeHost({ getCommentsLayout: () => layout, uiConfig: { comments: { enabled: true } } });
     const emit = host.emit;
-    if (typeof emit !== 'function') throw new Error('Host events are unavailable');
+    const registeredListeners = host.registeredListeners;
+    if (typeof emit !== 'function' || typeof registeredListeners !== 'function') {
+      throw new Error('Host events are unavailable');
+    }
+    expect(host.ui).toBeTruthy();
+    const listenersBeforeToolbar = new Set(registeredListeners().map(({ handler }) => handler));
     const toolbar = new BuiltInToolbar({
       highContrastMode: createHighContrastMode(),
       superdoc: host,
@@ -325,7 +332,6 @@ describe('BuiltInToolbar', () => {
     });
     const item = toolbar.getToolbarItemByName('commentsLayout');
     if (!item) throw new Error('Comments layout control is unavailable');
-    const update = vi.spyOn(toolbar, 'updateToolbarState');
     try {
       expect(item.selectedValue.value).toBe('sidebar');
       layout = { requested: 'inline', effective: 'inline' };
@@ -340,9 +346,10 @@ describe('BuiltInToolbar', () => {
     } finally {
       toolbar.destroy();
     }
-    update.mockClear();
-    emit('comments-layout-change');
-    expect(update).not.toHaveBeenCalled();
+    const listenersLeftByToolbar = registeredListeners()
+      .filter(({ handler }) => !listenersBeforeToolbar.has(handler))
+      .map(({ event }) => event);
+    expect(listenersLeftByToolbar).toEqual([]);
   });
 
   it('assigns a distinct render identity to every default toolbar slot', () => {
@@ -1884,18 +1891,26 @@ describe('BuiltInToolbar', () => {
   });
 
   it('runs a built-in command and refreshes after settlement', async () => {
-    const bold = vi.fn(() => ({ success: true }));
+    let boldApplied = false;
+    const bold = vi.fn(() => {
+      boldApplied = true;
+      return { success: true };
+    });
+    const doc = makeCommandDoc({ format: { bold } });
+    const current = doc.selection.current;
+    doc.selection.current = () => ({ ...current(), activeMarks: boldApplied ? ['bold'] : [] });
     const toolbar = new BuiltInToolbar({
       highContrastMode: createHighContrastMode(),
-      superdoc: makeHost({ activeEditor: { doc: makeCommandDoc({ format: { bold } }) } }),
+      superdoc: makeHost({ activeEditor: { doc } }),
     });
-    const updateToolbarState = vi.spyOn(toolbar, 'updateToolbarState');
+    const boldItem = toolbar.getToolbarItemByName('bold');
+    await vi.waitFor(() => expect(boldItem?.disabled.value).toBe(false));
+    expect(boldItem?.active.value).toBe(false);
 
-    toolbar.emitCommand({ item: toolbar.getToolbarItemByName('bold') });
+    toolbar.emitCommand({ item: boldItem });
 
-    const callsAfterEmit = updateToolbarState.mock.calls.length;
-    await vi.waitFor(() => expect(bold).toHaveBeenCalled());
-    await vi.waitFor(() => expect(updateToolbarState.mock.calls.length).toBeGreaterThan(callsAfterEmit));
+    await vi.waitFor(() => expect(boldItem?.active.value).toBe(true));
+    expect(bold).toHaveBeenCalledTimes(1);
     toolbar.destroy();
   });
 
@@ -2184,6 +2199,35 @@ describe('BuiltInToolbar', () => {
     applyFontState({ disabled: true, value: null, reason: 'range-selection-required' });
     expect(toolbar.getToolbarItemByName('fontFamily')?.label.value).toBe('Arial');
 
+    toolbar.destroy();
+  });
+
+  it('blanks the font-size field when the selected runs have mixed sizes', () => {
+    const toolbar = new BuiltInToolbar({ highContrastMode: createHighContrastMode(), superdoc: makeHost() });
+    const item = toolbar.getToolbarItemByName('fontSize');
+
+    const applyFontSizeState = (state: Record<string, unknown>) => {
+      toolbar.snapshot = {
+        ...toolbar.snapshot,
+        commands: {
+          ...toolbar.snapshot?.commands,
+          'font-size': state,
+          'document-mode': { disabled: false, value: 'editing' },
+        },
+      };
+      toolbar.updateToolbarState();
+    };
+
+    applyFontSizeState({ disabled: false, active: false, value: undefined });
+    expect(item?.label.value).toBe('');
+    expect(item?.selectedValue.value).toBe('');
+
+    applyFontSizeState({ disabled: false, active: false, value: '11' });
+    expect(item?.label.value).toBe('11');
+    expect(item?.selectedValue.value).toBe('11pt');
+
+    applyFontSizeState({ disabled: true, active: false, reason: 'range-selection-required' });
+    expect(item?.label.value).toBe('12');
     toolbar.destroy();
   });
 

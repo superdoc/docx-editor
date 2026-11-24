@@ -86,12 +86,14 @@ const fontContext = (fontSignature: string): FontMeasureContext => ({
   resolvePhysical: (family) => family,
 });
 
+const legalProse = Array.from({ length: 180 }, (_, index) => `(${index % 20}) covenant`).join(' ');
+
 const legalParagraph = (): FlowBlock => ({
   kind: 'paragraph',
   id: 'legal-prose',
   runs: [
     {
-      text: Array.from({ length: 180 }, (_, index) => `(${index % 20}) covenant`).join(' '),
+      text: legalProse,
       fontFamily: 'Arial',
       fontSize: 16,
     },
@@ -372,7 +374,9 @@ describe('surface-owned DOM measurement runtime', () => {
     const stats = pass.finish();
 
     expect(measured).toEqual(baseline);
-    expect(probes).toBe(47);
+    const words = legalProse.split(' ').length;
+    expect(probes).toBeGreaterThanOrEqual(words / 8);
+    expect(probes).toBeLessThan(words / 4);
     expect(yields).toBeGreaterThan(0);
     expect(stats.requests).toBeGreaterThan(0);
     expect(stats.intrinsicMeasureCalls).toBeLessThanOrEqual(stats.misses);

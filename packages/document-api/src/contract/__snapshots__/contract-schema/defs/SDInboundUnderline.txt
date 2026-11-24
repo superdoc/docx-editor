@@ -1,0 +1,9 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "style": {
+      "const": "single"
+    }
+  },
+  "type": "object"
+}

@@ -47,8 +47,11 @@ import InternalDropdown from './InternalDropdown.vue';
 import CommentHeader from './CommentHeader.vue';
 import CommentInput from './CommentInput.vue';
 import { COMMENT_RECONCILIATION_TOKEN, type CommentModel } from './use-comment';
+import { isCommentResolved } from './comment-params';
+import { formatDate } from './helpers';
 import Avatar from '../general/Avatar.vue';
 import { renderCommentHtml } from './comment-urls.js';
+import { commentBodyAsHtml } from './comment-text-html.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import {
   trackedChangeRowSideGroup,
@@ -388,7 +391,7 @@ const trackedChangeStoryType = (story: CommentModel['trackedChangeStory']) =>
   typeof story === 'object' ? story?.storyType : undefined;
 
 const getCommentFocusThreadId = (comment: CommentModel) => {
-  if (comment.resolvedTime) {
+  if (isCommentResolved(comment)) {
     return comment.commentId;
   }
 
@@ -545,9 +548,27 @@ const isDialogActive = computed(() => {
 
 /* ── Step 1: Resolved badge ── */
 const resolvedBadgeLabel = computed(() => {
-  if (!props.comment.resolvedTime) return null;
+  if (!isCommentResolved(props.comment)) return null;
   if (!props.comment.trackedChange) return 'Resolved';
   return props.comment.trackedChangeDecision === 'reject' ? 'Rejected' : 'Accepted';
+});
+
+const resolutionActor = computed(() => {
+  if (!resolvedBadgeLabel.value || props.comment.trackedChange) return null;
+  return (
+    [props.comment.resolvedByName, props.comment.resolvedByEmail, props.comment.resolvedById]
+      .find((value) => typeof value === 'string' && value.trim())
+      ?.trim() ?? null
+  );
+});
+
+const resolutionTime = computed(() => {
+  if (!resolvedBadgeLabel.value || props.comment.trackedChange) return null;
+  const value = props.comment.resolvedTime;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return { text: formatDate(value), datetime: date.toISOString() };
 });
 
 /* ── Pending new comment (brand-new, not a reply) ── */
@@ -569,7 +590,7 @@ const showInputSection = computed(() => {
     !isActiveCommentFromCaret.value &&
     !commentsAreReadOnly() &&
     isDialogActive.value &&
-    !props.comment.resolvedTime &&
+    !isCommentResolved(props.comment) &&
     !isEditingAnyComment.value
   );
 });
@@ -714,7 +735,7 @@ const comments = computed(() => {
 });
 
 const renderedCommentTexts = computed(
-  () => new Map(comments.value.map((comment) => [comment.commentId, renderCommentHtml(comment.commentText)])),
+  () => new Map(comments.value.map((comment) => [comment.commentId, renderCommentHtml(commentBodyAsHtml(comment))])),
 );
 
 const handleDialogClick = (event: MouseEvent) => {
@@ -855,7 +876,7 @@ const expandThread = () => {
 };
 
 const isInternalDropdownDisabled = computed(() => {
-  if (props.comment.resolvedTime) return true;
+  if (isCommentResolved(props.comment)) return true;
   return commentsAreReadOnly();
 });
 
@@ -891,7 +912,7 @@ const setFocus = async () => {
   const targetClientY = getPreferredCommentFocusTargetClientY();
   const isInstanceScopedDialog = props.floatingInstanceId != null;
   const willChangeActiveDialog =
-    !props.comment.resolvedTime &&
+    !isCommentResolved(props.comment) &&
     (activeComment.value !== props.comment.commentId ||
       (isInstanceScopedDialog && currentFloatingInstanceId.value !== activeFloatingCommentInstanceId.value));
   let instantAlignmentTargetY = targetClientY;
@@ -903,7 +924,7 @@ const setFocus = async () => {
     // change focus the painted [data-track-change-id] carrier. The ordinary
     // comment remains the active sidebar card below.
     const linkedTrackedChangeId =
-      !isTrackedChange && !props.comment.resolvedTime && String(props.comment?.trackedChangeParentId ?? '').trim()
+      !isTrackedChange && !isCommentResolved(props.comment) && String(props.comment?.trackedChangeParentId ?? '').trim()
         ? props.comment.trackedChangeParentId
         : null;
     const trackedChangeAdapter =
@@ -927,7 +948,7 @@ const setFocus = async () => {
       return result;
     }
     commentsStore.beginExplicitCommentActivation();
-    if (!props.comment.resolvedTime) {
+    if (!isCommentResolved(props.comment)) {
       activeComment.value = props.comment.commentId;
       if (props.floatingInstanceId) {
         setActiveFloatingCommentInstance(props.floatingInstanceId);
@@ -935,7 +956,7 @@ const setFocus = async () => {
     }
     if (willChangeActiveDialog && !isInstanceScopedDialog) {
       requestInstantSidebarAlignment(targetClientY, props.comment.commentId, props.floatingInstanceId ?? null);
-    } else if (isInstanceScopedDialog && !props.comment.resolvedTime) {
+    } else if (isInstanceScopedDialog && !isCommentResolved(props.comment)) {
       await nextTick();
       const { entry } = resolveCommentPositionEntry(props.comment);
       const anchorClientY = getVisibleThreadAnchorClientY(props.parent, props.floatingPositionEntry ?? entry);
@@ -987,7 +1008,7 @@ const setFocus = async () => {
           };
 
       void trackedTarget;
-      if (props.comment.resolvedTime) {
+      if (isCommentResolved(props.comment)) {
         editor.commands?.setCursorById(cursorId);
       } else {
         const activeCommentId = props.comment.commentId;
@@ -997,7 +1018,7 @@ const setFocus = async () => {
         }
       }
     } else {
-      if (props.comment.resolvedTime) {
+      if (isCommentResolved(props.comment)) {
         editor.commands?.setCursorById(cursorId);
       } else {
         const activeCommentId = props.comment.commentId;
@@ -1037,7 +1058,7 @@ const setFocus = async () => {
 
   // Update Vue store after queuing any one-shot alignment target so the
   // floating sidebar can react to both state changes in the same flush.
-  if (!props.comment.resolvedTime) {
+  if (!isCommentResolved(props.comment)) {
     activeComment.value = props.comment.commentId;
     if (props.floatingInstanceId) {
       setActiveFloatingCommentInstance(props.floatingInstanceId);
@@ -1630,7 +1651,7 @@ const handleOverflowSelect = async (value: string, comment: CommentModel) => {
         };
         commentEditSessions.set(commentsStore, session);
       }
-      currentCommentText.value = comment?.commentText ?? '';
+      currentCommentText.value = comment ? commentBodyAsHtml(comment) : '';
       currentCommentMentions.value = Array.isArray(comment?.mentions) ? [...comment.mentions] : [];
       activeComment.value = props.comment.commentId;
       if (props.floatingInstanceId) {
@@ -1885,7 +1906,7 @@ watch(isV2WriteDisabled, (isDisabled) => {
 <template>
   <div
     class="comments-dialog"
-    :class="{ 'is-active': isDialogActive || isPendingNewComment, 'is-resolved': props.comment.resolvedTime }"
+    :class="{ 'is-active': isDialogActive || isPendingNewComment, 'is-resolved': isCommentResolved(props.comment) }"
     v-click-outside="handleClickOutside"
     @click.stop="handleDialogClick"
     :style="getSidebarCommentStyle"
@@ -1942,6 +1963,12 @@ watch(isV2WriteDisabled, (isDisabled) => {
       <div v-if="resolvedBadgeLabel" class="resolved-badge">
         <span class="resolved-badge__icon" v-html="superdocIcons.markDone"></span>
         {{ resolvedBadgeLabel }}
+        <template v-if="resolutionActor"
+          >by <span data-resolution-actor>{{ resolutionActor }}</span></template
+        >
+        <time v-if="resolutionTime" data-resolution-time :datetime="resolutionTime.datetime">{{
+          resolutionTime.text
+        }}</time>
       </div>
 
       <div v-if="shouldShowInternalExternal" class="existing-internal-input">

@@ -1,0 +1,149 @@
+{
+  "description": "Story scope. Defaults to document body when omitted. Use {kind:'story', storyType:'body'} for body, or other storyType values for headers, footers, footnotes, endnotes.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "story"
+        },
+        "storyType": {
+          "const": "body"
+        }
+      },
+      "required": [
+        "kind",
+        "storyType"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "headerFooterKind": {
+          "enum": [
+            "header",
+            "footer"
+          ]
+        },
+        "kind": {
+          "const": "story"
+        },
+        "onWrite": {
+          "enum": [
+            "materializeIfInherited",
+            "editResolvedPart",
+            "error"
+          ]
+        },
+        "resolution": {
+          "enum": [
+            "effective",
+            "explicit"
+          ]
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "storyType": {
+          "const": "headerFooterSlot"
+        },
+        "variant": {
+          "enum": [
+            "default",
+            "first",
+            "even"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "storyType",
+        "section",
+        "headerFooterKind",
+        "variant"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "story"
+        },
+        "refId": {
+          "type": "string"
+        },
+        "storyType": {
+          "const": "headerFooterPart"
+        }
+      },
+      "required": [
+        "kind",
+        "storyType",
+        "refId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "story"
+        },
+        "noteId": {
+          "type": "string"
+        },
+        "storyType": {
+          "const": "footnote"
+        }
+      },
+      "required": [
+        "kind",
+        "storyType",
+        "noteId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "story"
+        },
+        "noteId": {
+          "type": "string"
+        },
+        "storyType": {
+          "const": "endnote"
+        }
+      },
+      "required": [
+        "kind",
+        "storyType",
+        "noteId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "story"
+        },
+        "storyType": {
+          "const": "textbox"
+        },
+        "textboxId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storyType",
+        "textboxId"
+      ],
+      "type": "object"
+    }
+  ]
+}

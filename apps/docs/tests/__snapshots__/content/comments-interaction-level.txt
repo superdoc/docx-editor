@@ -1,0 +1,5 @@
+interaction: {
+  comments: {
+    level: 'write'
+  },
+}

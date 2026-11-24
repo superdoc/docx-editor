@@ -1,0 +1,132 @@
+{
+  "definition": {
+    "description": "List all list nodes in one story (the main body by default; pass `in` for a header, footer, note or text box), optionally filtered by scope.",
+    "expectedResult": "Returns a ListsListResult with an array of list item summaries and total count.",
+    "memberPath": "lists.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "lists/list.mdx",
+    "referenceGroup": "lists",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "kind": {
+          "enum": [
+            "ordered",
+            "bullet"
+          ]
+        },
+        "level": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "ordinal": {
+          "type": "integer"
+        },
+        "within": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "$ref": "#/$defs/ListItemAddress"
+              },
+              "handle": {
+                "$ref": "#/$defs/ResolvedHandle"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "ordered",
+                  "bullet"
+                ]
+              },
+              "level": {
+                "type": "integer"
+              },
+              "listId": {
+                "type": "string"
+              },
+              "marker": {
+                "type": "string"
+              },
+              "ordinal": {
+                "type": "integer"
+              },
+              "path": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "handle",
+              "address",
+              "listId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "$ref": "#/$defs/PageInfo"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "total",
+        "items",
+        "page"
+      ],
+      "type": "object"
+    }
+  }
+}

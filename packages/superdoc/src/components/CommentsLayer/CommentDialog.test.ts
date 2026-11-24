@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createPinia, setActivePinia } from 'pinia';
 import { vClickOutside } from '@superdoc/common';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -45,6 +45,267 @@ describe('CommentDialog', () => {
 
   const mountDialog = (comment, stubs = {}, directives) => mountComments(CommentDialog, { comment }, stubs, directives);
 
+  const RECORDED_AT = Date.UTC(2026, 10, 19, 12, 0, 0);
+  const COMMENT_ADAPTER_METHODS = [
+    'setActiveComment',
+    'commitPendingComment',
+    'reply',
+    'edit',
+    'resolve',
+    'reopen',
+    'delete',
+  ];
+  const TRACKED_CHANGE_ADAPTER_METHODS = ['accept', 'reject'];
+
+  const record = (value: unknown) =>
+    JSON.stringify(value, (_key, field: unknown) => (field === undefined ? '<undefined>' : field), 2);
+
+  const isUnset = (value: unknown) =>
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    value === false ||
+    (Array.isArray(value) && value.length === 0);
+
+  const setFields = (value: object) => Object.fromEntries(Object.entries(value).filter(([, field]) => !isUnset(field)));
+
+  const describeAdapterInput = (input: unknown) =>
+    input && typeof input === 'object' && 'getValues' in input
+      ? { row: { commentId: input.commentId, trackedChangeCanonicalId: input.trackedChangeCanonicalId } }
+      : input;
+
+  const installReviewAdapters = ({ comments = {}, trackedChanges = {}, canWrite = () => true } = {}) => {
+    const calls: string[] = [];
+    const logged = (name: string, respond = () => ({ ok: true })) =>
+      vi.fn(async (input: unknown) => {
+        calls.push(`${name} ${JSON.stringify(describeAdapterInput(input) ?? null)}`);
+        return respond(input);
+      });
+    const commentsAdapter = makeV2CommentsAdapter({
+      getCapabilityState: (command) => ({
+        canWrite: canWrite(command),
+        reason: canWrite(command) ? null : 'host-state:saving',
+      }),
+      mapV2CommentToUseCommentInput: (item) => item,
+      ...Object.fromEntries(
+        COMMENT_ADAPTER_METHODS.map((method) => [method, logged(`comments.${method}`, comments[method])]),
+      ),
+    });
+    const trackedChangesAdapter = makeV2TrackedChangesAdapter({
+      getCapabilityState: () => ({ canDecide: true }),
+      ...Object.fromEntries(
+        TRACKED_CHANGE_ADAPTER_METHODS.map((method) => [
+          method,
+          logged(`trackedChanges.${method}`, trackedChanges[method]),
+        ]),
+      ),
+    });
+    superdocStub.user = superdocStore.user;
+    superdocStub.activeEditor.editorVersion = 2;
+    superdocStub.activeEditor.v2Comments = commentsAdapter;
+    superdocStub.activeEditor.v2TrackedChanges = trackedChangesAdapter;
+    commentsStore.setV2CommentsAdapter(commentsAdapter);
+    commentsStore.setV2TrackedChangesAdapter(trackedChangesAdapter);
+    return { calls, commentsAdapter, trackedChangesAdapter };
+  };
+
+  const commentsUpdateEvents = () =>
+    superdocStub.emit.mock.calls
+      .filter(([name]) => name === 'comments-update')
+      .map(([, event]) => setFields({ ...event, ...(event.comment ? { comment: setFields(event.comment) } : {}) }));
+
+  const storeState = () => ({
+    activeComment: commentsStore.activeComment,
+    editingCommentId: commentsStore.editingCommentId,
+    draft: commentsStore.currentCommentText,
+    pendingComment: commentsStore.pendingComment?.commentId ?? null,
+    rows: commentsStore.commentsList.map((row) =>
+      setFields({
+        commentId: row.commentId,
+        parentCommentId: row.parentCommentId,
+        commentText: row.commentText,
+        mentions: row.mentions,
+        trackedChange: row.trackedChange,
+        trackedChangeCanonicalId: row.trackedChangeCanonicalId,
+        trackedChangeThreadParentId: row.trackedChangeThreadParentId,
+        trackedChangeSide: row.trackedChangeSide,
+        trackedChangeDecision: row.trackedChangeDecision,
+        resolvedTime: row.resolvedTime,
+        resolvedById: row.resolvedById,
+        resolvedByEmail: row.resolvedByEmail,
+        resolvedByName: row.resolvedByName,
+      }),
+    ),
+  });
+
+  const renderDialog = (wrapper) => {
+    const root = wrapper.find('.comments-dialog');
+    if (!root.exists()) return '(not rendered)';
+    const states = ['is-active', 'is-resolved'].filter((name) => root.classes().includes(name));
+    const lines = [`classes: ${states.join(' ') || '(none)'}`];
+    const badge = root.find('.resolved-badge');
+    if (badge.exists()) lines.push(`badge: ${badge.text()}`);
+    if (root.find('.new-comment-input-wrapper').exists()) lines.push('new comment composer');
+    for (const item of root.findAll('.conversation-item')) {
+      const id = item.findComponent({ name: 'CommentHeader' }).props('comment').commentId;
+      const body = item.find('.reply-expanded').exists()
+        ? 'editing'
+        : item.find('.tracked-change').exists()
+          ? `tracked change: ${item.find('.tracked-change').text()}`
+          : `comment: ${item.find('.comment').text()}`;
+      lines.push(`${id}: ${body}`);
+    }
+    for (const alert of root.findAll('[role="alert"]')) lines.push(`alert: ${alert.text()}`);
+    const pill = root.find('.reply-pill');
+    const composer = root.element.querySelector(':scope > .reply-expanded');
+    if (pill.exists()) {
+      lines.push(
+        pill.attributes('disabled') === undefined
+          ? 'reply pill'
+          : `reply pill disabled: ${pill.attributes('data-disabled-reason')}`,
+      );
+    } else if (composer) {
+      lines.push(
+        `reply composer, Reply ${composer.querySelector('.reply-btn-primary')?.disabled ? 'disabled' : 'enabled'}`,
+      );
+    }
+    return lines.join('\n');
+  };
+
+  const startRecording = ({ calls, wrapper }) => {
+    const before = ['before:', '', 'store:', record(storeState()), '', 'dialog:', renderDialog(wrapper)];
+    const firstCall = calls.length;
+    const firstEvent = commentsUpdateEvents().length;
+    const firstFocus = superdocStub.focus.mock.calls.length;
+    return (action: string, during: string[] = []) => {
+      const actionCalls = calls.slice(firstCall);
+      return [
+        ...before,
+        '',
+        `action: ${action}`,
+        ...(during.length ? ['', ...during] : []),
+        '',
+        'document calls:',
+        ...(actionCalls.length ? actionCalls : ['(none)']),
+        '',
+        'comments-update events:',
+        record(commentsUpdateEvents().slice(firstEvent)),
+        '',
+        `superdoc.focus calls: ${record(superdocStub.focus.mock.calls.slice(firstFocus))}`,
+        '',
+        'after:',
+        '',
+        'store:',
+        record(storeState()),
+        '',
+        'dialog:',
+        renderDialog(wrapper),
+        '',
+      ].join('\n');
+    };
+  };
+
+  const pinClock = () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(RECORDED_AT);
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const expectRecording = (recording: string, name: string) =>
+    expect(recording).toMatchFileSnapshot(`./__snapshots__/CommentDialog/${name}.txt`);
+
+  type DocumentComment = { commentId: string; fileId: string; commentText: string; parentCommentId?: string };
+  type HeldWrite = {
+    method: 'reply' | 'edit' | 'commitPendingComment';
+    input: { commentId?: string; parentCommentId?: string; text: string };
+    settle: (outcome: unknown) => void;
+  };
+
+  const makeHeldCommentDocument = (initial: DocumentComment[]) => {
+    let items = initial.map((item) => ({ ...item }));
+    let created = 0;
+    const held: HeldWrite[] = [];
+    const rootOf = (commentId?: string) =>
+      items.find((item) => item.commentId === commentId)?.parentCommentId ?? commentId;
+    const targetedThread = (commentId?: string) => {
+      const root = rootOf(commentId);
+      return {
+        items: items.filter((item) => item.commentId === root || item.parentCommentId === root),
+        complete: false,
+      };
+    };
+    const apply = {
+      reply: ({ parentCommentId, text }: HeldWrite['input']) => {
+        const commentId = `reply-${++created}`;
+        items = [...items, { commentId, parentCommentId, fileId: 'doc-1', commentText: text }];
+        return { ok: true, createdCommentId: commentId, ...targetedThread(commentId) };
+      },
+      edit: ({ commentId, text }: HeldWrite['input']) => {
+        items = items.map((item) => (item.commentId === commentId ? { ...item, commentText: text } : item));
+        return { ok: true, ...targetedThread(commentId) };
+      },
+      commitPendingComment: ({ text }: HeldWrite['input']) => {
+        const commentId = `comment-${++created}`;
+        items = [...items, { commentId, fileId: 'doc-1', commentText: text }];
+        return { ok: true, createdCommentId: commentId, ...targetedThread(commentId) };
+      },
+    };
+    const hold = (method: HeldWrite['method']) => (input: HeldWrite['input']) =>
+      new Promise((settle) => {
+        held.push({ method, input, settle });
+      });
+    const take = (index: number) => {
+      const write = held[index];
+      if (!write) throw new Error(`No document write #${index} is waiting`);
+      return write;
+    };
+    return {
+      comments: { reply: hold('reply'), edit: hold('edit'), commitPendingComment: hold('commitPendingComment') },
+      commit: (index = 0) => {
+        const write = take(index);
+        write.settle(apply[write.method](write.input));
+      },
+      refuse: (index: number, refusal: { code: string; detail?: string }) =>
+        take(index).settle({ ok: false, ...refusal }),
+      settleAll: () => held.forEach((write) => write.settle({ ok: true })),
+    };
+  };
+
+  const timelineState = () => {
+    const { rows, ...state } = storeState();
+    return { ...state, draftMentions: commentsStore.currentCommentMentions, rows };
+  };
+
+  const renderComposerDialog = (wrapper) => {
+    const buttons = wrapper
+      .findAll('button.reply-btn-primary')
+      .map((button) => `${button.text()} ${button.attributes('disabled') === undefined ? 'enabled' : 'disabled'}`);
+    return [renderDialog(wrapper), `buttons: ${buttons.join(', ') || '(none)'}`].join('\n');
+  };
+
+  const startTimeline = ({ calls, dialogs }: { calls: string[]; dialogs: () => Record<string, unknown> }) => {
+    const lines: string[] = [];
+    let seenCalls = calls.length;
+    let seenEvents = commentsUpdateEvents().length;
+    const step = (label: string) => {
+      const stepCalls = calls.slice(seenCalls);
+      const events = commentsUpdateEvents().slice(seenEvents);
+      seenCalls = calls.length;
+      seenEvents += events.length;
+      lines.push(`step: ${label}`, '', 'document calls:', ...(stepCalls.length ? stepCalls : ['(none)']), '');
+      if (events.length) lines.push('comments-update events:', record(events), '');
+      lines.push('store:', record(timelineState()), '');
+      for (const [name, wrapper] of Object.entries(dialogs())) {
+        lines.push(`${name} dialog:`, renderComposerDialog(wrapper), '');
+      }
+      lines.push('---', '');
+    };
+    return { step, recording: () => lines.join('\n') };
+  };
+
   beforeEach(() => {
     setActivePinia(createPinia());
     commentsStore = useCommentsStore();
@@ -74,63 +335,50 @@ describe('CommentDialog', () => {
 
   it.each(
     ['edit', 'reply'].flatMap((kind) => ['success', 'rejection', 'new draft'].map((result) => ({ kind, result }))),
-  )('preserves $kind ownership after layout relocates its dialog ($result)', async ({ kind, result }) => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {
-      documentId: 'doc-1',
-      getCapabilityState: () => ({ canWrite: true }),
-      setActiveComment: vi.fn(),
-    };
-    const root = useComment({ commentId: 'layout-root', fileId: 'doc-1', commentText: 'Original' });
+  )('records $kind ownership after layout relocates its dialog ($result)', async ({ kind, result }) => {
+    pinClock();
+    const rootInput = { commentId: 'layout-root', fileId: 'doc-1', commentText: 'Original' };
+    const document = makeHeldCommentDocument([rootInput]);
+    const { calls } = installReviewAdapters({ comments: document.comments });
+    const root = useComment(rootInput);
     commentsStore.commentsList = [root];
     commentsStore.activeComment = root.commentId;
-    let settle: ((outcome: { ok: boolean }) => void) | undefined;
-    const completion = new Promise<{ ok: boolean }>((resolve) => {
-      settle = resolve;
-    });
-    const submit = vi
-      .spyOn(commentsStore, kind === 'edit' ? 'editCommentV2' : 'replyCommentV2')
-      .mockReturnValue(completion);
-    const first = mountDialog(root);
-    let relocated;
+    const dialogs: Record<string, ReturnType<typeof mountDialog>> = { original: mountDialog(root) };
+    const timeline = startTimeline({ calls, dialogs: () => dialogs });
+    const submitLabel = kind === 'edit' ? 'Update' : 'Reply';
     try {
       if (kind === 'edit') {
-        first.findComponent({ name: 'CommentHeader' }).vm.$emit('overflow-select', 'edit');
+        dialogs.original.findComponent({ name: 'CommentHeader' }).vm.$emit('overflow-select', 'edit');
         await flushPromises();
-      } else await first.find('.reply-pill').trigger('click');
+      } else await dialogs.original.find('.reply-pill').trigger('click');
       commentsStore.currentCommentText = 'Submitted during layout switch';
       await flushPromises();
-      await first.find('button.reply-btn-primary').trigger('click');
-      expect(submit).toHaveBeenCalledTimes(1);
-      first.unmount();
-      relocated = mountDialog(root);
+      await dialogs.original.find('button.reply-btn-primary').trigger('click');
+      timeline.step(`open the ${kind} composer, type "Submitted during layout switch", click ${submitLabel}`);
+      dialogs.original.unmount();
+      delete dialogs.original;
+      dialogs.relocated = mountDialog(root);
       await flushPromises();
-      expect(relocated.find('.reply-expanded').exists()).toBe(true);
-      if (kind === 'reply') {
-        expect(relocated.find('button.reply-btn-primary').attributes('disabled')).toBeDefined();
-      }
-      if (result === 'new draft') commentsStore.currentCommentText = 'Newer unsaved draft';
-      settle?.({ ok: result !== 'rejection' });
-      await flushPromises();
-      expect(commentsStore.currentCommentText).toBe(
-        result === 'success' ? '' : result === 'new draft' ? 'Newer unsaved draft' : 'Submitted during layout switch',
-      );
-      expect(commentsStore.editingCommentId).toBe(result !== 'success' && kind === 'edit' ? root.commentId : null);
-      expect(relocated.find('.reply-expanded').exists()).toBe(result !== 'success');
-      if (result !== 'success')
-        expect(relocated.find('button.reply-btn-primary').attributes('disabled')).toBeUndefined();
-      if (result === 'rejection') {
-        expect(relocated.find('[role="alert"]').exists()).toBe(true);
-        submit.mockResolvedValue({ ok: true });
-        await relocated.find('button.reply-btn-primary').trigger('click');
+      timeline.step('layout moves the thread into a new dialog while the document holds the write');
+      if (result === 'new draft') {
+        commentsStore.currentCommentText = 'Newer unsaved draft';
         await flushPromises();
-        expect(relocated.find('.reply-expanded').exists()).toBe(false);
-        expect(commentsStore.currentCommentText).toBe('');
+        timeline.step('type "Newer unsaved draft"');
       }
+      if (result === 'rejection') document.refuse(0, { code: 'INTERNAL_ERROR' });
+      else document.commit(0);
+      await flushPromises();
+      timeline.step(result === 'rejection' ? 'the document refuses the write' : 'the document commits the write');
+      if (result === 'rejection') {
+        await dialogs.relocated.find('button.reply-btn-primary').trigger('click');
+        document.commit(1);
+        await flushPromises();
+        timeline.step(`click ${submitLabel} again; the document commits it`);
+      }
+      await expectRecording(timeline.recording(), `relocated-${kind}-${result.replace(' ', '-')}`);
     } finally {
-      settle?.({ ok: true });
-      relocated?.unmount();
-      if (!relocated) first.unmount();
+      document.settleAll();
+      Object.values(dialogs).forEach((wrapper) => wrapper.unmount());
     }
   });
 
@@ -145,18 +393,16 @@ describe('CommentDialog', () => {
   )(
     'SD-6028 isolates a $operation recipient $identity after relocation=$relocate success=$ok',
     async ({ operation, identity, relocate, ok }) => {
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2Comments = {
-        documentId: 'doc-1',
-        getCapabilityState: () => ({ canWrite: true }),
-        setActiveComment: vi.fn(),
-      };
-      const first = useComment({ commentId: 'recipient-x', fileId: 'doc-1', commentText: 'Thread X' });
-      const second = useComment({
-        commentId: identity === 'thread' ? 'recipient-y' : first.commentId,
-        fileId: identity === 'file' ? 'doc-2' : first.fileId,
+      const firstInput = { commentId: 'recipient-x', fileId: 'doc-1', commentText: 'Thread X' };
+      const secondInput = {
+        commentId: identity === 'thread' ? 'recipient-y' : firstInput.commentId,
+        fileId: identity === 'file' ? 'doc-2' : firstInput.fileId,
         commentText: 'Thread Y',
-      });
+      };
+      const document = makeHeldCommentDocument(identity === 'thread' ? [firstInput, secondInput] : [firstInput]);
+      const { calls } = installReviewAdapters({ comments: document.comments });
+      const first = useComment(firstInput);
+      const second = useComment(secondInput);
       commentsStore.commentsList = [first, second];
       commentsStore.activeComment = first.commentId;
       const layout = ref(relocate ? 'sidebar' : 'inline');
@@ -170,15 +416,6 @@ describe('CommentDialog', () => {
             layout.value === 'inline' ? h(CommentDialog, { comment: active.value }) : null,
           ]),
       };
-      let settle: (outcome: { ok: boolean }) => void = () => {
-        throw new Error('Pending comment mutation was not initialized');
-      };
-      const pending = new Promise<{ ok: boolean }>((resolve) => {
-        settle = resolve;
-      });
-      const submit = vi
-        .spyOn(commentsStore, operation === 'reply' ? 'replyCommentV2' : 'editCommentV2')
-        .mockReturnValueOnce(pending);
       const wrapper = mountComments(Parent);
       try {
         const original = wrapper.findComponent(CommentDialog);
@@ -190,7 +427,11 @@ describe('CommentDialog', () => {
         commentsStore.currentCommentText = 'Pending reply from X';
         await flushPromises();
         await original.find('button.reply-btn-primary').trigger('click');
-        expect(submit).toHaveBeenCalledTimes(1);
+        expect(calls.filter((call) => !call.startsWith('comments.setActiveComment '))).toEqual([
+          operation === 'reply'
+            ? 'comments.reply {"parentCommentId":"recipient-x","text":"Pending reply from X"}'
+            : 'comments.edit {"commentId":"recipient-x","text":"Pending reply from X"}',
+        ]);
         if (relocate) {
           layout.value = 'inline';
           await flushPromises();
@@ -206,16 +447,19 @@ describe('CommentDialog', () => {
         const read = () => ({
           draft: commentsStore.currentCommentText,
           mentions: [...commentsStore.currentCommentMentions],
+          editingCommentId: commentsStore.editingCommentId,
           expanded: receiver.find('.reply-expanded').exists(),
           alert: receiver.find('[role="alert"]').exists(),
+          buttons: receiver.findAll('button.reply-btn-primary').map((button) => button.attributes('disabled')),
         });
         const before = read();
-        settle({ ok });
+        if (ok) document.commit(0);
+        else document.refuse(0, { code: 'INTERNAL_ERROR' });
         await flushPromises();
         expect(read()).toEqual(before);
         expect(commentsStore.currentCommentText).toBe('Pending reply from X');
       } finally {
-        settle({ ok: true });
+        document.settleAll();
         wrapper.unmount();
       }
     },
@@ -262,24 +506,16 @@ describe('CommentDialog', () => {
         finishCapture = resolve;
       });
       const target = { kind: 'text', segments: [{ blockId: 'paragraph', start: 6, end: 12 }] };
-      const adapter = makeV2CommentsAdapter({
-        documentId: 'doc-1',
-        getCapabilityState: () => ({ canWrite: true }),
-        captureCurrentSelection: vi
-          .fn()
-          .mockResolvedValueOnce({ ok: true, target })
-          .mockImplementationOnce(() => capture),
-      });
-      Object.assign(superdocStub.activeEditor, {
-        editorVersion: 2,
-        v2Comments: adapter,
-        options: { documentId: 'doc-1' },
-      });
+      const { calls, commentsAdapter: adapter } = installReviewAdapters();
+      adapter.captureCurrentSelection = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, target })
+        .mockImplementationOnce(() => capture);
+      superdocStub.activeEditor.options = { documentId: 'doc-1' };
       superdocStub.config.documentMode = 'editing';
-      commentsStore.setV2CommentsAdapter(adapter);
       expect(await commentsStore.showAddComment(superdocStub)).toEqual({ ok: true });
       const firstId = commentsStore.pendingComment.commentId;
-      const cancel = vi.spyOn(commentsStore, 'cancelComment');
+      commentsStore.currentCommentText = '<p>First draft</p>';
       const wrapper = mountDialog(commentsStore.pendingComment, {}, { 'click-outside': vClickOutside });
       const tool = document.createElement('div');
       tool.className = 'superdoc__tools';
@@ -304,16 +540,19 @@ describe('CommentDialog', () => {
         expect(await next).toEqual(
           surface === 'comment-tool' ? { ok: true } : { ok: false, reason: 'pending-comment-superseded' },
         );
-        expect(cancel).toHaveBeenCalledTimes(surface === 'comment-tool' ? 0 : 1);
+        expect(calls).toEqual([]);
         if (surface === 'comment-tool') {
           expect(commentsStore.pendingComment.commentId).not.toBe(firstId);
           expect(commentsStore.activeComment).toBe(commentsStore.pendingComment.commentId);
-        } else expect(commentsStore.pendingComment).toBeNull();
+        } else {
+          expect(commentsStore.currentCommentText).toBe('');
+          expect(commentsStore.pendingComment).toBeNull();
+          expect(commentsStore.activeComment).toBeNull();
+        }
       } finally {
         wrapper.unmount();
         tool.remove();
         outside.remove();
-        cancel.mockRestore();
         if (originalElementFromPoint) document.elementFromPoint = originalElementFromPoint;
         else delete document.elementFromPoint;
       }
@@ -406,12 +645,11 @@ describe('CommentDialog', () => {
   });
 
   describe('read-only mutation defense (SD-3164)', () => {
-    it('rejects stale tracked-change resolve/reject events before the store', async () => {
+    const snapshot = (wrapper) => ({ store: storeState(), dialog: renderDialog(wrapper) });
+
+    it('ignores stale tracked-change resolve/reject events', async () => {
       commentsStore.init({ readOnly: true });
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2TrackedChanges = {
-        getCapabilityState: vi.fn(() => ({ canDecide: true })),
-      };
+      const { calls } = installReviewAdapters();
       const comment = useComment({
         commentId: 'tc-read-only',
         fileId: 'doc-1',
@@ -419,49 +657,19 @@ describe('CommentDialog', () => {
         trackedChange: true,
       });
       commentsStore.commentsList = [comment];
-      const decide = vi.spyOn(commentsStore, 'decideTrackedChangeFromSidebar');
 
       const wrapper = mountDialog(comment);
       try {
+        const before = snapshot(wrapper);
         const header = wrapper.findComponent({ name: 'CommentHeader' });
         header.vm.$emit('resolve');
         header.vm.$emit('reject');
         await flushPromises();
 
-        expect(decide).not.toHaveBeenCalled();
+        expect(calls).toEqual([]);
+        expect(commentsUpdateEvents()).toEqual([]);
         expect(superdocStub.focus).not.toHaveBeenCalled();
-      } finally {
-        wrapper.unmount();
-      }
-    });
-
-    it('keeps tracked-change decisions independent from read-only comments', async () => {
-      commentsStore.init({ readOnly: true, allowResolve: false });
-      superdocStub.interactionConfig = {
-        comments: { level: 'read', readOnly: true, allowResolve: false },
-        trackedChanges: { allowDecisions: true },
-      };
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2TrackedChanges = {
-        getCapabilityState: vi.fn(() => ({ canDecide: true })),
-      };
-      const comment = useComment({
-        commentId: 'tc-comments-read-only',
-        fileId: 'doc-1',
-        commentText: '',
-        trackedChange: true,
-      });
-      commentsStore.commentsList = [comment];
-      const decide = vi.spyOn(commentsStore, 'decideTrackedChangeFromSidebar').mockResolvedValue({ ok: true });
-
-      const wrapper = mountDialog(comment);
-      try {
-        const header = wrapper.findComponent({ name: 'CommentHeader' });
-        header.vm.$emit('resolve');
-        header.vm.$emit('reject');
-        await flushPromises();
-
-        expect(decide).toHaveBeenCalledTimes(2);
+        expect(snapshot(wrapper)).toEqual(before);
       } finally {
         wrapper.unmount();
       }
@@ -470,65 +678,102 @@ describe('CommentDialog', () => {
     it.each([
       ['resolve', 'accept'],
       ['reject', 'reject'],
-    ])('awaits a v1 tracked-change %s before reconciling its row', async (eventName, decision) => {
+    ])('records a tracked-change %s while comments are read-only', async (eventName, decision) => {
+      pinClock();
+      commentsStore.init({ readOnly: true, allowResolve: false });
+      superdocStub.interactionConfig = {
+        comments: { level: 'read', readOnly: true, allowResolve: false },
+        trackedChanges: { allowDecisions: true },
+      };
+      const { calls } = installReviewAdapters();
+      const comment = useComment({
+        commentId: 'tc-comments-read-only',
+        fileId: 'doc-1',
+        commentText: '',
+        trackedChange: true,
+      });
+      commentsStore.commentsList = [comment];
+
+      const wrapper = mountDialog(comment);
+      try {
+        const finish = startRecording({ calls, wrapper });
+        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit(eventName);
+        await flushPromises();
+        await expectRecording(
+          finish(`header emits ${eventName}`),
+          `${decision}-tracked-change-with-read-only-comments`,
+        );
+      } finally {
+        wrapper.unmount();
+      }
+    });
+
+    it.each([
+      ['resolve', 'accept'],
+      ['reject', 'reject'],
+    ])('records a v1 tracked-change %s that waits for the Document API decision', async (eventName, decision) => {
+      pinClock();
       commentsStore.init({ readOnly: true, allowResolve: false });
       superdocStub.commentsStore = commentsStore;
       superdocStub.interactionConfig = {
         comments: { level: 'read', readOnly: true, allowResolve: false },
         trackedChanges: { allowDecisions: true },
       };
+      const calls: string[] = [];
+      let settle: (receipt: { success: boolean }) => void = () => {
+        throw new Error('The Document API decision was not requested');
+      };
+      superdocStub.activeEditor.doc = {
+        trackChanges: {
+          decide: vi.fn((input) => {
+            calls.push(`doc.trackChanges.decide ${JSON.stringify(input)}`);
+            return new Promise((resolve) => {
+              settle = resolve;
+            });
+          }),
+        },
+      };
       const comment = useComment({
-        commentId: `tc-v1-${decision}`,
+        commentId: 'tc-v1-inserted-words',
         fileId: 'doc-1',
         commentText: '',
         trackedChange: true,
+        trackedChangeType: 'trackInsert',
+        trackedChangeDisplayType: 'insert',
+        trackedChangeText: 'inserted words',
       });
       commentsStore.commentsList = [comment];
-      const decide = vi
-        .spyOn(commentsStore, 'decideTrackedChangeFromSidebar')
-        .mockResolvedValue({ ok: true, success: true });
-      const resolve = vi.spyOn(comment, 'resolveComment');
 
       const wrapper = mountDialog(comment);
       try {
+        const finish = startRecording({ calls, wrapper });
         wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit(eventName);
         await flushPromises();
-
-        expect(decide).toHaveBeenCalledWith({
-          superdoc: superdocStub,
-          comment,
-          decision,
-        });
-        expect(resolve).toHaveBeenCalledWith(
-          expect.objectContaining({
-            decision,
-            reconciliationToken: expect.any(Symbol),
-          }),
+        const whilePending = ['store while the decision is pending:', record(storeState())];
+        settle({ success: true });
+        await flushPromises();
+        await expectRecording(
+          finish(`header emits ${eventName}; the decision then succeeds`, whilePending),
+          `v1-${decision}-tracked-change`,
         );
-        expect(comment.resolvedTime).toEqual(expect.any(Number));
       } finally {
         wrapper.unmount();
       }
     });
 
-    it('rejects stale ordinary resolve/reopen/delete/edit events before the store', async () => {
+    it('ignores stale ordinary resolve/reopen/delete/edit events', async () => {
       commentsStore.init({ readOnly: true, allowResolve: true });
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2Comments = {
-        getCapabilityState: vi.fn(() => ({ canWrite: true })),
-      };
+      const { calls } = installReviewAdapters();
       const comment = useComment({
         commentId: 'comment-read-only',
         fileId: 'doc-1',
         commentText: 'Keep this comment',
       });
       commentsStore.commentsList = [comment];
-      const resolve = vi.spyOn(commentsStore, 'resolveCommentV2');
-      const reopen = vi.spyOn(commentsStore, 'reopenCommentV2');
-      const remove = vi.spyOn(commentsStore, 'deleteComment');
 
       const wrapper = mountDialog(comment);
       try {
+        const before = snapshot(wrapper);
         const header = wrapper.findComponent({ name: 'CommentHeader' });
         header.vm.$emit('resolve');
         header.vm.$emit('reopen');
@@ -536,10 +781,9 @@ describe('CommentDialog', () => {
         header.vm.$emit('overflow-select', 'edit');
         await flushPromises();
 
-        expect(resolve).not.toHaveBeenCalled();
-        expect(reopen).not.toHaveBeenCalled();
-        expect(remove).not.toHaveBeenCalled();
-        expect(commentsStore.editingCommentId).toBeNull();
+        expect(calls).toEqual([]);
+        expect(commentsUpdateEvents()).toEqual([]);
+        expect(snapshot(wrapper)).toEqual(before);
       } finally {
         wrapper.unmount();
       }
@@ -678,19 +922,18 @@ describe('CommentDialog', () => {
 
     it('honors allowResolve in stale ordinary-comment handler events', async () => {
       commentsStore.init({ readOnly: false, allowResolve: false });
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2Comments = {
-        getCapabilityState: vi.fn(() => ({ canWrite: true })),
-      };
+      const { calls } = installReviewAdapters();
       const comment = useComment({ commentId: 'comment-no-resolve', fileId: 'doc-1', commentText: 'Open' });
       commentsStore.commentsList = [comment];
-      const resolve = vi.spyOn(commentsStore, 'resolveCommentV2');
 
       const wrapper = mountDialog(comment);
       try {
+        const before = snapshot(wrapper);
         wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('resolve');
         await flushPromises();
-        expect(resolve).not.toHaveBeenCalled();
+        expect(calls).toEqual([]);
+        expect(commentsUpdateEvents()).toEqual([]);
+        expect(snapshot(wrapper)).toEqual(before);
       } finally {
         wrapper.unmount();
       }
@@ -701,46 +944,44 @@ describe('CommentDialog', () => {
     const prepare = (overrides = {}) => {
       commentsStore.init({ readOnly: false });
       delete commentsStore.getConfig.allowResolve;
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2Comments = {
-        getCapabilityState: vi.fn(() => ({ canWrite: true })),
-        setActiveComment: vi.fn(),
-      };
+      const adapters = installReviewAdapters({
+        comments: {
+          resolve: ({ commentId }) => ({ ok: true, threadLifecycle: { commentId, status: 'resolved' } }),
+          reopen: ({ commentId }) => ({ ok: true, threadLifecycle: { commentId, status: 'open' } }),
+        },
+      });
       const comment = useComment({
         commentId: 'comment-allow-resolve-omitted',
         fileId: 'doc-1',
         commentText: 'Open',
         ...overrides,
       });
-      commentsStore.commentsList = [comment];
-      return comment;
+      const reply = useComment({
+        commentId: 'reply-allow-resolve-omitted',
+        parentCommentId: comment.commentId,
+        fileId: 'doc-1',
+        commentText: 'Reply in the same thread',
+        ...overrides,
+      });
+      commentsStore.commentsList = [comment, reply];
+      commentsStore.activeComment = comment.commentId;
+      return { comment, ...adapters };
     };
 
-    it('resolves the comment through the store', async () => {
-      const comment = prepare();
+    it.each([
+      { name: 'resolve-open-thread', event: 'resolve', overrides: {} },
+      { name: 'reopen-resolved-thread', event: 'reopen', overrides: { resolvedTime: RECORDED_AT - 60_000 } },
+    ])('records $event of the thread', async ({ name, event, overrides }) => {
+      pinClock();
+      const { comment, calls } = prepare(overrides);
       expect(commentsStore.getConfig).not.toHaveProperty('allowResolve');
-      const resolve = vi.spyOn(commentsStore, 'resolveCommentV2').mockResolvedValue({ ok: true });
 
       const wrapper = mountDialog(comment);
       try {
-        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('resolve');
+        const finish = startRecording({ calls, wrapper });
+        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit(event);
         await flushPromises();
-        expect(resolve).toHaveBeenCalledWith({ superdoc: superdocStub, commentId: comment.commentId });
-      } finally {
-        wrapper.unmount();
-      }
-    });
-
-    it('reopens the resolved comment through the store', async () => {
-      const comment = prepare({ resolvedTime: Date.now() });
-      expect(commentsStore.getConfig).not.toHaveProperty('allowResolve');
-      const reopen = vi.spyOn(commentsStore, 'reopenCommentV2').mockResolvedValue({ ok: true });
-
-      const wrapper = mountDialog(comment);
-      try {
-        wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('reopen');
-        await flushPromises();
-        expect(reopen).toHaveBeenCalledWith({ superdoc: superdocStub, commentId: comment.commentId });
+        await expectRecording(finish(`header emits ${event}`), name);
       } finally {
         wrapper.unmount();
       }
@@ -748,27 +989,21 @@ describe('CommentDialog', () => {
   });
 
   describe('v2 edit completion ownership', () => {
-    const deferred = () => {
-      let resolve;
-      const promise = new Promise((done) => {
-        resolve = done;
-      });
-      return { promise, resolve };
-    };
+    const editCall = (text: string) => `comments.edit {"commentId":"edit-root","text":"${text}"}`;
 
     const prepare = () => {
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2Comments = {
-        getCapabilityState: () => ({ canWrite: true }),
-        setActiveComment: vi.fn(),
-      };
-      const root = useComment({ commentId: 'edit-root', fileId: 'doc-1', commentText: 'Root' });
-      const reply = useComment({
+      const rootInput = { commentId: 'edit-root', fileId: 'doc-1', commentText: 'Root' };
+      const replyInput = {
         commentId: 'edit-reply',
         fileId: 'doc-1',
-        parentCommentId: root.commentId,
+        parentCommentId: 'edit-root',
         commentText: 'Reply',
-      });
+      };
+      const document = makeHeldCommentDocument([rootInput, replyInput]);
+      const { calls } = installReviewAdapters({ comments: document.comments });
+      const writes = () => calls.filter((call) => !call.startsWith('comments.setActiveComment '));
+      const root = useComment(rootInput);
+      const reply = useComment(replyInput);
       commentsStore.commentsList = [root, reply];
       commentsStore.activeComment = root.commentId;
       const wrapper = mountDialog(root);
@@ -779,25 +1014,19 @@ describe('CommentDialog', () => {
           .vm.$emit('overflow-select', 'edit');
         await flushPromises();
       };
-      return { root, reply, wrapper, start };
+      return { root, reply, wrapper, start, document, calls, writes };
     };
 
     it.each(['reply', 'same comment reopened', 'another dialog'])(
       'keeps a newer %s edit when an old real outcome returns',
       async (next) => {
-        const pending = deferred();
-        const edit = vi.spyOn(commentsStore, 'editCommentV2').mockReturnValue(pending.promise);
-        const { root, reply, wrapper, start } = prepare();
+        const { root, reply, wrapper, start, document, writes } = prepare();
         let other;
         try {
           await start(root);
           commentsStore.currentCommentText = 'Submitted root';
           await wrapper.find('button.reply-btn-primary').trigger('click');
-          expect(edit).toHaveBeenCalledWith({
-            superdoc: superdocStub,
-            commentId: root.commentId,
-            text: 'Submitted root',
-          });
+          expect(writes()).toEqual([editCall('Submitted root')]);
           if (next === 'same comment reopened') {
             await wrapper.find('button.reply-btn-cancel').trigger('click');
             await start(root);
@@ -810,12 +1039,14 @@ describe('CommentDialog', () => {
           }
           const nextDraft = next === 'reply' ? 'New edit draft' : 'Submitted root';
           commentsStore.currentCommentText = nextDraft;
-          pending.resolve({ ok: true });
+          document.commit(0);
           await flushPromises();
           expect(commentsStore.editingCommentId).toBe(next === 'reply' ? reply.commentId : root.commentId);
           expect(commentsStore.currentCommentText).toBe(nextDraft);
           expect((other ?? wrapper).find('.reply-expanded').exists()).toBe(true);
+          expect(commentsStore.getComment(root.commentId).commentText).toBe('Submitted root');
         } finally {
+          document.settleAll();
           other?.unmount();
           wrapper.unmount();
         }
@@ -825,23 +1056,23 @@ describe('CommentDialog', () => {
     it.each(['editor replaced', 'document replaced', 'adapter replaced', 'dialog disposed'])(
       'keeps current composer state after the submitting %s',
       async (retirement) => {
-        const pending = deferred();
-        vi.spyOn(commentsStore, 'editCommentV2').mockReturnValue(pending.promise);
-        const { root, wrapper, start } = prepare();
+        const { root, wrapper, start, document, writes } = prepare();
         try {
           await start(root);
           commentsStore.currentCommentText = 'Identical draft';
           await wrapper.find('button.reply-btn-primary').trigger('click');
+          expect(writes()).toEqual([editCall('Identical draft')]);
           if (retirement === 'editor replaced') superdocStub.activeEditor = { ...superdocStub.activeEditor };
           else if (retirement === 'document replaced') superdocStub.activeEditor.doc = {};
           else if (retirement === 'adapter replaced')
             superdocStub.activeEditor.v2Comments = { ...superdocStub.activeEditor.v2Comments };
           else wrapper.unmount();
-          pending.resolve({ ok: true });
+          document.commit(0);
           await flushPromises();
           expect(commentsStore.editingCommentId).toBe(root.commentId);
           expect(commentsStore.currentCommentText).toBe('Identical draft');
         } finally {
+          document.settleAll();
           if (retirement !== 'dialog disposed') wrapper.unmount();
         }
       },
@@ -850,9 +1081,7 @@ describe('CommentDialog', () => {
     it.each(['same thread', 'different thread', 'different file'])(
       'completes a reconciled edit only for the %s',
       async (replacement) => {
-        const pending = deferred();
-        vi.spyOn(commentsStore, 'editCommentV2').mockReturnValue(pending.promise);
-        const { root, wrapper, start } = prepare();
+        const { root, wrapper, start, document } = prepare();
         try {
           await start(root);
           commentsStore.currentCommentText = 'Saved text';
@@ -864,97 +1093,100 @@ describe('CommentDialog', () => {
           });
           expect(refreshed).not.toBe(root);
           await wrapper.setProps({ comment: refreshed });
-          pending.resolve({ ok: true });
+          document.commit(0);
           await flushPromises();
           expect(commentsStore.editingCommentId).toBe(replacement === 'same thread' ? null : root.commentId);
           expect(commentsStore.currentCommentText).toBe(replacement === 'same thread' ? '' : 'Saved text');
         } finally {
+          document.settleAll();
           wrapper.unmount();
         }
       },
     );
 
-    it('keeps a later submission of the same edit when an earlier submission completes', async () => {
-      const first = deferred();
-      const second = deferred();
-      const edit = vi
-        .spyOn(commentsStore, 'editCommentV2')
-        .mockReturnValueOnce(first.promise)
-        .mockReturnValueOnce(second.promise);
-      const { root, wrapper, start } = prepare();
+    it('records a later submission of the same edit outliving an earlier one', async () => {
+      pinClock();
+      const { root, wrapper, start, document, calls } = prepare();
+      const timeline = startTimeline({ calls, dialogs: () => ({ thread: wrapper }) });
       try {
         await start(root);
         commentsStore.currentCommentText = 'Same submitted text';
+        await flushPromises();
+        timeline.step('choose Edit on the root comment and type "Same submitted text"');
         await wrapper.find('button.reply-btn-primary').trigger('click');
         await wrapper.find('button.reply-btn-primary').trigger('click');
-        expect(edit).toHaveBeenCalledTimes(2);
-        first.resolve({ ok: true });
+        timeline.step('click Update twice');
+        document.commit(0);
         await flushPromises();
-        expect(commentsStore.editingCommentId).toBe(root.commentId);
-        expect(commentsStore.currentCommentText).toBe('Same submitted text');
-        second.resolve({ ok: true });
+        timeline.step('the document commits the first write');
+        document.commit(1);
         await flushPromises();
-        expect(commentsStore.editingCommentId).toBeNull();
-        expect(commentsStore.currentCommentText).toBe('');
+        timeline.step('the document commits the second write');
+        await expectRecording(timeline.recording(), 'edit-submitted-twice');
       } finally {
+        document.settleAll();
         wrapper.unmount();
       }
     });
 
     it.each(['rejected', 'new draft', 'successful'])(
-      'preserves the correct composer after a %s completion',
+      'records the edit composer after a %s completion',
       async (result) => {
-        const pending = deferred();
-        vi.spyOn(commentsStore, 'editCommentV2').mockReturnValue(pending.promise);
-        const { root, wrapper, start } = prepare();
+        pinClock();
+        const { root, wrapper, start, document, calls } = prepare();
+        const timeline = startTimeline({ calls, dialogs: () => ({ thread: wrapper }) });
         try {
           await start(root);
           commentsStore.currentCommentText = 'Submitted text';
           await wrapper.find('button.reply-btn-primary').trigger('click');
-          if (result === 'new draft') commentsStore.currentCommentText = 'New draft';
-          pending.resolve({ ok: result !== 'rejected' });
+          timeline.step('choose Edit on the root comment, type "Submitted text", click Update');
+          if (result === 'new draft') {
+            commentsStore.currentCommentText = 'New draft';
+            await flushPromises();
+            timeline.step('type "New draft"');
+          }
+          if (result === 'rejected') document.refuse(0, { code: 'INTERNAL_ERROR' });
+          else document.commit(0);
           await flushPromises();
-          expect(commentsStore.editingCommentId).toBe(result === 'successful' ? null : root.commentId);
-          expect(commentsStore.currentCommentText).toBe(
-            result === 'successful' ? '' : result === 'new draft' ? 'New draft' : 'Submitted text',
-          );
+          timeline.step(result === 'rejected' ? 'the document refuses the edit' : 'the document commits the edit');
+          await expectRecording(timeline.recording(), `edit-completes-${result.replace(' ', '-')}`);
         } finally {
+          document.settleAll();
           wrapper.unmount();
         }
       },
     );
   });
 
-  it.each([
-    ['resolve', 'accept'],
-    ['reject', 'reject'],
-  ])('restores document focus after a committed v2 tracked-change %s', async (eventName, decision) => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2TrackedChanges = {
-      getCapabilityState: vi.fn(() => ({ canDecide: true })),
-    };
+  const prepareTrackedChangeDecision = ({ commentId, trackedChanges = {} }) => {
+    const adapters = installReviewAdapters({ trackedChanges });
     const comment = useComment({
-      commentId: `tc-${decision}`,
+      commentId,
       fileId: 'doc-1',
       commentText: '',
       trackedChange: true,
+      trackedChangeType: 'trackInsert',
+      trackedChangeDisplayType: 'insert',
+      trackedChangeText: 'inserted words',
     });
     commentsStore.commentsList = [comment];
-    const decide = vi
-      .spyOn(commentsStore, 'decideTrackedChangeFromSidebar')
-      .mockResolvedValue({ ok: true, success: true });
+    commentsStore.activeComment = comment.commentId;
+    return { comment, ...adapters };
+  };
+
+  it.each([
+    ['resolve', 'accept'],
+    ['reject', 'reject'],
+  ])('records a committed v2 tracked-change %s', async (eventName, decision) => {
+    pinClock();
+    const { comment, calls } = prepareTrackedChangeDecision({ commentId: 'tc-inserted-words' });
 
     const wrapper = mountDialog(comment);
     try {
+      const finish = startRecording({ calls, wrapper });
       wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit(eventName);
       await flushPromises();
-
-      expect(decide).toHaveBeenCalledWith({
-        superdoc: superdocStub,
-        comment,
-        decision,
-      });
-      expect(superdocStub.focus).toHaveBeenCalledWith({ preventScroll: true });
+      await expectRecording(finish(`header emits ${eventName}`), `${decision}-tracked-change`);
     } finally {
       wrapper.unmount();
     }
@@ -972,22 +1204,21 @@ describe('CommentDialog', () => {
       'editor replaced',
       'owner changed before receipt',
     ])('restores focus only for the original live owner: %s', async (transition) => {
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2TrackedChanges = {
-        getCapabilityState: vi.fn(() => ({ canDecide: true })),
+      let transitionOwner = () => {};
+      const decide = () => {
+        if (transition === 'owner changed before receipt') transitionOwner();
+        return { ok: true };
       };
+      const { comment, calls } = prepareTrackedChangeDecision({
+        commentId: `tc-lifecycle-${eventName}`,
+        trackedChanges: { accept: decide, reject: decide },
+      });
+      commentsStore.activeComment = null;
       const originalEditor = superdocStub.activeEditor;
       const replacementApp = { ...superdocStub, focus: vi.fn() };
-      const comment = useComment({
-        commentId: `tc-lifecycle-${eventName}`,
-        fileId: 'doc-1',
-        commentText: '',
-        trackedChange: true,
-      });
-      commentsStore.commentsList = [comment];
       const wrapper = mountDialog(comment);
       const globalProperties = wrapper.vm.$.appContext.config.globalProperties;
-      const transitionOwner = () => {
+      transitionOwner = () => {
         if (transition === 'row removed') wrapper.unmount();
         if (transition === 'app removed') delete globalProperties.$superdoc;
         if (transition === 'app replaced') globalProperties.$superdoc = replacementApp;
@@ -1000,20 +1231,16 @@ describe('CommentDialog', () => {
         if (transition !== 'owner changed before receipt') transitionOwner();
       });
       superdocStub.config[callbackName] = customHandler;
-      vi.spyOn(commentsStore, 'decideTrackedChangeFromSidebar').mockImplementation(async () => {
-        if (transition === 'owner changed before receipt') transitionOwner();
-        return { ok: true, success: true };
-      });
-      const setActiveComment = vi.spyOn(commentsStore, 'setActiveComment').mockImplementation(() => {});
       try {
         wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit(eventName);
         await flushPromises();
+        const clearedActiveComment = calls.filter((call) => call.startsWith('comments.setActiveComment '));
         if (transition === 'row removed') {
           expect(superdocStub.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
-          expect(setActiveComment).toHaveBeenCalledExactlyOnceWith(superdocStub, null);
+          expect(clearedActiveComment).toEqual(['comments.setActiveComment null']);
         } else {
           expect(superdocStub.focus).not.toHaveBeenCalled();
-          expect(setActiveComment).not.toHaveBeenCalled();
+          expect(clearedActiveComment).toEqual([]);
         }
         expect(replacementApp.focus).not.toHaveBeenCalled();
         if (transition === 'owner changed before receipt') expect(customHandler).not.toHaveBeenCalled();
@@ -1026,18 +1253,10 @@ describe('CommentDialog', () => {
   });
 
   it('keeps focus unchanged when the v2 tracked-change decision is rejected', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2TrackedChanges = {
-      getCapabilityState: vi.fn(() => ({ canDecide: true })),
-    };
-    const comment = useComment({
+    const { comment } = prepareTrackedChangeDecision({
       commentId: 'tc-rejected',
-      fileId: 'doc-1',
-      commentText: '',
-      trackedChange: true,
+      trackedChanges: { accept: () => ({ ok: false }) },
     });
-    commentsStore.commentsList = [comment];
-    vi.spyOn(commentsStore, 'decideTrackedChangeFromSidebar').mockResolvedValue({ ok: false, success: false });
 
     const wrapper = mountDialog(comment);
     try {
@@ -1051,21 +1270,9 @@ describe('CommentDialog', () => {
   });
 
   it('shows a retryable alert when a tracked-change decision returns a stale-catalog failure', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2TrackedChanges = {
-      getCapabilityState: vi.fn(() => ({ canDecide: true })),
-    };
-    const comment = useComment({
+    const { comment } = prepareTrackedChangeDecision({
       commentId: 'tc-stale-catalog',
-      fileId: 'doc-1',
-      commentText: '',
-      trackedChange: true,
-    });
-    commentsStore.commentsList = [comment];
-    vi.spyOn(commentsStore, 'decideTrackedChangeFromSidebar').mockResolvedValue({
-      ok: false,
-      success: false,
-      reason: 'stale-catalog',
+      trackedChanges: { accept: () => ({ ok: false, reason: 'stale-catalog' }) },
     });
 
     const wrapper = mountDialog(comment);
@@ -1719,33 +1926,56 @@ describe('CommentDialog', () => {
   });
 
   describe('v2 comment write permissions (SD-6050)', () => {
-    const prepare = (documentMode, { canWrite = true, readOnly = false } = {}) => {
+    const ownerInput = () => ({
+      commentId: 'comment-owner',
+      creatorId: superdocStore.user.id,
+      creatorEmail: superdocStore.user.email,
+      fileId: 'doc-1',
+      commentText: 'Original owner comment',
+    });
+
+    const engine = {
+      reply: ({ parentCommentId, text }) => ({
+        ok: true,
+        createdCommentId: 'owner-reply',
+        items: [
+          ownerInput(),
+          {
+            commentId: 'owner-reply',
+            parentCommentId,
+            creatorId: superdocStore.user.id,
+            creatorEmail: superdocStore.user.email,
+            fileId: 'doc-1',
+            commentText: text,
+          },
+        ],
+      }),
+      edit: ({ commentId, text }) => ({ ok: true, items: [{ ...ownerInput(), commentId, commentText: text }] }),
+      delete: ({ commentId }) => ({ ok: true, removedCommentIds: [commentId] }),
+    };
+
+    const prepare = (documentMode, { canWrite = true, readOnly = false, comments = engine } = {}) => {
       commentsStore.init({ readOnly, allowResolve: false });
       commentsStore.setViewingVisibility({ documentMode, commentsVisible: true, trackChangesVisible: true });
       superdocStub.interactionConfig = {
         comments: { level: readOnly ? 'read' : 'write', readOnly, allowResolve: false },
         trackedChanges: { allowDecisions: false },
       };
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2Comments = {
-        getCapabilityState: vi.fn(() => ({ canWrite, reason: canWrite ? null : 'host-state:saving' })),
-        setActiveComment: vi.fn(),
-        focusComment: vi.fn().mockResolvedValue({ ok: true }),
-      };
-      const comment = useComment({
-        commentId: 'comment-owner',
-        creatorId: superdocStore.user.id,
-        creatorEmail: superdocStore.user.email,
-        fileId: 'doc-1',
-        commentText: 'Original owner comment',
+      const adapters = installReviewAdapters({
+        comments,
+        canWrite: typeof canWrite === 'function' ? canWrite : () => canWrite,
       });
+      adapters.commentsAdapter.focusComment = vi.fn().mockResolvedValue({ ok: true });
+      const comment = useComment(ownerInput());
       commentsStore.commentsList = [comment];
       commentsStore.activeComment = comment.commentId;
-      return comment;
+      return { comment, ...adapters };
     };
 
-    const selectOverflow = async (wrapper, label) => {
-      await wrapper.find('[data-comment-action="overflow"] .comments-dropdown__trigger').trigger('click');
+    const mutationCalls = (calls: string[]) => calls.filter((call) => !call.startsWith('comments.setActiveComment '));
+
+    const selectOverflow = async (wrapper, label, row = 0) => {
+      await wrapper.findAll('[data-comment-action="overflow"] .comments-dropdown__trigger')[row].trigger('click');
       const option = [...document.querySelectorAll('.comments-dropdown__option')].find(
         (element) => element.textContent.trim() === label,
       );
@@ -1754,113 +1984,101 @@ describe('CommentDialog', () => {
       await flushPromises();
     };
 
-    it.each(['editing', 'viewing'])('submits one reply to the existing thread in %s mode', async (mode) => {
-      const comment = prepare(mode);
-      const reply = vi.spyOn(commentsStore, 'replyCommentV2').mockResolvedValue({ ok: true });
+    it.each(['editing', 'viewing'])('records one reply to the existing thread in %s mode', async (mode) => {
+      pinClock();
+      const { comment, calls } = prepare(mode);
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
         expect(wrapper.find('[data-comment-action="resolve"]').exists()).toBe(false);
+        const finish = startRecording({ calls, wrapper });
         await wrapper.find('.reply-pill').trigger('click');
-        expect(wrapper.find('.reply-expanded').exists()).toBe(true);
         commentsStore.currentCommentText = '<p>Owner reply</p>';
         await flushPromises();
         await wrapper.find('button.reply-btn-primary').trigger('click');
         await flushPromises();
-        expect(reply).toHaveBeenCalledExactlyOnceWith({
-          superdoc: superdocStub,
-          parentCommentId: comment.commentId,
-          text: '<p>Owner reply</p>',
-        });
+        await expectRecording(
+          finish('open the reply composer, type "<p>Owner reply</p>", click Reply'),
+          `reply-to-thread-${mode}`,
+        );
       } finally {
         wrapper.unmount();
       }
     });
 
     it.each([
-      ['move-from', 'source'],
-      ['move-to', 'destination'],
-    ])('targets the %s side when replying on a tracked move card', async (semanticColorKey, side) => {
-      prepare('editing');
+      ['move-from', 'move-1'],
+      ['move-to', 'move-1'],
+      ['insert', 'insert-1'],
+    ])('records the first reply on a tracked %s card', async (semanticColorKey, trackedChangeCanonicalId) => {
+      pinClock();
+      const { calls } = prepare('editing', {
+        comments: {
+          reply: () => ({ ok: false, code: 'TARGET_NOT_FOUND' }),
+          commitPendingComment: ({ text, target }) => ({
+            ok: true,
+            createdCommentId: 'tracked-change-reply',
+            items: [
+              {
+                commentId: 'tracked-change-reply',
+                trackedChangeThreadParentId: target.trackedChangeId,
+                trackedChangeSide: target.side,
+                fileId: 'doc-1',
+                commentText: text,
+              },
+            ],
+          }),
+        },
+      });
       const comment = useComment({
         commentId: `tc-${semanticColorKey}`,
         trackedChange: true,
-        trackedChangeCanonicalId: 'move-1',
+        trackedChangeCanonicalId,
         semanticColorKey,
         fileId: 'doc-1',
       });
       commentsStore.commentsList = [comment];
       commentsStore.activeComment = comment.commentId;
-      const reply = vi.spyOn(commentsStore, 'replyCommentV2').mockResolvedValue({ ok: true });
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
+        const finish = startRecording({ calls, wrapper });
         await wrapper.find('.reply-pill').trigger('click');
-        commentsStore.currentCommentText = '<p>Move reply</p>';
+        commentsStore.currentCommentText = '<p>Tracked change reply</p>';
         await flushPromises();
         await wrapper.find('button.reply-btn-primary').trigger('click');
         await flushPromises();
-        expect(reply).toHaveBeenCalledOnce();
-        expect(reply.mock.calls[0][0].trackedChangeTarget).toMatchObject({
-          kind: 'trackedChange',
-          trackedChangeId: 'move-1',
-          side,
-        });
+        await expectRecording(
+          finish('open the reply composer, type "<p>Tracked change reply</p>", click Reply'),
+          `reply-on-tracked-${semanticColorKey}`,
+        );
       } finally {
         wrapper.unmount();
       }
     });
 
-    it('sends no side when replying on a tracked change that is not a move', async () => {
-      prepare('editing');
-      const comment = useComment({
-        commentId: 'tc-insert',
-        trackedChange: true,
-        trackedChangeCanonicalId: 'insert-1',
-        semanticColorKey: 'insert',
-        fileId: 'doc-1',
-      });
-      commentsStore.commentsList = [comment];
-      commentsStore.activeComment = comment.commentId;
-      const reply = vi.spyOn(commentsStore, 'replyCommentV2').mockResolvedValue({ ok: true });
+    it.each(['editing', 'viewing'])('records an edit of the own comment through its menu in %s mode', async (mode) => {
+      pinClock();
+      const { comment, calls } = prepare(mode);
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
-        await wrapper.find('.reply-pill').trigger('click');
-        commentsStore.currentCommentText = '<p>Insert reply</p>';
-        await flushPromises();
-        await wrapper.find('button.reply-btn-primary').trigger('click');
-        await flushPromises();
-        const target = reply.mock.calls[0][0].trackedChangeTarget;
-        expect(target).toMatchObject({ kind: 'trackedChange', trackedChangeId: 'insert-1' });
-        expect(target).not.toHaveProperty('side');
-      } finally {
-        wrapper.unmount();
-      }
-    });
-
-    it.each(['editing', 'viewing'])('edits the own comment through its menu in %s mode', async (mode) => {
-      const comment = prepare(mode);
-      const edit = vi.spyOn(commentsStore, 'editCommentV2').mockResolvedValue({ ok: true });
-      const wrapper = mountDialog(comment, { CommentHeader: false });
-      try {
+        const finish = startRecording({ calls, wrapper });
         await selectOverflow(wrapper, 'Edit');
-        expect(commentsStore.editingCommentId).toBe(comment.commentId);
         commentsStore.currentCommentText = '<p>Corrected owner comment</p>';
         await flushPromises();
         await wrapper.find('button.reply-btn-primary').trigger('click');
         await flushPromises();
-        expect(edit).toHaveBeenCalledExactlyOnceWith({
-          superdoc: superdocStub,
-          commentId: comment.commentId,
-          text: '<p>Corrected owner comment</p>',
-        });
-        expect(commentsStore.editingCommentId).toBeNull();
+        await expectRecording(
+          finish('choose Edit in the comment menu, type "<p>Corrected owner comment</p>", click Update'),
+          `edit-own-comment-${mode}`,
+        );
       } finally {
         wrapper.unmount();
       }
     });
 
     it('shows a refusal for an edit while retaining the draft', async () => {
-      const comment = prepare('editing');
-      vi.spyOn(commentsStore, 'editCommentV2').mockResolvedValue({ ok: false, code: 'PERMISSION_DENIED' });
+      const { comment } = prepare('editing', {
+        comments: { ...engine, edit: () => ({ ok: false, code: 'PERMISSION_DENIED' }) },
+      });
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
         await selectOverflow(wrapper, 'Edit');
@@ -1877,10 +2095,11 @@ describe('CommentDialog', () => {
     });
 
     it('shows a refusal when resolving fails', async () => {
-      const comment = prepare('editing');
+      const { comment } = prepare('editing', {
+        comments: { ...engine, resolve: () => ({ ok: false, code: 'PERMISSION_DENIED' }) },
+      });
       commentsStore.init({ readOnly: false, allowResolve: true });
       superdocStub.interactionConfig.comments.allowResolve = true;
-      vi.spyOn(commentsStore, 'resolveCommentV2').mockResolvedValue({ ok: false, code: 'PERMISSION_DENIED' });
       const wrapper = mountDialog(comment);
       try {
         wrapper.findComponent({ name: 'CommentHeader' }).vm.$emit('resolve');
@@ -1892,8 +2111,9 @@ describe('CommentDialog', () => {
     });
 
     it('shows a refusal when deletion fails', async () => {
-      const comment = prepare('editing');
-      vi.spyOn(commentsStore, 'deleteComment').mockResolvedValue({ ok: false, code: 'PERMISSION_DENIED' });
+      const { comment } = prepare('editing', {
+        comments: { ...engine, delete: () => ({ ok: false, code: 'PERMISSION_DENIED' }) },
+      });
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
         await selectOverflow(wrapper, 'Delete');
@@ -1904,20 +2124,31 @@ describe('CommentDialog', () => {
       }
     });
 
-    it.each(['editing', 'viewing'])('deletes the own comment through its menu in %s mode', async (mode) => {
-      const comment = prepare(mode);
-      const remove = vi.spyOn(commentsStore, 'deleteComment').mockResolvedValue({ ok: true });
+    it.each(['editing', 'viewing'])('records deleting the own reply through its menu in %s mode', async (mode) => {
+      pinClock();
+      const { comment, calls } = prepare(mode);
+      commentsStore.commentsList.push(
+        useComment({
+          commentId: 'owner-reply',
+          parentCommentId: comment.commentId,
+          creatorId: superdocStore.user.id,
+          creatorEmail: superdocStore.user.email,
+          fileId: 'doc-1',
+          commentText: 'Reply to delete',
+        }),
+      );
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
-        await selectOverflow(wrapper, 'Delete');
-        expect(remove).toHaveBeenCalledExactlyOnceWith({ superdoc: superdocStub, commentId: comment.commentId });
+        const finish = startRecording({ calls, wrapper });
+        await selectOverflow(wrapper, 'Delete', 1);
+        await expectRecording(finish('choose Delete in the reply menu'), `delete-own-reply-${mode}`);
       } finally {
         wrapper.unmount();
       }
     });
 
     it('keeps a permitted reply available when switching to viewing mode', async () => {
-      const comment = prepare('editing');
+      const { comment } = prepare('editing');
       const wrapper = mountDialog(comment);
       try {
         commentsStore.setViewingVisibility({ documentMode: 'viewing' });
@@ -1934,13 +2165,11 @@ describe('CommentDialog', () => {
       { role: 'suggester', options: [] },
       { role: 'editor', options: ['Delete'] },
     ])('preserves $role permissions on another author’s viewing-mode comment', async ({ role, options }) => {
-      const comment = prepare('viewing');
+      const { comment, calls } = prepare('viewing');
       comment.creatorId = 'other-user';
       comment.creatorEmail = 'other@example.com';
       comment.creatorName = superdocStore.user.name;
       superdocStub.config.role = role;
-      const edit = vi.spyOn(commentsStore, 'editCommentV2');
-      const remove = vi.spyOn(commentsStore, 'deleteComment');
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
         const replyPill = wrapper.find('.reply-pill');
@@ -1956,15 +2185,14 @@ describe('CommentDialog', () => {
         await replyPill.trigger('click');
         expect(wrapper.find('.reply-expanded').exists()).toBe(true);
         expect(commentsStore.editingCommentId).toBeNull();
-        expect(edit).not.toHaveBeenCalled();
-        expect(remove).not.toHaveBeenCalled();
+        expect(mutationCalls(calls)).toEqual([]);
       } finally {
         wrapper.unmount();
       }
     });
 
     it('keeps host-denied replies and own-comment overflow unavailable in viewing mode', async () => {
-      const comment = prepare('viewing', { canWrite: false });
+      const { comment } = prepare('viewing', { canWrite: false });
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
         const replyPill = wrapper.find('.reply-pill');
@@ -1979,8 +2207,7 @@ describe('CommentDialog', () => {
     });
 
     it('keeps read-level comment actions unavailable in viewing mode', async () => {
-      const comment = prepare('viewing', { readOnly: true });
-      const remove = vi.spyOn(commentsStore, 'deleteComment');
+      const { comment, calls } = prepare('viewing', { readOnly: true });
       const wrapper = mountDialog(comment, { CommentHeader: false });
       try {
         expect(wrapper.find('.reply-pill').exists()).toBe(false);
@@ -1990,70 +2217,68 @@ describe('CommentDialog', () => {
         header.vm.$emit('overflow-select', 'delete');
         await flushPromises();
         expect(commentsStore.editingCommentId).toBeNull();
-        expect(remove).not.toHaveBeenCalled();
+        expect(mutationCalls(calls)).toEqual([]);
       } finally {
         wrapper.unmount();
       }
     });
 
-    it.each([true, false])('honors the pending viewing-mode creation capability: %s', async (canCreate) => {
-      const comment = prepare('viewing');
-      commentsStore.pendingComment = comment;
+    it.each([
+      ['allowed', true],
+      ['denied', false],
+    ])('records the pending viewing-mode comment when the host has creation %s', async (name, canCreate) => {
+      pinClock();
+      const { calls } = prepare('viewing', {
+        canWrite: (command) => command === 'comments.createFromSelection' && canCreate,
+        comments: {
+          commitPendingComment: ({ text }) => ({
+            ok: true,
+            createdCommentId: 'viewing-mode-comment',
+            items: [ownerInput(), { commentId: 'viewing-mode-comment', fileId: 'doc-1', commentText: text }],
+          }),
+        },
+      });
+      const draft = useComment({ commentId: 'pending-viewing-mode-comment', fileId: 'doc-1', commentText: '' });
+      commentsStore.pendingComment = draft;
+      commentsStore.activeComment = draft.commentId;
       commentsStore.currentCommentText = '<p>New viewing-mode comment</p>';
-      const capability = superdocStub.activeEditor.v2Comments.getCapabilityState.mockImplementation((command) => ({
-        canWrite: command === 'comments.createFromSelection' && canCreate,
-        reason: canCreate ? null : 'host-state:saving',
-      }));
-      const add = vi.spyOn(commentsStore, 'addComment').mockResolvedValue({ ok: true });
-      const wrapper = mountDialog(comment);
+      const wrapper = mountDialog(draft);
       try {
+        const finish = startRecording({ calls, wrapper });
         await wrapper.find('button.reply-btn-primary').trigger('click');
         await flushPromises();
-        expect(capability).toHaveBeenCalledWith('comments.createFromSelection');
-        expect(add).toHaveBeenCalledTimes(canCreate ? 1 : 0);
+        await expectRecording(finish('click Comment on the pending comment'), `create-pending-comment-${name}`);
       } finally {
         wrapper.unmount();
       }
     });
   });
 
-  it('coalesces rapid v2 reply clicks while the first submission is pending (SD-3867)', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {
-      getCapabilityState: vi.fn(() => ({ canWrite: true })),
-    };
-    const comment = useComment({
-      commentId: 'comment-delayed-reply',
-      fileId: 'doc-1',
-      commentText: 'Delayed reply parent',
-    });
+  it('records rapid v2 reply clicks coalescing into one write (SD-3867)', async () => {
+    pinClock();
+    const parentInput = { commentId: 'comment-delayed-reply', fileId: 'doc-1', commentText: 'Delayed reply parent' };
+    const document = makeHeldCommentDocument([parentInput]);
+    const { calls } = installReviewAdapters({ comments: document.comments });
+    const comment = useComment(parentInput);
     commentsStore.commentsList = [comment];
     commentsStore.activeComment = comment.commentId;
     commentsStore.currentCommentText = '<p>one delayed reply</p>';
 
-    let settleReply;
-    const pendingReply = new Promise((resolve) => {
-      settleReply = resolve;
-    });
-    const replyCommentV2 = vi.spyOn(commentsStore, 'replyCommentV2').mockReturnValue(pendingReply);
-
     const wrapper = mountDialog(comment);
+    const timeline = startTimeline({ calls, dialogs: () => ({ thread: wrapper }) });
     try {
       await wrapper.find('.reply-pill').trigger('click');
       const replyButton = wrapper.find('button.reply-btn-primary');
-
       await replyButton.trigger('click');
       await replyButton.trigger('click');
       await replyButton.trigger('click');
-
-      expect(replyCommentV2).toHaveBeenCalledTimes(1);
-      expect(replyButton.attributes('disabled')).toBeDefined();
-
-      settleReply({ ok: true });
+      timeline.step('open the reply composer holding "<p>one delayed reply</p>", click Reply three times');
+      document.commit(0);
       await flushPromises();
-      expect(wrapper.find('.reply-expanded').exists()).toBe(false);
+      timeline.step('the document commits the reply');
+      await expectRecording(timeline.recording(), 'reply-clicked-three-times');
     } finally {
-      settleReply?.({ ok: true });
+      document.settleAll();
       wrapper.unmount();
     }
   });
@@ -2137,19 +2362,14 @@ describe('CommentDialog', () => {
   it.each(['pending root', 'another reply', 'edit', 'same reply reopened'])(
     'preserves a newer %s when a delayed legacy reply succeeds',
     async (next) => {
-      superdocStub.activeEditor.editorVersion = 2;
-      superdocStub.activeEditor.v2Comments = {
-        getCapabilityState: () => ({ canWrite: true }),
-        setActiveComment: vi.fn(),
-      };
-      const root = useComment({ commentId: '1', importedId: '1', fileId: 'doc-1', commentText: 'Legacy parent' });
+      const rootInput = { commentId: '1', importedId: '1', fileId: 'doc-1', commentText: 'Legacy parent' };
+      const otherInput = { commentId: '2', fileId: 'doc-1', commentText: 'Other parent' };
+      const document = makeHeldCommentDocument(next === 'another reply' ? [rootInput, otherInput] : [rootInput]);
+      const { calls } = installReviewAdapters({ comments: document.comments });
+      const writes = () => calls.filter((call) => !call.startsWith('comments.setActiveComment '));
+      const root = useComment(rootInput);
       commentsStore.commentsList = [root];
       commentsStore.activeComment = root.commentId;
-      let settle;
-      const completion = new Promise((resolve) => {
-        settle = resolve;
-      });
-      const submit = vi.spyOn(commentsStore, 'replyCommentV2').mockReturnValue(completion);
       const wrapper = mountDialog(root);
       let other;
       try {
@@ -2157,7 +2377,7 @@ describe('CommentDialog', () => {
         commentsStore.currentCommentText = 'Identical draft';
         await flushPromises();
         await wrapper.find('button.reply-btn-primary').trigger('click');
-        expect(submit).toHaveBeenCalledWith({ superdoc: superdocStub, parentCommentId: '1', text: 'Identical draft' });
+        expect(writes()).toEqual(['comments.reply {"parentCommentId":"1","text":"Identical draft"}']);
         if (next === 'pending root') {
           const draft = useComment({ commentId: 'new-root', fileId: 'doc-1', commentText: '' });
           commentsStore.pendingComment = draft;
@@ -2165,7 +2385,7 @@ describe('CommentDialog', () => {
           await flushPromises();
           other = mountDialog(draft);
         } else if (next === 'another reply') {
-          const parent = useComment({ commentId: '2', fileId: 'doc-1', commentText: 'Other parent' });
+          const parent = useComment(otherInput);
           commentsStore.commentsList.push(parent);
           commentsStore.activeComment = parent.commentId;
           await flushPromises();
@@ -2184,7 +2404,7 @@ describe('CommentDialog', () => {
         const active = commentsStore.activeComment;
         const editing = commentsStore.editingCommentId;
 
-        settle({ ok: true });
+        document.commit(0);
         await flushPromises();
 
         expect(commentsStore.currentCommentText).toBe('Identical draft');
@@ -2193,174 +2413,199 @@ describe('CommentDialog', () => {
         expect(commentsStore.activeComment).toBe(active);
         expect(commentsStore.editingCommentId).toBe(editing);
         expect((other ?? wrapper).find('button.reply-btn-primary').exists()).toBe(true);
+        expect(
+          commentsStore.commentsList
+            .filter((row) => row.parentCommentId === '1')
+            .map((row) => [row.commentId, row.commentText]),
+        ).toEqual([['reply-1', 'Identical draft']]);
       } finally {
-        settle({ ok: true });
+        document.settleAll();
         other?.unmount();
         wrapper.unmount();
       }
     },
   );
   it.each([
-    ['PERMISSION_DENIED', 'you do not have permission'],
-    ['INTERNAL_ERROR', 'Try again or cancel'],
-  ])('explains a refused v2 reply and clears feedback when retried or canceled (%s)', async (code, message) => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {
-      getCapabilityState: vi.fn(() => ({ canWrite: true })),
-    };
-    const comment = useComment({ commentId: 'reply-denied', fileId: 'doc-1', commentText: 'Parent' });
+    ['PERMISSION_DENIED', 'permission-denied'],
+    ['INTERNAL_ERROR', 'internal-error'],
+  ])('records a refused v2 reply and its feedback through retry and cancel (%s)', async (code, name) => {
+    pinClock();
+    const parentInput = { commentId: 'reply-denied', fileId: 'doc-1', commentText: 'Parent' };
+    const document = makeHeldCommentDocument([parentInput]);
+    const { calls } = installReviewAdapters({ comments: document.comments });
+    const comment = useComment(parentInput);
     commentsStore.commentsList = [comment];
     commentsStore.activeComment = comment.commentId;
     commentsStore.currentCommentText = '<p>Keep my reply</p>';
-    let settleRetry;
-    const retry = new Promise((resolve) => {
-      settleRetry = resolve;
-    });
-    vi.spyOn(commentsStore, 'replyCommentV2')
-      .mockResolvedValueOnce({ ok: false, code })
-      .mockReturnValueOnce(retry)
-      .mockResolvedValue({ ok: false, code });
     const wrapper = mountDialog(comment);
+    const timeline = startTimeline({ calls, dialogs: () => ({ thread: wrapper }) });
     try {
       await wrapper.find('.reply-pill').trigger('click');
       await wrapper.find('button.reply-btn-primary').trigger('click');
+      document.refuse(0, { code });
       await flushPromises();
-      expect(wrapper.find('[role="alert"]').exists()).toBe(true);
-      expect(wrapper.find('[role="alert"]').text()).toContain(message);
-      expect(commentsStore.currentCommentText).toBe('<p>Keep my reply</p>');
-      expect(wrapper.find('.reply-expanded').exists()).toBe(true);
+      timeline.step(
+        `open the reply composer holding "<p>Keep my reply</p>", click Reply; the document refuses (${code})`,
+      );
       await wrapper.find('button.reply-btn-primary').trigger('click');
-      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
-      settleRetry({ ok: true });
+      timeline.step('click Reply again while the document holds the write');
+      document.commit(1);
       await flushPromises();
-      expect(wrapper.find('.reply-expanded').exists()).toBe(false);
-      expect(commentsStore.currentCommentText).toBe('');
+      timeline.step('the document commits the retried reply');
       await wrapper.find('.reply-pill').trigger('click');
       commentsStore.currentCommentText = '<p>Another reply</p>';
       await flushPromises();
       await wrapper.find('button.reply-btn-primary').trigger('click');
+      document.refuse(2, { code });
       await flushPromises();
-      expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+      timeline.step(
+        `open the reply composer, type "<p>Another reply</p>", click Reply; the document refuses (${code})`,
+      );
       await wrapper.find('button.reply-btn-cancel').trigger('click');
       await wrapper.find('.reply-pill').trigger('click');
-      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+      timeline.step('click Cancel, then open the reply composer again');
+      await expectRecording(timeline.recording(), `reply-refused-${name}`);
     } finally {
-      settleRetry?.({ ok: true });
+      document.settleAll();
       wrapper.unmount();
     }
   });
 
-  it('coalesces rapid new-comment clicks while the first submission is pending', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {
-      getCapabilityState: vi.fn(() => ({ canWrite: true })),
-    };
-    const pendingDraft = useComment({
-      commentId: 'pending-new-comment-delayed',
-      fileId: 'doc-1',
-      commentText: '',
-    });
+  const preparePendingComment = (commentId: string, draft: string, comments = {}) => {
+    const adapters = installReviewAdapters({ comments });
+    const pendingDraft = useComment({ commentId, fileId: 'doc-1', commentText: '' });
     commentsStore.pendingComment = pendingDraft;
-    commentsStore.currentCommentText = '<p>one delayed new comment</p>';
+    commentsStore.activeComment = pendingDraft.commentId;
+    commentsStore.currentCommentText = draft;
+    return { pendingDraft, ...adapters };
+  };
 
-    let settleAdd;
-    const pendingAdd = new Promise((resolve) => {
-      settleAdd = resolve;
-    });
-    const addComment = vi.spyOn(commentsStore, 'addComment').mockReturnValue(pendingAdd);
+  it('records rapid new-comment clicks coalescing into one write', async () => {
+    pinClock();
+    const document = makeHeldCommentDocument([]);
+    const { pendingDraft, calls } = preparePendingComment(
+      'pending-new-comment-delayed',
+      '<p>one delayed new comment</p>',
+      document.comments,
+    );
+    const wrapper = mountDialog(pendingDraft);
+    const timeline = startTimeline({ calls, dialogs: () => ({ pending: wrapper }) });
+    try {
+      const submitButton = wrapper.find('button.reply-btn-primary');
+      await submitButton.trigger('click');
+      await submitButton.trigger('click');
+      await submitButton.trigger('click');
+      timeline.step('click Comment three times on the pending comment');
+      document.commit(0);
+      await flushPromises();
+      timeline.step('the document commits the comment');
+      await expectRecording(timeline.recording(), 'new-comment-clicked-three-times');
+    } finally {
+      document.settleAll();
+      wrapper.unmount();
+    }
+  });
 
+  it('records a refused new comment keeping its pending draft', async () => {
+    pinClock();
+    const document = makeHeldCommentDocument([]);
+    const { pendingDraft, calls } = preparePendingComment(
+      'pending-new-comment-denied',
+      '<p>Keep my draft</p>',
+      document.comments,
+    );
+    const wrapper = mountDialog(pendingDraft);
+    const timeline = startTimeline({ calls, dialogs: () => ({ pending: wrapper }) });
+    try {
+      timeline.step('the pending comment holds "<p>Keep my draft</p>"');
+      await wrapper.find('button.reply-btn-primary').trigger('click');
+      timeline.step('click Comment');
+      document.refuse(0, { code: 'PERMISSION_DENIED', detail: 'document-mode-read-only' });
+      await flushPromises();
+      timeline.step('the document refuses the comment (PERMISSION_DENIED, document-mode-read-only)');
+      await expectRecording(timeline.recording(), 'new-comment-refused');
+    } finally {
+      document.settleAll();
+      wrapper.unmount();
+    }
+  });
+
+  it('keeps the new-comment draft retryable when the document throws on commit', async () => {
+    const { pendingDraft, calls } = preparePendingComment(
+      'pending-new-comment-throws',
+      '<p>a new comment that fails</p>',
+      {
+        commitPendingComment: () => {
+          throw new Error('boom');
+        },
+      },
+    );
     const wrapper = mountDialog(pendingDraft);
     try {
       const submitButton = wrapper.find('button.reply-btn-primary');
-
       await submitButton.trigger('click');
-      await submitButton.trigger('click');
-      await submitButton.trigger('click');
-
-      expect(addComment).toHaveBeenCalledTimes(1);
-      expect(submitButton.attributes('disabled')).toBeDefined();
-
-      settleAdd({ ok: true });
       await flushPromises();
+      expect(wrapper.find('[role="alert"]').text()).toBe(
+        'Your comment could not be saved. Your draft is still here. Try again or cancel.',
+      );
+      expect(commentsStore.currentCommentText).toBe('<p>a new comment that fails</p>');
+      expect(commentsStore.pendingComment).toBe(pendingDraft);
       expect(submitButton.attributes('disabled')).toBeUndefined();
+
+      await submitButton.trigger('click');
+      await flushPromises();
+      expect(calls.filter((call) => call.startsWith('comments.commitPendingComment '))).toHaveLength(2);
     } finally {
-      settleAdd?.({ ok: true });
       wrapper.unmount();
     }
   });
 
-  it('shows a permission refusal without discarding the pending new-comment draft', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {
-      getCapabilityState: vi.fn(() => ({ canWrite: true })),
-    };
-    const pendingDraft = useComment({
-      commentId: 'pending-new-comment-denied',
-      fileId: 'doc-1',
-      commentText: '',
+  it('reports a v1 editor command that throws while committing a new comment', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    superdocStub.activeEditor.commands.insertComment = vi.fn(() => {
+      throw new Error('editor destroyed');
     });
+    const pendingDraft = useComment({ commentId: 'pending-v1-comment-throws', fileId: 'doc-1', commentText: '' });
     commentsStore.pendingComment = pendingDraft;
-    commentsStore.currentCommentText = '<p>Keep my draft</p>';
-    vi.spyOn(commentsStore, 'addComment').mockResolvedValue({
-      ok: false,
-      reason: 'receipt-failure',
-      code: 'PERMISSION_DENIED',
-      detail: 'document-mode-read-only',
-    });
+    commentsStore.activeComment = pendingDraft.commentId;
+    commentsStore.currentCommentText = '<p>v1 comment</p>';
     const wrapper = mountDialog(pendingDraft);
     try {
-      expect(wrapper.find('[role="alert"]').exists()).toBe(false);
       await wrapper.find('button.reply-btn-primary').trigger('click');
       await flushPromises();
-      expect(wrapper.find('[role="alert"]').text()).toContain('document or connection is read-only');
-      expect(commentsStore.currentCommentText).toBe('<p>Keep my draft</p>');
-      expect(commentsStore.pendingComment).not.toBeNull();
-      expect(wrapper.find('button.reply-btn-primary').attributes('disabled')).toBeUndefined();
+      expect(superdocStub.activeEditor.commands.insertComment).toHaveBeenCalledTimes(1);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+      expect(consoleError).toHaveBeenCalledWith('[SuperDoc] addComment failed', expect.any(Error));
+      expect(commentsStore.pendingComment).toBeNull();
+      expect(commentsStore.commentsList.map((row) => row.commentText)).toEqual(['<p>v1 comment</p>']);
     } finally {
+      consoleError.mockRestore();
       wrapper.unmount();
     }
   });
 
-  it('clears the new-comment submitting flag even when addComment throws synchronously', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {
-      getCapabilityState: vi.fn(() => ({ canWrite: true })),
-    };
-    const pendingDraft = useComment({
-      commentId: 'pending-new-comment-throws',
-      fileId: 'doc-1',
-      commentText: '',
-    });
-    commentsStore.pendingComment = pendingDraft;
-    commentsStore.currentCommentText = '<p>a new comment that fails</p>';
-
-    const addComment = vi.spyOn(commentsStore, 'addComment').mockImplementation(() => {
-      throw new Error('boom');
-    });
-
-    const wrapper = mountDialog(pendingDraft);
-    try {
-      const submitButton = wrapper.find('button.reply-btn-primary');
-
-      await submitButton.trigger('click');
-      await flushPromises();
-
-      expect(addComment).toHaveBeenCalledTimes(1);
-      expect(submitButton.attributes('disabled')).toBeUndefined();
-
-      await submitButton.trigger('click');
-      await flushPromises();
-      expect(addComment).toHaveBeenCalledTimes(2);
-    } finally {
-      wrapper.unmount();
-    }
-  });
-
-  it('creates a v2 comment anchored to the tracked change when an unrelated pending comment exists', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {};
+  it('records a reply anchored to the tracked change when an unrelated pending comment exists', async () => {
+    pinClock();
     const trackedChangeCanonicalId = 'tc|main%3A%2Fword%2Fdocument.xml|del|coalesced|0';
     const trackedChangeStory = { kind: 'story', storyType: 'body' };
+    const { calls } = installReviewAdapters({
+      comments: {
+        reply: () => ({ ok: false, code: 'TARGET_NOT_FOUND' }),
+        commitPendingComment: ({ text, target, mentions }) => ({
+          ok: true,
+          createdCommentId: 'tracked-change-sidecar-reply',
+          items: [
+            {
+              commentId: 'tracked-change-sidecar-reply',
+              trackedChangeThreadParentId: target.trackedChangeId,
+              fileId: 'doc-1',
+              commentText: text,
+              mentions,
+            },
+          ],
+        }),
+      },
+    });
     const trackedChange = useComment({
       commentId:
         'tc|main%3A%2Fword%2Fdocument.xml|del|sd%3Amain%3A%2Fword%2Fdocument.xml%7Cdel%7CSuperdoc%20User%7C2024-12-20T04%3A20%3A00Z%7C0%7CwId%3A0',
@@ -2385,61 +2630,51 @@ describe('CommentDialog', () => {
     commentsStore.currentCommentMentions = [
       { id: 'reviewer-1', name: 'Internal Reviewer', email: 'reviewer@example.com' },
     ];
-    const replyCommentV2 = vi.spyOn(commentsStore, 'replyCommentV2').mockResolvedValue({ ok: true });
-    const addComment = vi.spyOn(commentsStore, 'addComment').mockResolvedValue({ ok: true });
 
     const wrapper = mountDialog(trackedChange);
     try {
+      const finish = startRecording({ calls, wrapper });
       await wrapper.find('.reply-pill').trigger('click');
       await wrapper.find('button.reply-btn-primary').trigger('click');
       await flushPromises();
-
-      expect(replyCommentV2).toHaveBeenCalledTimes(1);
-      expect(replyCommentV2).toHaveBeenCalledWith({
-        superdoc: superdocStub,
-        parentCommentId: trackedChangeCanonicalId,
-        text: '<p>tracked-change sidecar reply proof</p>',
-        mentions: [{ id: 'reviewer-1', name: 'Internal Reviewer', email: 'reviewer@example.com' }],
-        trackedChangeTarget: {
-          kind: 'trackedChange',
-          trackedChangeId: trackedChangeCanonicalId,
-          story: trackedChangeStory,
-        },
-      });
-      expect(addComment).not.toHaveBeenCalled();
+      await expectRecording(
+        finish('open the reply composer and click Reply'),
+        'reply-on-tracked-change-with-unrelated-pending-comment',
+      );
     } finally {
       wrapper.unmount();
     }
   });
 
-  it('keeps ordinary v2 replies addressed to the visible comment root id', async () => {
-    superdocStub.activeEditor.editorVersion = 2;
-    superdocStub.activeEditor.v2Comments = {};
-    const comment = useComment({
+  it('records an ordinary v2 reply addressed to the visible comment root id', async () => {
+    pinClock();
+    const rootInput = {
       commentId: 'comment-root',
       importedId: 'imported-docx-id',
       fileId: 'doc-1',
       commentText: '<p>Root comment</p>',
+    };
+    const { calls } = installReviewAdapters({
+      comments: {
+        reply: ({ parentCommentId, text }) => ({
+          ok: true,
+          createdCommentId: 'ordinary-reply',
+          items: [rootInput, { commentId: 'ordinary-reply', parentCommentId, fileId: 'doc-1', commentText: text }],
+        }),
+      },
     });
+    const comment = useComment(rootInput);
     commentsStore.commentsList = [comment];
     commentsStore.activeComment = comment.commentId;
     commentsStore.currentCommentText = '<p>ordinary reply</p>';
-    const replyCommentV2 = vi.spyOn(commentsStore, 'replyCommentV2').mockResolvedValue({ ok: true });
-    const addComment = vi.spyOn(commentsStore, 'addComment').mockResolvedValue({ ok: true });
 
     const wrapper = mountDialog(comment);
     try {
+      const finish = startRecording({ calls, wrapper });
       await wrapper.find('.reply-pill').trigger('click');
       await wrapper.find('button.reply-btn-primary').trigger('click');
       await flushPromises();
-
-      expect(replyCommentV2).toHaveBeenCalledTimes(1);
-      expect(replyCommentV2).toHaveBeenCalledWith({
-        superdoc: superdocStub,
-        parentCommentId: 'comment-root',
-        text: '<p>ordinary reply</p>',
-      });
-      expect(addComment).not.toHaveBeenCalled();
+      await expectRecording(finish('open the reply composer and click Reply'), 'reply-addressed-to-visible-root-id');
     } finally {
       wrapper.unmount();
     }

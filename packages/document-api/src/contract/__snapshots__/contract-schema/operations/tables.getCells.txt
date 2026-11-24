@@ -1,0 +1,118 @@
+{
+  "definition": {
+    "description": "Retrieve cell information for a table, optionally filtered by row or column.",
+    "expectedResult": "Returns a TablesGetCellsOutput with cell information for the requested rows and columns.",
+    "memberPath": "tables.getCells",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "tables/get-cells.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "target"
+          ]
+        },
+        {
+          "required": [
+            "nodeId"
+          ]
+        }
+      ],
+      "properties": {
+        "columnIndex": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "rowIndex": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target": {
+          "$ref": "#/$defs/TableAddress"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "cells": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "$ref": "#/$defs/TableCellAddress"
+              },
+              "colspan": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "columnIndex": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "firstParagraphNodeId": {
+                "type": "string"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "rowIndex": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "rowspan": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "nodeId",
+              "address",
+              "rowIndex",
+              "columnIndex",
+              "colspan",
+              "rowspan"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "nodeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodeId",
+        "address",
+        "cells"
+      ],
+      "type": "object"
+    }
+  }
+}

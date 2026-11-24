@@ -1,0 +1,27 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "hocuspocus",
+    "documentId": "room-1",
+    "url": "wss://hocus.example.com",
+    "token": "secret-token",
+    "params": {
+      "tenant": "acme"
+    }
+  }
+}
+
+result:
+{
+  "ok": true,
+  "target": {
+    "providerFamily": "hocuspocus",
+    "documentId": "room-1",
+    "roomMode": "join",
+    "serverUrl": "wss://hocus.example.com",
+    "params": {
+      "tenant": "acme"
+    },
+    "token": "secret-token"
+  }
+}

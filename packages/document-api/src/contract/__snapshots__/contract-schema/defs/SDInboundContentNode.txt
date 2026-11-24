@@ -1,0 +1,19 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/SDInboundParagraph"
+    },
+    {
+      "$ref": "#/$defs/SDInboundHeading"
+    },
+    {
+      "$ref": "#/$defs/SDInboundList"
+    },
+    {
+      "$ref": "#/$defs/SDInboundTable"
+    },
+    {
+      "$ref": "#/$defs/SDInboundHorizontalRule"
+    }
+  ]
+}

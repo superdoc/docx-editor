@@ -30,6 +30,17 @@ instead of replacing the date directly.
 The `user` value identifies the author of the tracked change. This example uses a fixed user so it runs without
 authentication. `satisfies` checks the field names and values during typechecking.
 
+## Set the user
+
+In your application, set `user` from the signed-in person and give it a non-empty `name`. If you omit `user`, or leave
+`name` out of it, SuperDoc uses `{ id: null, name: 'Default SuperDoc user', email: null }` and keeps any other fields
+you passed. A `name` set to `null` or `undefined` does not get this default.
+
+SuperDoc then credits new comments, replies, resolved comments, and tracked changes to `Default SuperDoc user`. Other
+people in a collaboration room see that name on those comments and changes. Their built-in cursor label shows your
+`email` instead, or `Anonymous` without one. An exported DOCX stores the name as the author of comments and tracked
+changes. The DOCX does not store who resolved a comment.
+
 ## Find an option
 
 Choose a group, then choose a field. Each entry shows what it changes, its type, and its default. Some fields link to a

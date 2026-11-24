@@ -1,0 +1,66 @@
+{
+  "definition": {
+    "description": "Get detailed information about a specific footnote or endnote.",
+    "expectedResult": "Returns a FootnoteInfo object with the note's type, display number, content, and inline body reference addresses in references. V2 returns an empty references array for an unreferenced note.",
+    "memberPath": "footnotes.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "footnotes/get.mdx",
+    "referenceGroup": "footnotes",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "footnote"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "noteId": {
+              "type": "string"
+            },
+            "noteType": {
+              "enum": [
+                "footnote",
+                "endnote"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "noteId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

@@ -24,8 +24,12 @@ type AssertEqual<A, B> = Equal<A, B> extends true ? true : never;
 // The canonical starter ids are present as a value catalog.
 const _bold: string = BUILT_IN_COMMAND_IDS.bold;
 const _acceptAll: string = BUILT_IN_COMMAND_IDS.acceptAllChanges;
+const _growFont: 'grow-font' = BUILT_IN_COMMAND_IDS.growFont;
+const _shrinkFont: 'shrink-font' = BUILT_IN_COMMAND_IDS.shrinkFont;
+const _applyFormat: 'apply-format' = BUILT_IN_COMMAND_IDS.applyFormat;
 void _bold;
 void _acceptAll;
+void [_growFont, _shrinkFont, _applyFormat];
 
 declare const ui: SuperDocUI;
 const commands: CommandsHandle = ui.commands;
@@ -47,6 +51,13 @@ const _executeAsync: AssertEqual<ReturnType<CommandsHandle['executeAsync']>, Pro
 void commands.has('zoom');
 void commands.execute('font-size', '12pt');
 void commands.executeAsync('font-size', '12pt');
+void commands.executeAsync('grow-font');
+void commands.executeAsync('shrink-font');
+void commands.executeAsync('apply-format');
+declare const imageFile: File;
+declare const imageBlob: Blob;
+void commands.executeAsync('image', { src: imageFile, alt: 'Uploaded image' });
+void commands.executeAsync('image', { src: imageBlob, title: 'Embedded image', size: { width: 32, height: 24 } });
 void commands.execute('track-changes-accept-selection');
 void commands.get(builtInCommandId);
 void commands.has(applicationCommandId);

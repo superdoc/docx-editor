@@ -1,0 +1,22 @@
+page 1 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=0 sectionRefs={-}
+  "Two 1" x=48 y=48
+  "Two 2" x=48 y=68
+  "Two 3" x=48 y=88
+  "Two 4" x=48 y=108
+  "Two 5" x=48 y=128
+  "Two 6" x=48 y=148
+  "Two 7" x=48 y=168
+  "Two 8" x=48 y=188
+  "Two 9" x=48 y=208
+  "Two 10" x=264 y=48
+page 2 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=1 sectionRefs={-}
+  "Three 1" x=48 y=48
+  "Three 2" x=48 y=68
+  "Three 3" x=48 y=88
+  "Three 4" x=48 y=108
+  "Three 5" x=48 y=128
+  "Three 6" x=48 y=148
+  "Three 7" x=48 y=168
+  "Three 8" x=48 y=188
+  "Three 9" x=48 y=208
+  "Three 10" x=184 y=48

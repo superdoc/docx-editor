@@ -1,0 +1,24 @@
+step: mount while the source is loading
+  no reads
+  comments: pending []
+  trackChanges: pending []
+
+step: ui.trackChanges.list() three times
+  read doc.trackChanges.list({"in":"all"}) -> (in flight)
+  comments: pending []
+  trackChanges: pending []
+
+step: the directory read settles
+  read doc.trackChanges.list({"in":"all"}) settled -> [tc-a]
+  comments: pending []
+  trackChanges: ready [tc-a]
+
+step: ui.trackChanges.list() twice more
+  no reads
+  comments: pending []
+  trackChanges: ready [tc-a]
+
+step: an edit commits, then ui.trackChanges.list()
+  read doc.trackChanges.list({"in":"all"}) -> [tc-a, tc-b]
+  comments: pending []
+  trackChanges: ready [tc-a, tc-b]

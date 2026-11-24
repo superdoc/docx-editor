@@ -1,0 +1,10 @@
+table-add-column-after
+table-add-column-before
+table-add-row-after
+table-add-row-before
+table-delete
+table-delete-column
+table-delete-row
+table-merge-cells
+table-remove-borders
+table-split-cell

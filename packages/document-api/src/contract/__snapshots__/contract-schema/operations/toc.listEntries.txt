@@ -1,0 +1,136 @@
+{
+  "definition": {
+    "description": "List all TC (table of contents entry) fields in the document body.",
+    "expectedResult": "Returns a TocListEntriesResult with an array of TC entry discovery items and pagination metadata.",
+    "memberPath": "toc.listEntries",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "toc/list-entries.mdx",
+    "referenceGroup": "toc",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "levelRange": {
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "type": "integer"
+            },
+            "to": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ],
+          "type": "object"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "tableIdentifier": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "inline"
+                  },
+                  "nodeId": {
+                    "type": "string"
+                  },
+                  "nodeType": {
+                    "const": "tableOfContentsEntry"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "nodeType",
+                  "nodeId"
+                ],
+                "type": "object"
+              },
+              "handle": {
+                "$ref": "#/$defs/ResolvedHandle"
+              },
+              "id": {
+                "type": "string"
+              },
+              "instruction": {
+                "type": "string"
+              },
+              "level": {
+                "type": "integer"
+              },
+              "omitPageNumber": {
+                "type": "boolean"
+              },
+              "tableIdentifier": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "handle",
+              "address",
+              "instruction",
+              "text",
+              "level",
+              "omitPageNumber"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "$ref": "#/$defs/PageInfo"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "total",
+        "items",
+        "page"
+      ],
+      "type": "object"
+    }
+  }
+}

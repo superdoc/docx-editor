@@ -1,0 +1,50 @@
+input:
+{
+  "comment": {
+    "commentId": "tc|move|1%7C101::move-to",
+    "trackedChange": true,
+    "trackedChangeCanonicalId": "tc|move|1%7C101",
+    "trackedChangeSubtype": "move-to",
+    "trackedChangeStory": {
+      "kind": "story",
+      "storyType": "headerFooterPart",
+      "refId": "rId-footer"
+    },
+    "selection": {
+      "page": 1
+    }
+  },
+  "positionKey": "tc::hf:part:rId-footer::tc|move|1%7C101",
+  "positionEntry": {
+    "rects": "<undefined>"
+  },
+  "fallbackId": "tc|move|1%7C101::move-to"
+}
+
+instances:
+[
+  {
+    "id": "tc|move|1%7C101::move-to",
+    "threadId": "tc|move|1%7C101::move-to",
+    "comment": {
+      "commentId": "tc|move|1%7C101::move-to",
+      "trackedChange": true,
+      "trackedChangeCanonicalId": "tc|move|1%7C101",
+      "trackedChangeSubtype": "move-to",
+      "trackedChangeStory": {
+        "kind": "story",
+        "storyType": "headerFooterPart",
+        "refId": "rId-footer"
+      },
+      "selection": {
+        "page": 1
+      }
+    },
+    "positionKey": "tc::hf:part:rId-footer::tc|move|1%7C101",
+    "positionEntry": {
+      "rects": "<undefined>"
+    },
+    "pageIndex": null,
+    "isPrimary": true
+  }
+]

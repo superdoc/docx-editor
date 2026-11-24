@@ -97,6 +97,35 @@ const makeFloatManager = (): FloatingObjectManager => ({
   setLayoutContext: mock(),
 });
 
+const makePages = (firstPage: PageState) => {
+  const pages = [firstPage];
+  const advanceColumn = mock((state: PageState): PageState => {
+    const next: PageState = {
+      ...state,
+      cursorY: state.topMargin,
+      maxCursorY: state.topMargin,
+      trailingSpacing: 0,
+      page: { number: state.page.number + 1, fragments: [] },
+    };
+    pages.push(next);
+    return next;
+  });
+  return { pages, advanceColumn, ensurePage: mock(() => pages[pages.length - 1]) };
+};
+
+const placedFragments = (pages: PageState[]) =>
+  pages.flatMap((state) =>
+    state.page.fragments
+      .filter((fragment) => fragment.blockId !== 'existing')
+      .map((fragment) => ({
+        page: state.page.number,
+        kind: fragment.kind,
+        blockId: fragment.blockId,
+        y: fragment.y,
+        ...(fragment.kind === 'para' ? { lines: `${fragment.fromLine}-${fragment.toLine}` } : {}),
+      })),
+  );
+
 describe('layoutParagraphBlock - column ownership', () => {
   it('records the flow column on ordinary paragraph fragments', () => {
     const state = makePageState();
@@ -2470,7 +2499,7 @@ describe('layoutParagraphBlock - paragraph-relative anchored image pagination', 
       currentState = secondPage;
       return secondPage;
     });
-    const floatManager = makeFloatManager();
+    const floatManager = createFloatingObjectManager({ width: 600, gap: 0, count: 1 }, { left: 50, right: 50 }, 700);
     const block: ParagraphBlock = {
       kind: 'paragraph',
       id: 'image-anchor-paragraph',
@@ -2522,7 +2551,10 @@ describe('layoutParagraphBlock - paragraph-relative anchored image pagination', 
     const image = secondPage.page.fragments[0] as ImageFragment;
     expect(image.y).toBe(50);
     expect(image.y + image.height).toBeLessThanOrEqual(secondPage.contentBottom);
-    expect(floatManager.registerDrawing).toHaveBeenCalledWith(imageBlock, imageMeasure, 50, 0, 2);
+    expect(floatManager.getAllFloatsForPage(1)).toHaveLength(0);
+    expect(floatManager.getAllFloatsForPage(2).map((zone) => zone.bounds)).toEqual([
+      { x: 100, y: 50, width: 500, height: 320 },
+    ]);
   });
 
   it('moves paragraph-relative wrap-none behind-doc images instead of placing them in the previous footer', () => {
@@ -2594,15 +2626,14 @@ describe('layoutParagraphBlock - paragraph-relative anchored image pagination', 
     expect(image.behindDoc).toBe(true);
     expect(image.y).toBe(50);
     expect(image.y + image.height).toBeLessThanOrEqual(secondPage.contentBottom);
-    expect(floatManager.registerDrawing).toHaveBeenCalledWith(imageBlock, imageMeasure, 50, 0, 2);
   });
 
   it('does not advance repeatedly when the image cannot fit on an empty page', () => {
     const page = makePageState();
     page.cursorY = 700;
     page.maxCursorY = 700;
+    const { pages, ensurePage, advanceColumn } = makePages(page);
 
-    const advanceColumn = mock(() => page);
     const imageBlock: ImageBlock = {
       kind: 'image',
       id: 'oversized-page-bottom-image',
@@ -2622,7 +2653,7 @@ describe('layoutParagraphBlock - paragraph-relative anchored image pagination', 
         block: { kind: 'paragraph', id: 'oversized-image-anchor', runs: [] },
         measure: makeMeasure([{ width: 0, lineHeight: 20, maxWidth: 600 }]),
         columnWidth: 600,
-        ensurePage: mock(() => page),
+        ensurePage,
         advanceColumn,
         columnX: mock(() => 50),
         floatManager: makeFloatManager(),
@@ -2638,209 +2669,76 @@ describe('layoutParagraphBlock - paragraph-relative anchored image pagination', 
       },
     );
 
-    expect(advanceColumn).not.toHaveBeenCalled();
+    expect(placedFragments(pages)).toEqual([
+      { page: 1, kind: 'image', blockId: 'oversized-page-bottom-image', y: 700 },
+      { page: 1, kind: 'para', blockId: 'oversized-image-anchor', y: 700, lines: '0-1' },
+    ]);
+    expect(pages).toHaveLength(1);
   });
 });
 
 describe('layoutParagraphBlock - keepLines', () => {
-  it('advances to next page when keepLines is true and paragraph does not fit', () => {
-    const block: ParagraphBlock = {
-      kind: 'paragraph',
-      id: 'test-block',
-      runs: [{ text: 'Test', fontFamily: 'Arial', fontSize: 12 }],
-      attrs: {
-        keepLines: true,
-      },
-    };
+  const keepLinesBlock: ParagraphBlock = {
+    kind: 'paragraph',
+    id: 'test-block',
+    runs: [{ text: 'Test', fontFamily: 'Arial', fontSize: 12 }],
+    attrs: { keepLines: true, widowControl: false },
+  };
+  const linesOf = (count: number, lineHeight: number) =>
+    makeMeasure(Array.from({ length: count }, () => ({ width: 100, lineHeight, maxWidth: 200 })));
+  const layoutOnPages = (block: ParagraphBlock, measure: ParagraphMeasure, firstPage: PageState) => {
+    firstPage.page.fragments.push({ blockId: 'existing', kind: 'para' } as never);
+    const { pages, ensurePage, advanceColumn } = makePages(firstPage);
+    layoutParagraphBlock({
+      block,
+      measure,
+      columnWidth: 200,
+      ensurePage,
+      advanceColumn,
+      columnX: mock(() => 50),
+      floatManager: makeFloatManager(),
+    });
+    return placedFragments(pages).filter((fragment) => fragment.blockId === block.id);
+  };
 
-    // 3 lines of 50px each = 150px total height
-    const measure = makeMeasure([
-      { width: 100, lineHeight: 50, maxWidth: 200 },
-      { width: 100, lineHeight: 50, maxWidth: 200 },
-      { width: 100, lineHeight: 50, maxWidth: 200 },
-    ]);
-
+  it('moves the whole paragraph to the next page when it does not fit but fits on a blank page', () => {
     const pageState = makePageState();
-    // cursorY=50, contentBottom=750, so available = 700
-    // But we'll set cursorY high so only 100px remains (not enough for 150px)
     pageState.cursorY = 650;
-    pageState.page.fragments.push({ blockId: 'existing', kind: 'para' } as never);
 
-    let currentState = pageState;
-    const advanceColumn = mock((state: PageState) => {
-      currentState = {
-        ...state,
-        cursorY: 50, // Reset to top of new page
-        maxCursorY: 50,
-        page: { number: state.page.number + 1, fragments: [] },
-        trailingSpacing: 0,
-      };
-      return currentState;
-    });
-
-    const ctx: ParagraphLayoutContext = {
-      block,
-      measure,
-      columnWidth: 200,
-      ensurePage: mock(() => currentState),
-      advanceColumn,
-      columnX: mock(() => 50),
-      floatManager: makeFloatManager(),
-    };
-
-    layoutParagraphBlock(ctx);
-
-    // Should have advanced to next page because paragraph (150px) > remaining (100px)
-    // but fits on blank page (150px < 700px)
-    expect(advanceColumn).toHaveBeenCalled();
-  });
-
-  it('does not advance when keepLines is true but paragraph fits on current page', () => {
-    const block: ParagraphBlock = {
-      kind: 'paragraph',
-      id: 'test-block',
-      runs: [{ text: 'Test', fontFamily: 'Arial', fontSize: 12 }],
-      attrs: {
-        keepLines: true,
-      },
-    };
-
-    // 3 lines of 50px each = 150px total height
-    const measure = makeMeasure([
-      { width: 100, lineHeight: 50, maxWidth: 200 },
-      { width: 100, lineHeight: 50, maxWidth: 200 },
-      { width: 100, lineHeight: 50, maxWidth: 200 },
+    expect(layoutOnPages(keepLinesBlock, linesOf(3, 50), pageState)).toEqual([
+      { page: 2, kind: 'para', blockId: 'test-block', y: 50, lines: '0-3' },
     ]);
-
-    const pageState = makePageState();
-    // cursorY=50, contentBottom=750, available = 700px - enough for 150px
-    pageState.page.fragments.push({ blockId: 'existing', kind: 'para' } as never);
-
-    const advanceColumn = mock((state: PageState) => state);
-
-    const ctx: ParagraphLayoutContext = {
-      block,
-      measure,
-      columnWidth: 200,
-      ensurePage: mock(() => pageState),
-      advanceColumn,
-      columnX: mock(() => 50),
-      floatManager: makeFloatManager(),
-    };
-
-    layoutParagraphBlock(ctx);
-
-    // Should NOT advance - paragraph fits
-    expect(advanceColumn).not.toHaveBeenCalled();
   });
 
-  it('does not pre-advance for keepLines when paragraph cannot fit on a blank page', () => {
-    const block: ParagraphBlock = {
-      kind: 'paragraph',
-      id: 'test-block',
-      runs: [{ text: 'Test', fontFamily: 'Arial', fontSize: 12 }],
-      attrs: {
-        keepLines: true,
-      },
-    };
-
-    // 20 lines of 50px each = 1000px total height (exceeds page content area)
-    const measure = makeMeasure(
-      Array(20)
-        .fill(null)
-        .map(() => ({ width: 100, lineHeight: 50, maxWidth: 200 })),
-    );
-
-    const pageState = makePageState();
-    // contentBottom - topMargin = 750 - 50 = 700px page content height
-    // Paragraph is 1000px, won't fit on blank page
-    pageState.cursorY = 650; // Only 100px remaining
-    pageState.page.fragments.push({ blockId: 'existing', kind: 'para' } as never);
-
-    let currentState = pageState;
-    const advanceColumn = mock((state: PageState) => {
-      currentState = {
-        ...state,
-        page: { number: state.page.number + 1, fragments: [] },
-        cursorY: state.topMargin,
-        trailingSpacing: 0,
-      };
-      return currentState;
-    });
-
-    const ctx: ParagraphLayoutContext = {
-      block,
-      measure,
-      columnWidth: 200,
-      ensurePage: mock(() => currentState),
-      advanceColumn,
-      columnX: mock(() => 50),
-      floatManager: makeFloatManager(),
-    };
-
-    layoutParagraphBlock(ctx);
-
-    // keepLines should not force an upfront move to the next page when the paragraph
-    // cannot fit on a blank page anyway. The first fragment should still start on this page.
-    const firstFragment = pageState.page.fragments.find(
-      (fragment) => fragment.kind === 'para' && fragment.blockId === 'test-block',
-    ) as { y: number } | undefined;
-    expect(firstFragment).toBeTruthy();
-    expect(firstFragment?.y).toBe(650);
-    // The paragraph is still taller than the page, so normal pagination advances later.
-    expect(advanceColumn).toHaveBeenCalled();
-  });
-
-  it('uses baseSpacingBefore (not collapsed) for blank page fit check', () => {
-    const block: ParagraphBlock = {
-      kind: 'paragraph',
-      id: 'test-block',
-      runs: [{ text: 'Test', fontFamily: 'Arial', fontSize: 12 }],
-      attrs: {
-        keepLines: true,
-        spacing: { before: 50 }, // 50px spacing before
-      },
-    };
-
-    // 3 lines of 200px each = 600px, plus 50px spacing = 650px
-    // Page content is 700px, so it fits on blank page
-    const measure = makeMeasure([
-      { width: 100, lineHeight: 200, maxWidth: 200 },
-      { width: 100, lineHeight: 200, maxWidth: 200 },
-      { width: 100, lineHeight: 200, maxWidth: 200 },
+  it('keeps the paragraph on the current page when it fits', () => {
+    expect(layoutOnPages(keepLinesBlock, linesOf(3, 50), makePageState())).toEqual([
+      { page: 1, kind: 'para', blockId: 'test-block', y: 50, lines: '0-3' },
     ]);
+  });
 
+  it('splits normally from the current page when the paragraph cannot fit on a blank page', () => {
     const pageState = makePageState();
-    // Current page has trailing spacing of 40px
-    // Collapsed spacing = max(50-40, 0) = 10px (less space needed on current page)
-    // But blank page needs full 50px spacing
+    pageState.cursorY = 650;
+
+    expect(layoutOnPages(keepLinesBlock, linesOf(20, 50), pageState)).toEqual([
+      { page: 1, kind: 'para', blockId: 'test-block', y: 650, lines: '0-2' },
+      { page: 2, kind: 'para', blockId: 'test-block', y: 50, lines: '2-16' },
+      { page: 3, kind: 'para', blockId: 'test-block', y: 50, lines: '16-20' },
+    ]);
+  });
+
+  it('uses the collapsed spacing on the current page, not the blank-page spacing, to decide it fits', () => {
+    const block: ParagraphBlock = {
+      ...keepLinesBlock,
+      attrs: { keepLines: true, widowControl: false, spacing: { before: 50 } },
+    };
+    const pageState = makePageState();
     pageState.trailingSpacing = 40;
-    pageState.cursorY = 100; // 650px remaining on current page
-    pageState.page.fragments.push({ blockId: 'existing', kind: 'para' } as never);
+    pageState.cursorY = 100;
 
-    const advanceColumn = mock((state: PageState) => ({
-      ...state,
-      cursorY: 50,
-      maxCursorY: 50,
-      trailingSpacing: 0,
-      page: { number: 2, fragments: [] },
-    }));
-
-    const ctx: ParagraphLayoutContext = {
-      block,
-      measure,
-      columnWidth: 200,
-      ensurePage: mock(() => pageState),
-      advanceColumn,
-      columnX: mock(() => 50),
-      floatManager: makeFloatManager(),
-    };
-
-    layoutParagraphBlock(ctx);
-
-    // Paragraph (600px) + collapsed spacing (10px) = 610px fits in 650px remaining
-    // So it should NOT advance (it fits on current page)
-    expect(advanceColumn).not.toHaveBeenCalled();
+    expect(layoutOnPages(block, linesOf(3, 200), pageState)).toEqual([
+      { page: 1, kind: 'para', blockId: 'test-block', y: 110, lines: '0-3' },
+    ]);
   });
 });
 

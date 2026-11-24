@@ -156,12 +156,16 @@ function assertPositiveInteger(value: unknown, fieldName: string): void {
   }
 }
 
-function assertNonNegativeNumber(value: unknown, fieldName: string): void {
+function assertNonNegativeNumber(value: unknown, fieldName: string, unit?: 'inches'): void {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new DocumentApiValidationError('INVALID_INPUT', `${fieldName} must be a non-negative number.`, {
-      field: fieldName,
-      value,
-    });
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `${fieldName} must be a ${unit ? 'finite non-negative number in inches (1 inch = 1440 twips)' : 'non-negative number'}.`,
+      {
+        field: fieldName,
+        value,
+      },
+    );
   }
 }
 
@@ -314,11 +318,11 @@ export function executeSectionsSetPageMargins(
     );
   }
 
-  if (input.top !== undefined) assertNonNegativeNumber(input.top, 'sections.setPageMargins.top');
-  if (input.right !== undefined) assertNonNegativeNumber(input.right, 'sections.setPageMargins.right');
-  if (input.bottom !== undefined) assertNonNegativeNumber(input.bottom, 'sections.setPageMargins.bottom');
-  if (input.left !== undefined) assertNonNegativeNumber(input.left, 'sections.setPageMargins.left');
-  if (input.gutter !== undefined) assertNonNegativeNumber(input.gutter, 'sections.setPageMargins.gutter');
+  if (input.top !== undefined) assertNonNegativeNumber(input.top, 'sections.setPageMargins.top', 'inches');
+  if (input.right !== undefined) assertNonNegativeNumber(input.right, 'sections.setPageMargins.right', 'inches');
+  if (input.bottom !== undefined) assertNonNegativeNumber(input.bottom, 'sections.setPageMargins.bottom', 'inches');
+  if (input.left !== undefined) assertNonNegativeNumber(input.left, 'sections.setPageMargins.left', 'inches');
+  if (input.gutter !== undefined) assertNonNegativeNumber(input.gutter, 'sections.setPageMargins.gutter', 'inches');
 
   return adapter.setPageMargins(input, normalizeMutationOptions(options));
 }

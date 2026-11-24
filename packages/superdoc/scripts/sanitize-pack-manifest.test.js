@@ -20,7 +20,7 @@ describe('resolveEngineVersion', () => {
 });
 
 describe('buildSanitizedPackManifest', () => {
-  it('returns a publish-only manifest without mutating the source object', () => {
+  it('returns a publish-only manifest without mutating the source object', async () => {
     const source = {
       name: 'superdoc',
       version: '1.2.3',
@@ -45,7 +45,7 @@ describe('buildSanitizedPackManifest', () => {
     };
     const before = JSON.stringify(source);
 
-    const packed = buildSanitizedPackManifest(source, {
+    const options = {
       hasInternalWorkspace: true,
       files: ['dist', 'dist-cdn', 'README.md', 'LICENSE', 'NOTICE'],
       catalog: {
@@ -54,23 +54,18 @@ describe('buildSanitizedPackManifest', () => {
         uuid: '^11.1.1',
         yjs: '^13.6.19',
       },
-    });
+    };
+    const packed = buildSanitizedPackManifest(source, options);
 
     expect(JSON.stringify(source)).toBe(before);
-    expect(packed.dependencies['@superdoc/docx-engine']).toBe('0.1.3-next.1');
-    expect(packed.dependencies['@types/mdast']).toBe('^4.0.4');
-    expect(packed.dependencies.uuid).toBe('^11.1.1');
-    expect(packed.optionalDependencies['@types/ws']).toBe('^8.18.1');
-    expect(packed.peerDependencies).toEqual({ yjs: '^13.6.19', react: '>=16.8.0' });
-    expect(packed.exports['.']).toEqual({
-      import: './dist/index.js',
-      types: { import: './dist/index.d.ts' },
-    });
-    expect(packed.devDependencies).toBeUndefined();
-    expect(packed.unpkg).toBeUndefined();
-    expect(packed.jsdelivr).toBeUndefined();
-    expect(packed.scripts).toEqual({ test: 'vp test' });
-    expect(packed.files).toEqual(['dist', 'dist-cdn', 'README.md', 'LICENSE', 'NOTICE']);
+    const recording = [
+      `source manifest:\n${JSON.stringify(source, null, 2)}`,
+      `options:\n${JSON.stringify(options, null, 2)}`,
+      `packed manifest:\n${JSON.stringify(packed, null, 2)}`,
+    ].join('\n\n');
+    await expect(`${recording}\n`).toMatchFileSnapshot(
+      './__snapshots__/sanitize-pack-manifest/orbit-workspace-manifest.txt',
+    );
   });
 
   it('fails closed for missing catalog entries and residual local protocols', () => {

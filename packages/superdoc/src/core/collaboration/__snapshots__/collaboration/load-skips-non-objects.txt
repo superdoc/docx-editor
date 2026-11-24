@@ -1,0 +1,54 @@
+yjs comments:
+[
+  null,
+  "not-a-comment",
+  42,
+  {
+    "createdTime": 1767225600000,
+    "commentId": "c1",
+    "commentText": "Hello"
+  }
+]
+
+store:
+[
+  {
+    "commentId": "c1",
+    "mentions": [],
+    "creatorId": null,
+    "creatorEmail": null,
+    "creatorName": null,
+    "creatorImage": null,
+    "createdTime": 1767225600000,
+    "importedAuthor": null,
+    "docxCommentJSON": null,
+    "isInternal": true,
+    "commentText": "Hello",
+    "commentFormat": "html",
+    "selection": {
+      "page": 1,
+      "selectionBounds": {}
+    },
+    "trackedChangeText": null,
+    "trackedChangeType": null,
+    "trackedChangeDisplayType": null,
+    "semanticColorKey": null,
+    "semanticColor": null,
+    "trackedChangeStory": null,
+    "trackedChangeStoryKind": null,
+    "trackedChangeStoryLabel": "",
+    "trackedChangeAnchorKey": null,
+    "trackedChangeCanonicalId": null,
+    "trackedChangePositionAliases": [],
+    "trackedChangeDecision": null,
+    "trackedChangeLabel": null,
+    "trackedChangeDetailLines": null,
+    "trackedChangeImagePreview": null,
+    "customAttributes": null,
+    "deletedText": null,
+    "resolvedTime": null,
+    "resolvedById": null,
+    "resolvedByEmail": null,
+    "resolvedByName": null
+  }
+]

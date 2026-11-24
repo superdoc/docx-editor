@@ -160,6 +160,8 @@ export interface DiffApplyResult {
   diagnostics: string[];
   /** Style policy used for this comparison. Tracked mode preserves unused proposal definitions after rejection. */
   styleChanges?: { changeMode: 'direct' | 'tracked'; partUris: string[] };
+  settingsChanges?: { changeMode: 'direct'; partUris: string[] };
+  numberingChanges?: { changeMode: 'direct'; partUris: string[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +174,8 @@ export interface DiffCompareInput {
   includeDisplay?: boolean;
   /** Directly adopt definitions, or review references to separate proposed styles. */
   styleChangeMode?: 'direct' | 'tracked';
+  settingsChangeMode?: 'direct';
+  numberingChangeMode?: 'direct';
 }
 
 /** Input for `diff.apply`. */
@@ -179,6 +183,8 @@ export interface DiffApplyInput {
   diff: DiffPayload;
   /** Tracked styles require tracked application; direct styles persist after body rejection. */
   styleChangeMode?: 'direct' | 'tracked';
+  settingsChangeMode?: 'direct';
+  numberingChangeMode?: 'direct';
 }
 
 // ---------------------------------------------------------------------------

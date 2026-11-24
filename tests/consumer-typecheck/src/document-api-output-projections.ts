@@ -16,6 +16,7 @@ type HtmlProjectionResult = Awaited<ReturnType<DocumentApi['projectHtml']>>;
 type MarkdownProjectionResult = Awaited<ReturnType<DocumentApi['projectMarkdown']>>;
 
 const htmlInput: ProjectHtmlInput = {
+  styling: 'inline',
   reviewMode: 'redline',
   scope: trackedScope,
   includeSourceMap: true,
@@ -38,14 +39,14 @@ const invokedMarkdownProjection: Promise<MarkdownProjectionResult> = doc.invoke<
   input: markdownInput,
 });
 
-const compactHtml: string = doc.getHtml({ reviewMode: 'redline', scope: trackedScope });
+const compactHtml: string = doc.getHtml({ styling: 'inline', reviewMode: 'redline', scope: trackedScope });
 const deprecatedListOptionStillCompiles: string = doc.getHtml({ unflattenLists: false });
 const compactMarkdown: string = doc.getMarkdown({ reviewMode: 'original', scope: trackedScope });
 
 const browserHtmlProjection: ReturnType<BrowserDocumentApi['projectHtml']> = browserDoc.projectHtml(htmlInput);
 const browserMarkdownProjection: ReturnType<BrowserDocumentApi['projectMarkdown']> =
   browserDoc.projectMarkdown(markdownInput);
-const browserCompactHtml: ReturnType<BrowserDocumentApi['getHtml']> = browserDoc.getHtml({});
+const browserCompactHtml: ReturnType<BrowserDocumentApi['getHtml']> = browserDoc.getHtml({ styling: 'inline' });
 
 declare const htmlResult: HtmlProjectionResult;
 declare const markdownResult: MarkdownProjectionResult;

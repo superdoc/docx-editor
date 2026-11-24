@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vite-plus/test';
 import {
   claimFindShortcut,
+  isFindShortcutEvent,
   releaseFindShortcut,
   ownsAmbientFindShortcut,
   shouldHandleFindShortcut,
@@ -98,6 +99,65 @@ describe('find-shortcut-owner', () => {
     try {
       const event = new KeyboardEvent('keydown', { key: 'f', metaKey: true, cancelable: true });
       expect(shouldHandleFindShortcut(event, { focusInside: false, owner: instanceA })).toBe(false);
+    } finally {
+      input.remove();
+    }
+  });
+});
+
+describe('platform Find command modifier', () => {
+  for (const platform of ['MacIntel', 'Win32', 'Linux x86_64', 'iPhone', 'iPad', 'iPod']) {
+    for (const modifiers of [
+      { metaKey: true, ctrlKey: false },
+      { metaKey: false, ctrlKey: true },
+      { metaKey: true, ctrlKey: true },
+      { metaKey: false, ctrlKey: false },
+    ]) {
+      const accepted = /Mac|iPhone|iPad|iPod/.test(platform)
+        ? modifiers.metaKey && !modifiers.ctrlKey
+        : modifiers.ctrlKey && !modifiers.metaKey;
+      it(`${platform} Meta=${modifiers.metaKey} Ctrl=${modifiers.ctrlKey} preserves Find ownership and fallthrough`, () => {
+        const previousOwner = {};
+        const focusedOwner = {};
+        claimFindShortcut(previousOwner);
+        const opened: unknown[] = [];
+        const handle = (event: KeyboardEvent) => {
+          if (!isFindShortcutEvent(event, platform)) return;
+          if (!shouldHandleFindShortcut(event, { focusInside: true, owner: focusedOwner })) return;
+          event.preventDefault();
+          claimFindShortcut(focusedOwner);
+          opened.push(focusedOwner);
+        };
+        try {
+          const event = new KeyboardEvent('keydown', { key: 'F', ...modifiers, cancelable: true });
+          handle(event);
+          handle(event);
+          expect(event.defaultPrevented).toBe(accepted);
+          expect(opened).toHaveLength(accepted ? 1 : 0);
+          expect(ownsAmbientFindShortcut(previousOwner)).toBe(!accepted);
+          const alt = new KeyboardEvent('keydown', { key: 'f', ...modifiers, altKey: true, cancelable: true });
+          expect(isFindShortcutEvent(alt, platform)).toBe(false);
+          expect(isFindShortcutEvent(new KeyboardEvent('keydown', { key: 'g', ...modifiers }), platform)).toBe(false);
+        } finally {
+          releaseFindShortcut(focusedOwner);
+          releaseFindShortcut(previousOwner);
+        }
+      });
+    }
+  }
+
+  it('leaves external inputs and already consumed Find keys alone', () => {
+    const owner = {};
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    try {
+      const event = new KeyboardEvent('keydown', { key: 'f', metaKey: true, cancelable: true });
+      expect(isFindShortcutEvent(event, 'MacIntel')).toBe(true);
+      expect(shouldHandleFindShortcut(event, { focusInside: false, owner })).toBe(false);
+      expect(event.defaultPrevented).toBe(false);
+      event.preventDefault();
+      expect(shouldHandleFindShortcut(event, { focusInside: true, owner })).toBe(false);
     } finally {
       input.remove();
     }

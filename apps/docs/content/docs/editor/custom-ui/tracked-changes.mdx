@@ -51,6 +51,8 @@ Both versions use one domain handle:
 - Set `ui.comments` to `false` to remove SuperDoc's comments and review sidebar without removing review data from the
   DOCX.
 - Use `observe()` or `useSuperDocTrackChanges()` to keep the list and active change current.
+- Show a list change with its row's `listLabel`, such as `Split list item`, `Merged list items` or
+  `Removed from list`. It is the label SuperDoc's review card shows, and it is absent for other changes.
 - Run `setActive()` with `scrollTo()`, or `navigatePrevious()` and `navigateNext()`, to move between document marks.
 - Run `acceptAsync()` or `rejectAsync()` with the row's `{ id, story }` and await the settled result. Keep the panel
   pending until it resolves, then report success or the failure message.

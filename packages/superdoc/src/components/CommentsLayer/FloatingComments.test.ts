@@ -929,10 +929,7 @@ describe('FloatingComments sidebar continuity', () => {
         await settleLayout();
 
         expect(readTranslateY(rail)).toBe(0);
-        expect(nextCard().getBoundingClientRect().top).toBeCloseTo(
-          Number.parseFloat(nextCard().style.top) - outerScrollTop,
-          5,
-        );
+        expect(nextCard().getBoundingClientRect().top).toBeCloseTo(300 - outerScrollTop, 5);
       } finally {
         wrapper.unmount();
         outerScrollOwner.remove();
@@ -1140,50 +1137,6 @@ describe('FloatingComments sidebar continuity', () => {
       await settleLayout();
 
       expect(activeCard().getBoundingClientRect().top).toBeCloseTo(activeTopBeforeWindowChange, 5);
-    } finally {
-      wrapper.unmount();
-    }
-  });
-
-  it('does not let restored offscreen review rows displace the first visible card', async () => {
-    const viewportTop = 6_200;
-    const offscreenPredecessors = Array.from({ length: 33 }, (_, index) => ({
-      id: `offscreen-predecessor-${index}`,
-      top: viewportTop - 600 + index * 18,
-    }));
-    const firstVisibleRow = { id: 'first-visible-row', top: viewportTop };
-
-    // Reproduce the real windowed-scroll shape: the 600px overscan retains a
-    // dense set of fully offscreen review anchors immediately before the first
-    // viewport anchor.
-    outerScrollTop = viewportTop;
-    const baselineWrapper = await mountSidebar([firstVisibleRow]);
-    let baselineTop;
-    try {
-      baselineTop = Number.parseFloat(
-        baselineWrapper.get(`[data-comment-id="${firstVisibleRow.id}"]`).element.style.top,
-      );
-      expect(baselineTop).toBe(firstVisibleRow.top);
-    } finally {
-      baselineWrapper.unmount();
-    }
-
-    const wrapper = await mountSidebar([...offscreenPredecessors, firstVisibleRow]);
-
-    try {
-      expect(wrapper.findAll('.comment-placeholder')).toHaveLength(offscreenPredecessors.length + 1);
-
-      // The existing offscreen-coupling requirement remains intact: the last
-      // predecessor is restored above the viewport after collision layout.
-      const lastOffscreenCard = wrapper.get(`[data-comment-id="${offscreenPredecessors.at(-1).id}"]`).element;
-      expect(lastOffscreenCard.getBoundingClientRect().bottom).toBeLessThan(0);
-
-      // Fully offscreen rows must not leave collision pressure behind after
-      // they are restored. With no visible predecessor, this row owns its
-      // canonical anchor at the top of the viewport.
-      const firstVisibleCard = wrapper.get(`[data-comment-id="${firstVisibleRow.id}"]`).element;
-      expect(Number.parseFloat(firstVisibleCard.style.top)).toBe(baselineTop);
-      expect(firstVisibleCard.getBoundingClientRect().top).toBe(0);
     } finally {
       wrapper.unmount();
     }

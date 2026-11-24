@@ -96,6 +96,34 @@ describe('selection host reads over a helper that is not an object literal', () 
     }
   });
 
+  it('refuses a live comment if the selection is superseded during a model capture', async () => {
+    const point = { kind: 'text' as const, blockId: 'P1', offset: 0 };
+    const target = { kind: 'selection' as const, start: point, end: { ...point, offset: 3 }, captureState: 'first' };
+    const info = { empty: false, selectionTarget: target };
+    let generation = 0;
+    const current = vi.fn<() => typeof info | Promise<typeof info>>(() => info);
+    const create = vi.fn();
+    const ui = mount(
+      { apply: () => ({ ok: true }), selectionRequestGeneration: () => generation },
+      { selection: { current }, comments: { create } },
+    );
+    try {
+      let settle!: (value: typeof info) => void;
+      current.mockReturnValueOnce(
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+      );
+      const receipt = ui.comments.createFromSelection({ text: 'Superseded' });
+      generation++;
+      settle(info);
+      expect(await receipt).toMatchObject({ success: false });
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      ui.destroy();
+    }
+  });
+
   it('refuses a comment when the selection request is blocked', async () => {
     const create = vi.fn();
     const ui = mount(

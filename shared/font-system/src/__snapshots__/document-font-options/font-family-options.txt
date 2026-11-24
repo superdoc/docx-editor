@@ -1,0 +1,35 @@
+no pack configured
+  Apple Chancery -> value Apple Chancery, preview Apple Chancery
+  Aptos -> value Aptos, preview Aptos
+  Arial -> value Arial, preview Arial
+  Bangla MN -> value Bangla MN, preview Bangla MN
+  Calibri -> value Calibri, preview Carlito
+  Courier New -> value Courier New, preview Courier New
+  Times New Roman -> value Times New Roman, preview Times New Roman
+
+pack configured
+  Apple Chancery -> value Apple Chancery, preview Apple Chancery
+  Aptos -> value Aptos, preview Aptos
+  Arial -> value Arial, preview Liberation Sans
+  Arial Black -> value Arial Black, preview Archivo Black
+  Arial Narrow -> value Arial Narrow, preview Liberation Sans Narrow
+  Bangla MN -> value Bangla MN, preview Bangla MN
+  Baskerville Old Face -> value Baskerville Old Face, preview Bacasime Antique
+  Bookman Old Style -> value Bookman Old Style, preview TeX Gyre Bonum
+  Brush Script MT -> value Brush Script MT, preview Oregano Italic
+  Calibri -> value Calibri, preview Carlito
+  Century -> value Century, preview C059
+  Century Gothic -> value Century Gothic, preview URW Gothic
+  Comic Sans MS -> value Comic Sans MS, preview Comic Relief
+  Cooper Black -> value Cooper Black, preview Caprasimo
+  Courier New -> value Courier New, preview Liberation Mono
+  Garamond -> value Garamond, preview Cardo
+  Georgia -> value Georgia, preview Gelasio
+  Gill Sans MT Condensed -> value Gill Sans MT Condensed, preview PT Sans Narrow
+  Helvetica -> value Helvetica, preview Liberation Sans
+  Lucida Console -> value Lucida Console, preview Noto Sans Mono
+  Segoe UI -> value Segoe UI, preview Selawik
+  Tahoma -> value Tahoma, preview Noto Sans
+  Times New Roman -> value Times New Roman, preview Liberation Serif
+  Trebuchet MS -> value Trebuchet MS, preview PT Sans
+  Verdana -> value Verdana, preview Noto Sans

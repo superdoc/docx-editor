@@ -1,0 +1,72 @@
+{
+  "definition": {
+    "description": "Get detailed information about a specific citation mark.",
+    "expectedResult": "Returns a CitationInfo object with the citation's source references and display text.",
+    "memberPath": "citations.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "citations/get.mdx",
+    "referenceGroup": "citations",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "anchor": {
+              "$ref": "#/$defs/InlineAnchor"
+            },
+            "fieldId": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "inline"
+            },
+            "nodeType": {
+              "const": "citation"
+            },
+            "occurrenceIndex": {
+              "type": "integer"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            },
+            "storyId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "anchor"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

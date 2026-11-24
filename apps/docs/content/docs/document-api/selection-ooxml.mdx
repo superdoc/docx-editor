@@ -76,6 +76,32 @@ For exact same-session restoration of a complete direct body paragraph, heading 
 
 The existing `contentControls.replaceContent({ format: 'ooxml' })` remains an inline content-control operation with its own target semantics.
 
+## Find every selected revision
+
+Request `doc.selection.current({ includeLogicalChanges: true })` to read
+`logicalChangeIds`, a canonical inventory of the inline, structural and property
+revisions intersecting the current live selection. Each logical revision appears
+once, using the same ID as `trackChanges.list()` and `trackChanges.get()`. Pass those
+IDs to `trackChanges.decide` to accept or reject the complete logical revisions;
+selecting part of a revision still identifies that whole revision.
+Reaching the end of a story's final paragraph includes that paragraph's mark
+revisions, including when the paragraph is empty.
+
+The inventory follows the focused document story and is independent of visible
+sidebar cards. It does not change selection, content, review state or history.
+Without the option, the inventory is omitted and selection reads retain their
+existing behavior. `activeChangeIds` remains the existing mark-oriented selection
+field; it is not a promise of a complete structural or property inventory.
+
+A host without a live selection returns an empty inventory. A host that cannot
+provide the complete inventory reports `CAPABILITY_UNAVAILABLE` instead of
+silently returning a partial result. Read again after a document change before
+using the inventory for review.
+
+A direct object selection without a public text-selection target reports
+`CAPABILITY_UNAVAILABLE` for this request. Text ranges containing objects remain
+supported.
+
 ## Insert and replace complete equations
 
 Insert a complete Office Math equation through the native OOXML route:

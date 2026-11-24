@@ -1,0 +1,233 @@
+{
+  "definition": {
+    "description": "Set page numbering format/start and chapter numbering settings for a section.",
+    "expectedResult": "Returns a SectionMutationResult receipt; reports NO_OP if page numbering settings already match.",
+    "memberPath": "sections.setPageNumbering",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "sections/set-page-numbering.mdx",
+    "referenceGroup": "sections",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "target",
+            "start"
+          ]
+        },
+        {
+          "required": [
+            "target",
+            "format"
+          ]
+        },
+        {
+          "required": [
+            "target",
+            "chapterStyle"
+          ]
+        },
+        {
+          "required": [
+            "target",
+            "chapterSeparator"
+          ]
+        }
+      ],
+      "properties": {
+        "chapterSeparator": {
+          "enum": [
+            "hyphen",
+            "period",
+            "colon",
+            "emDash",
+            "enDash"
+          ],
+          "type": "string"
+        },
+        "chapterStyle": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "format": {
+          "enum": [
+            "decimal",
+            "lowerLetter",
+            "upperLetter",
+            "lowerRoman",
+            "upperRoman",
+            "numberInDash",
+            "hebrew1",
+            "hebrew2"
+          ]
+        },
+        "start": {
+          "oneOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/SectionAddress"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "section"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "section"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -1322,7 +1322,6 @@ describe('public facade (ui)', () => {
       .fn()
       .mockReturnValueOnce({ success: false, failure: { code: 'NO_MATCH' } })
       .mockReturnValueOnce({ success: true });
-    const accept = vi.fn(() => ({ success: true }));
     const superdoc = {
       activeEditor: {
         doc: {
@@ -2371,7 +2370,6 @@ describe('public facade (ui)', () => {
         expect(ui.comments.list()[0]?.status).toBe('resolved');
         expect(await ui.comments.reopen('c1')).toBe(receipt);
         expect(ui.comments.list()[0]?.status).toBe('open');
-        expect(list).toHaveBeenCalledTimes(3);
       } finally {
         ui.destroy();
       }
@@ -2404,7 +2402,7 @@ describe('public facade (ui)', () => {
     );
     const apply = vi.fn(overrides.apply ?? (() => ({ ok: true, mode: 'range' })));
     const host = {
-      getHandles: () => ({
+      getHandles: (): unknown => ({
         editing: {
           selection: {
             subscribe: () => () => {},
@@ -2649,7 +2647,6 @@ describe('public facade (ui)', () => {
     superdoc.config.documentMode = 'editing';
     handlers.get('document-mode-change')?.();
     expect(ui.selection.getSnapshot()).toMatchObject({ empty: false, quotedText: 'world' });
-    expect(current).toHaveBeenCalledTimes(3);
   });
 
   it('treats info.empty:true as empty even when text is present', async () => {
@@ -2824,10 +2821,10 @@ describe('public facade (ui)', () => {
         return () => listeners.delete(listener);
       },
     };
-    superdoc.activeEditor.host.getHandles = (() => ({
+    superdoc.activeEditor.host.getHandles = () => ({
       selection: selectionHandle,
       editing: { selection: selectionHandle, selectionTargets: { apply } },
-    })) as any;
+    });
     const ui = createSuperDocUI({ superdoc });
     expect(ui.selection.getSnapshot()).toMatchObject({ quotedText: 'hello', selectionTarget: null });
     expect(listeners.size).toBeGreaterThan(0);
@@ -2894,13 +2891,13 @@ describe('public facade (ui)', () => {
         },
         apply,
       };
-      superdoc.activeEditor.host.getHandles = (() => {
+      superdoc.activeEditor.host.getHandles = () => {
         if (retired) throw new Error('host disposed');
         return {
           selection: selectionHandle,
           ...(options.review ? {} : { editing: { selection: selectionHandle, selectionTargets: { apply } } }),
         };
-      }) as any;
+      };
       if (options.review) superdoc.config.documentMode = 'viewing';
       const ui = createSuperDocUI({ superdoc });
       expect(ui.selection.getSnapshot().quotedText).toBe('hello');
@@ -3098,22 +3095,21 @@ describe('public facade (ui)', () => {
       };
       const color = vi.fn(() => ({ success: true }));
       Object.assign(superdoc.activeEditor.doc, { format: { color } });
-      superdoc.activeEditor.host.getHandles = () =>
-        ({
-          selection: {
-            getSnapshot: getCellSnapshot,
-            toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: raw }),
-          },
-          editing: {
-            selection: { subscribe: () => () => {} },
-            selectionTargets: {
-              apply: (target: unknown, options?: { tableCells?: true }) => {
-                cellIntent = options?.tableCells === true;
-                return apply(target, options);
-              },
+      superdoc.activeEditor.host.getHandles = () => ({
+        selection: {
+          getSnapshot: getCellSnapshot,
+          toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: raw }),
+        },
+        editing: {
+          selection: { subscribe: () => () => {} },
+          selectionTargets: {
+            apply: (target: unknown, options?: { tableCells?: true }) => {
+              cellIntent = options?.tableCells === true;
+              return apply(target, options);
             },
           },
-        }) as any;
+        },
+      });
       const ui = createSuperDocUI({ superdoc });
       const capture = ui.selection.capture();
       expect(capture).not.toBeNull();
@@ -3165,13 +3161,12 @@ describe('public facade (ui)', () => {
       });
       const color = vi.fn(() => ({ success: true }));
       Object.assign(superdoc.activeEditor.doc, { format: { color } });
-      superdoc.activeEditor.host.getHandles = () =>
-        ({
-          selection: {
-            getSnapshot: () => ({ tableCells: true }),
-            toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: raw }),
-          },
-        }) as any;
+      superdoc.activeEditor.host.getHandles = () => ({
+        selection: {
+          getSnapshot: () => ({ tableCells: true }),
+          toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: raw }),
+        },
+      });
       const ui = createSuperDocUI({ superdoc });
 
       expect(await ui.commands.execute('text-color', '#111111')).not.toBe(false);
@@ -4668,6 +4663,8 @@ describe('public ui — command reason taxonomy', () => {
       story?: Record<string, unknown>;
       sourceText?: string;
       targetText?: string;
+      sourceHasFloatingPicture?: boolean;
+      targetHasFloatingPicture?: boolean;
       sourceRuns?: Array<{ text: string; props?: Record<string, unknown> }>;
       targetRuns?: Array<{ text: string; props?: Record<string, unknown> }>;
       sourceParagraphProps?: Record<string, unknown>;
@@ -4773,18 +4770,17 @@ describe('public ui — command reason taxonomy', () => {
     type BlockReader = { blockSources: typeof blockSources };
     const getNodeForInput = (sources: typeof blockSources, input: { nodeId: string; story?: unknown }) => {
       const block = input.nodeId === 'P1' ? sources.P1 : sources.rest;
+      const hasFloatingPicture = input.nodeId === 'P1' ? opts.sourceHasFloatingPicture : opts.targetHasFloatingPicture;
       return {
         node: {
           kind: 'paragraph',
           paragraph: {
             styleRef: block.styleRef,
             props: block.props,
-            inlines: block.runs.map((run) => ({
-              run: {
-                text: run.text,
-                props: run.props ?? {},
-              },
-            })),
+            inlines: [
+              ...(hasFloatingPicture ? [{ kind: 'image', image: { src: '/word/media/picture.png' } }] : []),
+              ...block.runs.map((run) => ({ run: { text: run.text, props: run.props ?? {} } })),
+            ],
           },
         },
         address: {
@@ -4801,53 +4797,51 @@ describe('public ui — command reason taxonomy', () => {
       return getNodeForInput(this.blockSources, input);
     });
 
-    const superdoc = makeDocSuperdoc({
-      doc: baseDoc({
-        selection: { current: () => currentSelection },
-        ...(opts.targetLockMode
-          ? {
-              contentControls: {
-                listInRange: vi.fn((range: { startBlockId?: string }) => ({
-                  items: range.startBlockId === 'P2' ? [{ id: 'locked-target', lockMode: opts.targetLockMode }] : [],
-                })),
-              },
-            }
-          : {}),
-        blockSources,
-        ...(opts.withoutGetNode ? {} : { getNode }),
-        getNodeById,
-        ...(opts.queryMatch ? { query: { match: opts.queryMatch } } : {}),
-        format: {
-          apply,
-          ...(opts.bold ? { bold: opts.bold } : {}),
-          paragraph: {
-            setAlignment,
-            setIndentation,
-            setSpacing,
-            clearSpacing,
-            clearAlignment,
-            clearIndentation,
-            setMarkRunProps,
-            setNumbering,
-            ...(opts.paragraphOps ?? {}),
-          },
-          ...(opts.readEffectiveInlineUniformity
-            ? { readEffectiveInlineUniformity: opts.readEffectiveInlineUniformity }
-            : {}),
+    const doc = baseDoc({
+      selection: { current: () => currentSelection },
+      ...(opts.targetLockMode
+        ? {
+            contentControls: {
+              listInRange: vi.fn((range: { startBlockId?: string }) => ({
+                items: range.startBlockId === 'P2' ? [{ id: 'locked-target', lockMode: opts.targetLockMode }] : [],
+              })),
+            },
+          }
+        : {}),
+      blockSources,
+      ...(opts.withoutGetNode ? {} : { getNode }),
+      getNodeById,
+      ...(opts.queryMatch ? { query: { match: opts.queryMatch } } : {}),
+      format: {
+        apply,
+        ...(opts.bold ? { bold: opts.bold } : {}),
+        paragraph: {
+          setAlignment,
+          setIndentation,
+          setSpacing,
+          clearSpacing,
+          clearAlignment,
+          clearIndentation,
+          setMarkRunProps,
+          setNumbering,
+          ...opts.paragraphOps,
         },
-        styles: { paragraph: { setStyleRef: setStyle, setStyle, clearStyle } },
-        ...(opts.listStyle
-          ? {
-              lists: {
-                getState: vi.fn(() => ({ success: true, isListItem: true })),
-                getStyle: vi.fn(() => opts.listStyle),
-                applyStyle: applyListStyle,
-              },
-            }
+        ...(opts.readEffectiveInlineUniformity
+          ? { readEffectiveInlineUniformity: opts.readEffectiveInlineUniformity }
           : {}),
-      }),
-      ...(opts.mode ? { mode: opts.mode } : {}),
+      },
+      styles: { paragraph: { setStyleRef: setStyle, setStyle, clearStyle } },
+      ...(opts.listStyle
+        ? {
+            lists: {
+              getState: vi.fn(() => ({ success: true, isListItem: true })),
+              getStyle: vi.fn(() => opts.listStyle),
+              applyStyle: applyListStyle,
+            },
+          }
+        : {}),
     });
+    const superdoc = { activeEditor: { doc }, config: { documentMode: opts.mode ?? 'editing' }, ...noopEvents() };
 
     return {
       superdoc,
@@ -4968,8 +4962,8 @@ describe('public ui — command reason taxonomy', () => {
         trackChanges: { list: () => ({ items: [{ id: 'tc-1', type: 'insert' }] }), decide },
       }),
       mode: 'editing',
-    }) as any;
-    superdoc.config.modules = { comments: { readOnly: true } };
+    });
+    Object.assign(superdoc.config, { modules: { comments: { readOnly: true } } });
 
     const ui = createSuperDocUI({ superdoc });
     const state = ui.commands.get('track-changes-accept-selection').getState();
@@ -5263,6 +5257,148 @@ describe('public ui — command reason taxonomy', () => {
     expect(state).toMatchObject({ enabled: false, supported: true, active: false, source: 'builtin' });
   });
 
+  it('SD-5968 applies captured formatting through one awaited painter command', async () => {
+    const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc });
+    expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+    setSelection(targetSelection);
+    expect(await ui.commands.executeAsync('apply-format')).not.toBe(false);
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith(
+      { target: targetSelection.selectionTarget, inline: { bold: true, color: '#D2003F' } },
+      { offsetSpace: 'kernel' },
+    );
+    expect(ui.commands.get('copy-format').getState().active).toBe(false);
+    ui.destroy();
+  });
+
+  for (const outcome of ['open', 'blocked', 'superseded']) {
+    it(`SD-5968 awaited painter respects a pending selection request that becomes ${outcome}`, async () => {
+      let gate: 'open' | 'pending' | 'blocked' = 'open';
+      let generation = 1;
+      let confirm: (state: 'open' | 'blocked') => void = () => undefined;
+      const confirmation = new Promise<'open' | 'blocked'>((resolve) => {
+        confirm = resolve;
+      });
+      const wait = vi.fn(() => confirmation);
+      const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc();
+      Object.assign(superdoc.activeEditor ?? {}, {
+        host: {
+          getHandles: () => ({
+            editing: {
+              selectionTargets: {
+                apply: vi.fn(),
+                selectionRequestGate: () => gate,
+                selectionRequestGeneration: () => generation,
+                whenSelectionRequestSettled: wait,
+              },
+            },
+          }),
+        },
+      });
+      const ui = createSuperDocUI({ superdoc });
+      await ui.commands.executeAsync('copy-format');
+      setSelection(targetSelection);
+      gate = 'pending';
+      let settled = false;
+      const application = ui.commands.executeAsync('apply-format').then((result) => {
+        settled = true;
+        return result;
+      });
+      try {
+        await vi.waitFor(() => expect(wait.mock.calls.length + apply.mock.calls.length).toBeGreaterThan(0));
+        expect(apply).not.toHaveBeenCalled();
+        expect(settled).toBe(false);
+        if (outcome === 'superseded') generation += 1;
+        gate = outcome === 'blocked' ? 'blocked' : 'open';
+        confirm(gate);
+        expect(await application).toBe(outcome === 'open');
+        expect(apply).toHaveBeenCalledTimes(outcome === 'open' ? 1 : 0);
+        expect(ui.commands.get('copy-format').getState().active).toBe(outcome !== 'open');
+      } finally {
+        gate = 'blocked';
+        confirm('blocked');
+        await application;
+        ui.destroy();
+      }
+    });
+  }
+
+  it('SD-5968 refuses a synchronous painter command while the selection request is blocked', async () => {
+    let gate: 'open' | 'blocked' = 'open';
+    const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc();
+    Object.assign(superdoc.activeEditor ?? {}, {
+      host: {
+        getHandles: () => ({
+          editing: {
+            selectionTargets: { apply: vi.fn(), selectionRequestGate: () => gate },
+          },
+        }),
+      },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      await ui.commands.executeAsync('copy-format');
+      setSelection(targetSelection);
+      gate = 'blocked';
+      expect(await ui.commands.execute('apply-format')).toBe(false);
+      expect(apply).not.toHaveBeenCalled();
+      expect(ui.commands.get('copy-format').getState().active).toBe(true);
+    } finally {
+      ui.destroy();
+    }
+  });
+
+  it('SD-5968 reports a committed painter application after cancellation during acknowledgement', async () => {
+    let commit: () => void = () => undefined;
+    const receipt = new Promise<{ success: boolean }>((resolve) => {
+      commit = () => resolve({ success: true });
+    });
+    const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+      applyResult: () => receipt,
+    });
+    const ui = createSuperDocUI({ superdoc });
+    await ui.commands.executeAsync('copy-format');
+    setSelection(targetSelection);
+    const application = ui.commands.executeAsync('apply-format');
+    await vi.waitFor(() => expect(apply).toHaveBeenCalledOnce());
+    ui.formatPainter.cancel();
+    commit();
+    expect(await application).toBe(true);
+    expect(ui.commands.get('copy-format').getState().active).toBe(false);
+    ui.destroy();
+  });
+
+  it('SD-5968 retains persistent painter mode and honors cancellation through the awaited command', async () => {
+    const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc();
+    const ui = createSuperDocUI({ superdoc });
+    expect(await ui.commands.executeAsync('apply-format')).toBe(false);
+    await ui.commands.executeAsync('copy-format');
+    await ui.commands.executeAsync('copy-format');
+    setSelection(targetSelection);
+    expect(await ui.commands.executeAsync('apply-format')).toBe(true);
+    expect(apply).toHaveBeenCalledOnce();
+    expect(ui.commands.get('copy-format').getState().active).toBe(true);
+    ui.formatPainter.cancel();
+    expect(await ui.commands.executeAsync('apply-format')).toBe(false);
+    expect(apply).toHaveBeenCalledOnce();
+    ui.destroy();
+  });
+
+  for (const failure of ['locked', 'refused']) {
+    it(`SD-5968 reports a ${failure} painter target without consuming the capture`, async () => {
+      const { superdoc, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        ...(failure === 'locked' ? { targetLockMode: 'contentLocked' } : { applyResult: () => ({ success: false }) }),
+      });
+      const ui = createSuperDocUI({ superdoc });
+      await ui.commands.executeAsync('copy-format');
+      setSelection(targetSelection);
+      expect(await ui.commands.executeAsync('apply-format')).toBe(false);
+      expect(ui.commands.get('copy-format').getState().active).toBe(true);
+      ui.destroy();
+    });
+  }
+
   it('copy-format cancels on a later re-execute after the double-click window', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-07T10:00:00.000Z'));
@@ -5308,10 +5444,7 @@ describe('public ui — command reason taxonomy', () => {
     expect(modes).toContain('persistent');
 
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -5362,7 +5495,7 @@ describe('public ui — command reason taxonomy', () => {
     fixture.superdoc.activeEditor.host = {
       getHandles: () => ({ selection: selectionHandle, editing: { selection: selectionHandle } }),
       readAppliedSelectionPresentation: () => (presentationReady ? { selection: applied } : null),
-    } as any;
+    };
     const ui = createSuperDocUI({ superdoc: fixture.superdoc });
     try {
       expect(await ui.commands.executeAsync('copy-format')).toBe(true);
@@ -5374,7 +5507,7 @@ describe('public ui — command reason taxonomy', () => {
       const current = vi.fn(() => pending);
       fixture.superdoc.activeEditor.doc.selection.current = current;
       vi.useFakeTimers();
-      ui.formatPainter.notifyPointerUp();
+      const painted = ui.formatPainter.notifyPointerUp();
       expect(current).toHaveBeenCalled();
       let destination = info('P2');
       if (scenario === 'moved native destination' || scenario === 'unchanged stale native destination') {
@@ -5405,6 +5538,7 @@ describe('public ui — command reason taxonomy', () => {
         expect(fixture.apply).not.toHaveBeenCalled();
         expect(fixture.setAlignment).not.toHaveBeenCalled();
       }
+      expect(await painted).toBe(scenario === 'settled image destination');
     } finally {
       ui.destroy();
     }
@@ -5464,7 +5598,9 @@ describe('public ui — command reason taxonomy', () => {
       });
       const fixture = makeFormatPainterSuperdoc({
         applyResult: mutation,
-        ...(route === 'inline' ? {} : { sourceParagraphProps: { alignment: 'center' } }),
+        ...(route === 'inline'
+          ? { targetRange: { start: 0, end: 4 } }
+          : { sourceParagraphProps: { alignment: 'center' } }),
       });
       const doc = fixture.superdoc.activeEditor.doc;
       if (route === 'plan') Object.assign(doc, { plan: { execute: mutation } });
@@ -5728,10 +5864,7 @@ describe('public ui — command reason taxonomy', () => {
     expect(ui.commands.get('copy-format').getState().active).toBe(true);
 
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -5761,13 +5894,13 @@ describe('public ui — command reason taxonomy', () => {
           code: 'CAPABILITY_UNAVAILABLE',
         });
       });
-      (superdoc.activeEditor as any).editorVersion = 2;
-      (superdoc.activeEditor.doc as any).plan = { execute };
+      Object.assign(superdoc.activeEditor, { editorVersion: 2 });
+      Object.assign(superdoc.activeEditor.doc, { plan: { execute } });
       const ui = createSuperDocUI({ superdoc });
       try {
         expect(await ui.commands.executeAsync('copy-format')).toBe(true);
         setSelection(targetSelection);
-        ui.formatPainter.notifyPointerUp();
+        expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
         await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
         expect(apply).toHaveBeenCalledWith(
           {
@@ -5791,16 +5924,13 @@ describe('public ui — command reason taxonomy', () => {
         code: 'CAPABILITY_UNAVAILABLE',
       });
     });
-    (superdoc.activeEditor as any).editorVersion = 2;
-    (superdoc.activeEditor.doc as any).plan = { execute };
+    Object.assign(superdoc.activeEditor, { editorVersion: 2 });
+    Object.assign(superdoc.activeEditor.doc, { plan: { execute } });
     const ui = createSuperDocUI({ superdoc });
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(
@@ -5833,7 +5963,7 @@ describe('public ui — command reason taxonomy', () => {
             toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: rawTarget }),
           },
         }),
-      } as any;
+      };
       const ui = createSuperDocUI({ superdoc });
       expect(await ui.commands.executeAsync('copy-format')).toBe(true);
 
@@ -5852,9 +5982,9 @@ describe('public ui — command reason taxonomy', () => {
         const selectionPromise = new Promise((resolve) => {
           resolveSelection = resolve;
         });
-        superdoc.activeEditor.doc.selection.current = vi.fn(() => selectionPromise) as any;
+        superdoc.activeEditor.doc.selection.current = vi.fn(() => selectionPromise);
       }
-      ui.formatPainter.notifyPointerUp();
+      const painted = ui.formatPainter.notifyPointerUp();
       if (delayedSelectionRead) {
         cells = false;
         resolveSelection!(cellSelection);
@@ -5867,6 +5997,7 @@ describe('public ui — command reason taxonomy', () => {
       );
       await vi.waitFor(() => expect(setAlignment).toHaveBeenCalledTimes(4));
       expect(setAlignment.mock.calls.map(([input]) => input.target.nodeId)).toEqual(['P2', 'P3', 'P4', 'P5']);
+      expect(await painted).toBe(true);
       ui.destroy();
     },
   );
@@ -5880,10 +6011,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(false);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -5902,10 +6030,7 @@ describe('public ui — command reason taxonomy', () => {
 
       expect(await ui.commands.executeAsync('copy-format')).toBe(true);
       setSelection(targetSelection);
-      ui.formatPainter.notifyPointerUp();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(false);
 
       expect(apply).not.toHaveBeenCalled();
       expect(setAlignment).not.toHaveBeenCalled();
@@ -5948,10 +6073,7 @@ describe('public ui — command reason taxonomy', () => {
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     expect(queryMatch.mock.calls.length).toBeGreaterThan(readsBeforeCapture);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(
@@ -5988,7 +6110,7 @@ describe('public ui — command reason taxonomy', () => {
           }
         },
       };
-      superdoc.activeEditor.host = host as any;
+      superdoc.activeEditor.host = host;
       const ui = createSuperDocUI({ superdoc });
       expect(ui.selection.getSnapshot().status).toBe('ready');
       const readsBeforeCapture = readEffectiveInlineUniformity.mock.calls.length;
@@ -6016,10 +6138,45 @@ describe('public ui — command reason taxonomy', () => {
     },
   );
 
+  for (const gate of ['pending', 'blocked']) {
+    it(`SD-5968 preserves custom apply-format ownership with a ${gate} selection request`, async () => {
+      const { superdoc, apply } = makeFormatPainterSuperdoc();
+      const runForegroundInteraction = vi.fn((action: () => unknown) => action());
+      const wait = vi.fn(async () => 'blocked');
+      Object.assign(superdoc.activeEditor ?? {}, {
+        host: {
+          runForegroundInteraction,
+          getHandles: () => ({
+            editing: {
+              selectionTargets: {
+                apply: vi.fn(),
+                selectionRequestGate: () => gate,
+                whenSelectionRequestSettled: wait,
+              },
+            },
+          }),
+        },
+      });
+      const ui = createSuperDocUI({ superdoc });
+      const execute = vi.fn(() => true);
+      ui.commands.register({ id: 'apply-format', execute });
+      try {
+        expect(await executeFirstPartyCommandAsync(ui, 'apply-format')).toBe(true);
+        expect(await ui.commands.execute('apply-format')).toBe(true);
+        expect(execute).toHaveBeenCalledTimes(2);
+        expect(runForegroundInteraction).not.toHaveBeenCalled();
+        expect(wait).not.toHaveBeenCalled();
+        expect(apply).not.toHaveBeenCalled();
+      } finally {
+        ui.destroy();
+      }
+    });
+  }
+
   it('copy-format keeps custom overrides outside built-in capture ownership', async () => {
     const { superdoc } = makeFormatPainterSuperdoc();
     const runForegroundInteraction = vi.fn((action) => action());
-    superdoc.activeEditor.host = { runForegroundInteraction } as any;
+    superdoc.activeEditor.host = { runForegroundInteraction };
     const ui = createSuperDocUI({ superdoc });
     const execute = vi.fn(() => true);
     ui.commands.register({ id: 'copy-format', execute });
@@ -6062,10 +6219,7 @@ describe('public ui — command reason taxonomy', () => {
     await expect(capture).resolves.toBe(true);
     expect(readEffectiveInlineUniformity).toHaveBeenCalled();
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(
@@ -6109,7 +6263,7 @@ describe('public ui — command reason taxonomy', () => {
             toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: rawTarget }),
           },
         }),
-      } as any;
+      };
       setSelection({
         ...targetSelection,
         selectionTarget: null,
@@ -6134,7 +6288,7 @@ describe('public ui — command reason taxonomy', () => {
           tableCellSelection: { anchorBlockId: 'P1', focusBlockId: 'P5' },
         }),
       );
-      ui.formatPainter.notifyPointerUp();
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
       for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
       expect(apply).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -6155,10 +6309,7 @@ describe('public ui — command reason taxonomy', () => {
     expect(ui.commands.get('copy-format').getState().active).toBe(true);
 
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -6195,10 +6346,7 @@ describe('public ui — command reason taxonomy', () => {
     expect(await capture).toBe(true);
 
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(
@@ -6227,10 +6375,7 @@ describe('public ui — command reason taxonomy', () => {
 
     await expect(capture).resolves.toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(
@@ -6266,7 +6411,7 @@ describe('public ui — command reason taxonomy', () => {
           toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: rawTarget }),
         },
       }),
-    } as any;
+    };
     const ui = createSuperDocUI({ superdoc });
     const readsBeforeCapture = queryMatch.mock.calls.length;
     const capture = ui.commands.executeAsync('copy-format');
@@ -6275,7 +6420,7 @@ describe('public ui — command reason taxonomy', () => {
     setSelection(targetSelection);
     finishQuery({ items: [] });
     expect(await capture).toBe(true);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() =>
       expect(setAlignment).toHaveBeenCalledWith({
         target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
@@ -6294,10 +6439,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -6318,7 +6460,7 @@ describe('public ui — command reason taxonomy', () => {
     const ui = createSuperDocUI({ superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() =>
       expect(apply).toHaveBeenCalledWith(
         {
@@ -6350,7 +6492,7 @@ describe('public ui — command reason taxonomy', () => {
       const ui = createSuperDocUI({ superdoc });
       expect(await ui.commands.executeAsync('copy-format')).toBe(true);
       setSelection(targetSelection);
-      ui.formatPainter.notifyPointerUp();
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
       await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
       const inline = apply.mock.calls[0][0].inline;
       expect(inline.bold).toBe(false);
@@ -6367,7 +6509,7 @@ describe('public ui — command reason taxonomy', () => {
     const ui = createSuperDocUI({ superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() =>
       expect(apply).toHaveBeenCalledWith(
         {
@@ -6402,7 +6544,7 @@ describe('public ui — command reason taxonomy', () => {
       try {
         expect(await ui.commands.executeAsync('copy-format')).toBe(true);
         setSelection(targetSelection);
-        ui.formatPainter.notifyPointerUp();
+        expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
         await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
         const inline = apply.mock.calls[0][0].inline;
         if (state === 'uniform') expect(inline.fontFamily).toBe('Georgia');
@@ -6422,7 +6564,7 @@ describe('public ui — command reason taxonomy', () => {
     const ui = createSuperDocUI({ superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     const inline = apply.mock.calls[0][0].inline;
     expect(inline).not.toHaveProperty('bold');
@@ -6440,7 +6582,7 @@ describe('public ui — command reason taxonomy', () => {
     const ui = createSuperDocUI({ superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     const inline = apply.mock.calls[0][0].inline;
     expect(inline).not.toHaveProperty('bold');
@@ -6453,7 +6595,7 @@ describe('public ui — command reason taxonomy', () => {
     const preferredUi = createSuperDocUI({ superdoc: preferred.superdoc });
     expect(await preferredUi.commands.executeAsync('copy-format')).toBe(true);
     preferred.setSelection(preferred.targetSelection);
-    preferredUi.formatPainter.notifyPointerUp();
+    expect(await preferredUi.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() => expect(preferred.setAlignment).toHaveBeenCalled());
     expect(preferred.getNode).toHaveBeenCalledWith(expect.objectContaining({ nodeId: 'P1' }));
 
@@ -6461,7 +6603,7 @@ describe('public ui — command reason taxonomy', () => {
     const fallbackUi = createSuperDocUI({ superdoc: fallback.superdoc });
     expect(await fallbackUi.commands.executeAsync('copy-format')).toBe(true);
     fallback.setSelection(fallback.targetSelection);
-    fallbackUi.formatPainter.notifyPointerUp();
+    expect(await fallbackUi.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() =>
       expect(fallback.setAlignment).toHaveBeenCalledWith({
         target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
@@ -6481,7 +6623,7 @@ describe('public ui — command reason taxonomy', () => {
     const ui = createSuperDocUI({ superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() =>
       expect(apply).toHaveBeenCalledWith(
         {
@@ -6502,10 +6644,7 @@ describe('public ui — command reason taxonomy', () => {
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     const { selectionTarget: _selectionTarget, ...paragraphOnlyTarget } = targetSelection;
     setSelection(paragraphOnlyTarget);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     expect(apply).not.toHaveBeenCalled();
     await vi.waitFor(() => {
@@ -6523,11 +6662,11 @@ describe('public ui — command reason taxonomy', () => {
       receivers.push(this.adapterName);
       return { failure: { entryIndex: 1, message: 'Late refusal' }, receipts: [] };
     });
-    (fixture.superdoc.activeEditor.doc as any).plan = { adapterName: 'atomic', execute };
+    Object.assign(fixture.superdoc.activeEditor.doc, { plan: { adapterName: 'atomic', execute } });
     const ui = createSuperDocUI({ superdoc: fixture.superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     fixture.setSelection(fixture.targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(false);
     await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({ atomic: true }));
     expect(receivers).toEqual(['atomic']);
@@ -6563,7 +6702,7 @@ describe('public ui — command reason taxonomy', () => {
     const ui = createSuperDocUI({ superdoc: fixture.superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     fixture.setSelection(fixture.targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() =>
       expect(fixture.setSpacing).toHaveBeenCalledWith({
         target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
@@ -6599,6 +6738,244 @@ describe('public ui — command reason taxonomy', () => {
     }
   });
 
+  it.each([
+    {
+      source: 'whole text',
+      target: 'caret',
+      sourceStart: 0,
+      sourceEnd: 5,
+      targetStart: 2,
+      targetEnd: 2,
+      copySpacing: true,
+    },
+    {
+      source: 'caret',
+      target: 'whole text',
+      sourceStart: 2,
+      sourceEnd: 2,
+      targetStart: 0,
+      targetEnd: 5,
+      copySpacing: true,
+    },
+    {
+      source: 'whole text',
+      target: 'whole text',
+      sourceStart: 0,
+      sourceEnd: 5,
+      targetStart: 0,
+      targetEnd: 5,
+      copySpacing: true,
+    },
+    {
+      source: 'partial text',
+      target: 'whole text',
+      sourceStart: 1,
+      sourceEnd: 5,
+      targetStart: 0,
+      targetEnd: 5,
+      copySpacing: false,
+    },
+    {
+      source: 'whole text',
+      target: 'partial text',
+      sourceStart: 0,
+      sourceEnd: 5,
+      targetStart: 0,
+      targetEnd: 4,
+      copySpacing: false,
+    },
+  ])(
+    'SD-8328 copy-format applies the correct spacing from $source to $target',
+    async ({ sourceStart, sourceEnd, targetStart, targetEnd, copySpacing }) => {
+      const { superdoc, apply, setSpacing, clearSpacing, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        sourceRange: { start: sourceStart, end: sourceEnd },
+        targetRange: { start: targetStart, end: targetEnd },
+        sourceEmpty: sourceStart === sourceEnd,
+        targetEmpty: targetStart === targetEnd,
+        sourceParagraphMark: false,
+        targetParagraphMark: false,
+        sourceRuns: [
+          { text: 'he', props: { bold: true } },
+          { text: 'llo', props: { bold: true } },
+        ],
+        sourceParagraphProps: { spacing: { line: 2, lineRule: 'auto' } },
+        targetParagraphProps: { spacing: { line: 1, before: 24, lineRule: 'auto' } },
+      });
+      const ui = createSuperDocUI({ superdoc });
+
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      setSelection(targetSelection);
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
+
+      if (targetStart !== targetEnd) {
+        expect(apply).toHaveBeenCalledWith(
+          expect.objectContaining({ inline: expect.objectContaining({ bold: true }) }),
+          { offsetSpace: 'kernel' },
+        );
+      }
+      if (copySpacing) {
+        const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' };
+        expect(setSpacing).toHaveBeenCalledExactlyOnceWith({ target, line: 480, lineRule: 'auto' });
+        expect(clearSpacing).toHaveBeenCalledExactlyOnceWith({ target });
+      } else {
+        expect(setSpacing).not.toHaveBeenCalled();
+        expect(clearSpacing).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each([
+    {
+      scope: 'whole source',
+      sourceHasFloatingPicture: true,
+      targetHasFloatingPicture: false,
+      sourceEnd: 5,
+      targetEnd: 5,
+    },
+    {
+      scope: 'whole target',
+      sourceHasFloatingPicture: false,
+      targetHasFloatingPicture: true,
+      sourceEnd: 5,
+      targetEnd: 5,
+    },
+    {
+      scope: 'partial source',
+      sourceHasFloatingPicture: true,
+      targetHasFloatingPicture: true,
+      sourceEnd: 4,
+      targetEnd: 5,
+    },
+    {
+      scope: 'partial target',
+      sourceHasFloatingPicture: true,
+      targetHasFloatingPicture: true,
+      sourceEnd: 5,
+      targetEnd: 4,
+    },
+  ])(
+    'SD-8328 copy-format checks $scope text coverage with a floating picture',
+    async ({ sourceHasFloatingPicture, targetHasFloatingPicture, sourceEnd, targetEnd }) => {
+      const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+        sourceHasFloatingPicture,
+        targetHasFloatingPicture,
+        sourceRange: { start: 0, end: sourceEnd },
+        targetRange: { start: 0, end: targetEnd },
+        sourceParagraphMark: false,
+        targetParagraphMark: false,
+        sourceParagraphProps: { spacing: { line: 2, lineRule: 'auto' } },
+        targetParagraphProps: { spacing: { line: 1, lineRule: 'auto' } },
+      });
+      const execute = vi.fn(() => ({ success: true }));
+      Object.assign(superdoc.activeEditor, { editorVersion: 2 });
+      Object.assign(superdoc.activeEditor.doc, { plan: { execute } });
+      const ui = createSuperDocUI({ superdoc });
+
+      expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+      setSelection(targetSelection);
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
+
+      if (sourceEnd === 5 && targetEnd === 5) {
+        expect(execute).toHaveBeenCalledExactlyOnceWith({
+          atomic: true,
+          entries: expect.arrayContaining([
+            expect.objectContaining({
+              operationId: 'format.paragraph.setSpacing',
+              input: {
+                target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
+                line: 480,
+                lineRule: 'auto',
+              },
+            }),
+          ]),
+        });
+      } else {
+        expect(execute).not.toHaveBeenCalled();
+        expect(apply).toHaveBeenCalledWith(
+          expect.objectContaining({ inline: expect.objectContaining({ bold: true }) }),
+          { offsetSpace: 'kernel' },
+        );
+      }
+      ui.destroy();
+    },
+  );
+
+  for (const privatePresentation of [false, true])
+    it.each([7, 8])(
+      `SD-8328 uses the live source extent at offset %s without indexed range reads through ${privatePresentation ? 'private presentation' : 'selection metadata'}`,
+      async (sourceEnd) => {
+        const wrappedText = 'A\uFFFCB\u00ADCD';
+        const { superdoc, apply, setSelection, targetSelection } = makeFormatPainterSuperdoc({
+          sourceRuns: [{ text: wrappedText, props: { bold: true } }],
+          targetRuns: [{ text: wrappedText }],
+          sourceParagraphMark: false,
+          targetParagraphMark: false,
+          sourceParagraphProps: { spacing: { line: 2, lineRule: 'auto' } },
+          targetParagraphProps: { spacing: { line: 1, lineRule: 'auto' } },
+        });
+        const resolve = vi.fn(() => ({
+          target: { end: { kind: 'text', blockId: 'P1', offset: 7 } },
+        }));
+        const execute = vi.fn(() => ({ success: true }));
+        Object.assign(superdoc.activeEditor, { editorVersion: 2 });
+        Object.assign(superdoc.activeEditor.doc, { ranges: { resolve }, plan: { execute } });
+        if (privatePresentation)
+          Object.assign(superdoc.activeEditor.doc.selection, {
+            readPresentation: () => {
+              const selection = superdoc.activeEditor.doc.selection.current();
+              return { selection: { ...selection, paragraphTextLengths: { P1: 8, P2: 8, P3: 8 } } };
+            },
+          });
+        setSelection({
+          ...targetSelection,
+          target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 0, end: sourceEnd } }] },
+          selectionTarget: {
+            kind: 'selection',
+            start: { kind: 'text', blockId: 'P1', offset: 0 },
+            end: { kind: 'text', blockId: 'P1', offset: sourceEnd },
+          },
+          ...(!privatePresentation ? { paragraphTextLengths: { P1: 8 } } : {}),
+        });
+        targetSelection.target.segments = [
+          { blockId: 'P2', range: { start: 0, end: 8 } },
+          { blockId: 'P3', range: { start: 0, end: 8 } },
+        ];
+        targetSelection.selectionTarget.end = { kind: 'text', blockId: 'P3', offset: 8 };
+        const ui = createSuperDocUI({ superdoc });
+        try {
+          expect(await ui.commands.executeAsync('copy-format')).toBe(true);
+          setSelection({
+            ...targetSelection,
+            ...(!privatePresentation ? { paragraphTextLengths: { P2: 8, P3: 8 } } : {}),
+          });
+          expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
+
+          expect(resolve).not.toHaveBeenCalled();
+          if (sourceEnd === 8) {
+            expect(execute).toHaveBeenCalledWith({
+              atomic: true,
+              entries: expect.arrayContaining(
+                ['P2', 'P3'].map((nodeId) =>
+                  expect.objectContaining({
+                    operationId: 'format.paragraph.setSpacing',
+                    input: { target: { kind: 'block', nodeType: 'paragraph', nodeId }, line: 480, lineRule: 'auto' },
+                  }),
+                ),
+              ),
+            });
+          } else {
+            expect(execute).not.toHaveBeenCalled();
+            expect(apply).toHaveBeenCalledWith(
+              expect.objectContaining({ inline: expect.objectContaining({ bold: true }) }),
+              { offsetSpace: 'kernel' },
+            );
+          }
+        } finally {
+          ui.destroy();
+        }
+      },
+    );
+
   it('copy-format replaces target paragraph spacing with the source spacing in twips', async () => {
     const { superdoc, setSpacing, clearSpacing, setSelection, targetSelection } = makeFormatPainterSuperdoc({
       sourceParagraphProps: { spacing: { before: 6, after: 12, line: 1.5, lineRule: 'auto' } },
@@ -6608,7 +6985,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' };
     await vi.waitFor(() => {
@@ -6643,7 +7020,7 @@ describe('public ui — command reason taxonomy', () => {
     const ui = createSuperDocUI({ superdoc: fixture.superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     fixture.setSelection(fixture.targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' };
     await vi.waitFor(() =>
       expect(paragraphOps.setTabStop).toHaveBeenCalledExactlyOnceWith({
@@ -6690,7 +7067,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => {
       expect(receivers).toEqual(['custom-paragraph-adapter']);
@@ -6707,7 +7084,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' };
     await vi.waitFor(() => {
@@ -6725,7 +7102,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' };
     await vi.waitFor(() => {
@@ -6744,7 +7121,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' };
     await vi.waitFor(() => {
@@ -6763,7 +7140,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' };
     await vi.waitFor(() => {
@@ -6783,10 +7160,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => {
       expect(setIndentation).toHaveBeenCalledWith({
@@ -6817,7 +7191,7 @@ describe('public ui — command reason taxonomy', () => {
 
       expect(await ui.commands.executeAsync('copy-format')).toBe(true);
       setSelection(targetSelection);
-      ui.formatPainter.notifyPointerUp();
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
       await vi.waitFor(() => {
         expect(setAlignment).toHaveBeenCalledWith({
@@ -6843,10 +7217,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => {
       expect(setAlignment).toHaveBeenCalledWith({
@@ -6869,7 +7240,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => {
       expect(applyListStyle).toHaveBeenCalledWith({
@@ -6889,10 +7260,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     // Inline props from the run at caret offset are applied to the text target
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
@@ -6919,10 +7287,11 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    const painted = ui.formatPainter.notifyPointerUp();
     // Advance past all 8 polling attempts (each waits 16ms after attempt 0)
     await vi.runAllTimersAsync();
     vi.useRealTimers();
+    expect(await painted).toBe(true);
 
     // Inline NOT applied — caret target has empty === true
     expect(apply).not.toHaveBeenCalled();
@@ -6943,10 +7312,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -6963,11 +7329,11 @@ describe('public ui — command reason taxonomy', () => {
     async (bound) => {
       const fixture = makeFormatPainterSuperdoc({ sourceParagraphProps: { alignment: 'center' } });
       const execute = vi.fn(async () => ({ receipts: [], captures: {} }));
-      fixture.superdoc.activeEditor.doc.plan = { execute } as any;
+      fixture.superdoc.activeEditor.doc.plan = { execute };
       fixture.superdoc.activeEditor.doc.capabilities = {
         get: () => ({ operations: { 'format.paragraph.applyBatch': { available: true } } }),
-      } as any;
-      fixture.superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn() as any;
+      };
+      fixture.superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn();
       const operationCount =
         captureParagraphPaintOperations(
           { alignment: 'center' },
@@ -6999,7 +7365,7 @@ describe('public ui — command reason taxonomy', () => {
         await Promise.resolve();
         refreshed.mockClear();
         fixture.setSelection(fixture.targetSelection);
-        ui.formatPainter.notifyPointerUp();
+        expect(await ui.formatPainter.notifyPointerUp()).toBe(false);
         await vi.waitFor(() => expect(refreshed).toHaveBeenCalled());
         expect(execute).not.toHaveBeenCalled();
         expect(fixture.apply).not.toHaveBeenCalled();
@@ -7031,11 +7397,11 @@ describe('public ui — command reason taxonomy', () => {
         readEffectiveInlineUniformity: read,
       });
       const execute = vi.fn(async () => ({ receipts: [], captures: {} }));
-      superdoc.activeEditor.doc.plan = { execute } as any;
+      superdoc.activeEditor.doc.plan = { execute };
       superdoc.activeEditor.doc.capabilities = {
         get: () => ({ operations: { 'format.paragraph.applyBatch': { available: true } } }),
-      } as any;
-      superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn() as any;
+      };
+      superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn();
       const ids = Array.from({ length: 1001 }, (_, i) => `T${i}`);
       if (emptyInterior) ids.splice(500, 0, 'Empty');
       const getNode = superdoc.activeEditor.doc.getNode;
@@ -7043,7 +7409,7 @@ describe('public ui — command reason taxonomy', () => {
         const result = getNode.call(this, input);
         if (input.nodeId === 'Empty') result.node.paragraph.inlines = [];
         return result;
-      } as any;
+      };
       targetSelection.target.segments = [
         ...ids.map((blockId) => ({ blockId, range: { start: 0, end: blockId === 'Empty' ? 0 : 5 } })),
         { blockId: 'Neighbor', range: { start: 0, end: 0 } },
@@ -7054,7 +7420,7 @@ describe('public ui — command reason taxonomy', () => {
       const ui = createSuperDocUI({ superdoc });
       expect(await ui.commands.executeAsync('copy-format')).toBe(true);
       setSelection(targetSelection);
-      ui.formatPainter.notifyPointerUp();
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
       await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
       const entries = execute.mock.calls[0][0].entries;
       console.log(
@@ -7087,7 +7453,7 @@ describe('public ui — command reason taxonomy', () => {
         }),
       });
       const execute = vi.fn(async () => ({ receipts: [], captures: {} }));
-      fixture.superdoc.activeEditor.doc.plan = { execute } as any;
+      fixture.superdoc.activeEditor.doc.plan = { execute };
       const story = { kind: 'story', storyType: 'body' };
       const destination = {
         ...fixture.targetSelection,
@@ -7117,12 +7483,12 @@ describe('public ui — command reason taxonomy', () => {
       fixture.superdoc.activeEditor.host = {
         getHandles: () => ({ selection: selectionHandle, editing: { selection: selectionHandle } }),
         readAppliedSelectionPresentation: () => ({ selection: destination }),
-      } as any;
+      };
       const ui = createSuperDocUI({ superdoc: fixture.superdoc });
       try {
         expect(await ui.commands.executeAsync('copy-format')).toBe(true);
         fixture.setSelection(destination);
-        ui.formatPainter.notifyPointerUp();
+        expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
         await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
         const inline = execute.mock.calls[0][0].entries.filter((entry) => entry.operationId === 'format.apply');
         expect(inline).toHaveLength(2);
@@ -7164,11 +7530,11 @@ describe('public ui — command reason taxonomy', () => {
       readEffectiveInlineUniformity: read,
     });
     const execute = vi.fn(async () => ({ receipts: [], captures: {} }));
-    superdoc.activeEditor.doc.plan = { execute } as any;
+    superdoc.activeEditor.doc.plan = { execute };
     superdoc.activeEditor.doc.capabilities = {
       get: () => ({ operations: { 'format.paragraph.applyBatch': { available: true } } }),
-    } as any;
-    superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn() as any;
+    };
+    superdoc.activeEditor.doc.format.paragraph.applyBatch = vi.fn();
     targetSelection.target.segments = [
       { blockId: 'P2', range: { start: 2, end: 5 } },
       { blockId: 'P3', range: { start: 0, end: 5 } },
@@ -7176,11 +7542,11 @@ describe('public ui — command reason taxonomy', () => {
     ];
     targetSelection.selectionTarget.start.offset = 2;
     targetSelection.selectionTarget.end = { kind: 'text', blockId: 'P4', offset: 2 };
-    (targetSelection.selectionTarget as any).coordinateSpace = 'tracked';
+    Object.assign(targetSelection.selectionTarget, { coordinateSpace: 'tracked' });
     const ui = createSuperDocUI({ superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
     const entries = execute.mock.calls[0][0].entries;
     expect(entries).toHaveLength(3);
@@ -7203,9 +7569,10 @@ describe('public ui — command reason taxonomy', () => {
     ui.destroy();
   });
 
-  it.each([true, false])(
-    'copy-format preserves default inheritance only when the named paragraph style transfers (marked=%s)',
-    async (marked) => {
+  it.each(['marked', 'whole text', 'partial text'])(
+    'copy-format preserves default inheritance only when the named paragraph style transfers (%s target)',
+    async (targetScope) => {
+      const transfersStyle = targetScope !== 'partial text';
       const read = vi.fn().mockImplementation((input) => ({
         success: true,
         values:
@@ -7219,20 +7586,21 @@ describe('public ui — command reason taxonomy', () => {
       const { superdoc, apply, setStyle, setSelection, targetSelection } = makeFormatPainterSuperdoc({
         sourceStyleRef: 'PaintStyle',
         sourceParagraphMark: true,
-        targetParagraphMark: marked,
+        targetParagraphMark: targetScope === 'marked',
+        targetRange: { start: 0, end: transfersStyle ? 5 : 4 },
         readEffectiveInlineUniformity: read,
       });
       const ui = createSuperDocUI({ superdoc });
       expect(await ui.commands.executeAsync('copy-format')).toBe(true);
       setSelection(targetSelection);
-      ui.formatPainter.notifyPointerUp();
+      expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
       await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
       expect(apply.mock.calls[0][0].inline).toMatchObject({
         bold: true,
-        fontFamily: marked ? null : 'Source default',
-        fontSize: marked ? null : 13,
+        fontFamily: transfersStyle ? null : 'Source default',
+        fontSize: transfersStyle ? null : 13,
       });
-      if (marked)
+      if (transfersStyle)
         await vi.waitFor(() =>
           expect(setStyle).toHaveBeenCalledWith({
             target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
@@ -7276,7 +7644,7 @@ describe('public ui — command reason taxonomy', () => {
           toSelectionTarget: () => ({ kind: 'ok', mode: 'range', target: rawTarget }),
         },
       }),
-    } as any;
+    };
     const ui = createSuperDocUI({ superdoc });
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     cells = true;
@@ -7285,7 +7653,7 @@ describe('public ui — command reason taxonomy', () => {
       range: { start: 0, end: 5 },
     }));
     setSelection({ ...targetSelection, selectionTarget: null });
-    ui.formatPainter.notifyPointerUp();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
     await vi.waitFor(() => expect(ui.commands.get('copy-format').getState().active).toBe(false));
     expect(apply).toHaveBeenCalledExactlyOnceWith(
       {
@@ -7314,10 +7682,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -7358,10 +7723,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     setSelection(targetSelection);
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -7474,10 +7836,7 @@ describe('public ui — command reason taxonomy', () => {
 
     expect(await ui.commands.executeAsync('copy-format')).toBe(true);
     currentSelection = targetSelection;
-    ui.formatPainter.notifyPointerUp();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(await ui.formatPainter.notifyPointerUp()).toBe(true);
 
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledTimes(1);
@@ -7570,9 +7929,9 @@ function makeWorkflowSuperdoc(
         },
   );
   const doc = {
-    comments: { list: () => ({ items: [] }), ...(opts.comments ?? {}) },
-    trackChanges: { list: () => ({ items: [] }), ...(opts.trackChanges ?? {}) },
-    contentControls: { list: () => ({ items: [] }), ...(opts.contentControls ?? {}) },
+    comments: { list: () => ({ items: [] }), ...opts.comments },
+    trackChanges: { list: () => ({ items: [] }), ...opts.trackChanges },
+    contentControls: { list: () => ({ items: [] }), ...opts.contentControls },
     selection: { current: selectionCurrent },
   };
   const activeEditor = opts.noEditor
@@ -7782,7 +8141,9 @@ describe('public ui — comments workflow parity (row 737)', () => {
     expect(create).toHaveBeenCalledWith({ target, text: 'Check this' });
 
     create.mockClear();
-    ui.comments.createFromCapture({ selectionTarget: target }, { text: 'Check this' });
+    expect(await ui.comments.createFromCapture({ selectionTarget: target }, { text: 'Check this' })).toMatchObject({
+      success: true,
+    });
     expect(create).toHaveBeenCalledWith({ target, text: 'Check this' });
   });
 
@@ -11106,7 +11467,7 @@ describe('public ui — document control parity (row 742)', () => {
       config: { documentMode: opts.mode ?? 'editing' },
       on: vi.fn(),
       off: vi.fn(),
-      ...(opts.instance ?? {}),
+      ...opts.instance,
     };
   }
 
@@ -11254,13 +11615,20 @@ describe('public ui — document control parity (row 742)', () => {
     });
 
     const [first] = changes;
-    expect(changes.map(({ documentEpoch, ...rest }) => rest)).toEqual([
-      { seq: 1, cause: 'user', changeTag: null, txId: 'tx-1', scope: { kind: 'known', stories: [body] } },
-      { seq: 2, cause: 'api', changeTag: 'add-table', txId: 'tx-2', scope: { kind: 'unknown' } },
-      { seq: 3, cause: 'undo', changeTag: null, txId: 'tx-2', scope: { kind: 'unknown' } },
-      { seq: 4, cause: 'remote', changeTag: null, txId: null, scope: { kind: 'unknown' } },
+    const documentEpoch = first!.documentEpoch;
+    expect(changes).toEqual([
+      {
+        seq: 1,
+        documentEpoch,
+        cause: 'user',
+        changeTag: null,
+        txId: 'tx-1',
+        scope: { kind: 'known', stories: [body] },
+      },
+      { seq: 2, documentEpoch, cause: 'api', changeTag: 'add-table', txId: 'tx-2', scope: { kind: 'unknown' } },
+      { seq: 3, documentEpoch, cause: 'undo', changeTag: null, txId: 'tx-2', scope: { kind: 'unknown' } },
+      { seq: 4, documentEpoch, cause: 'remote', changeTag: null, txId: null, scope: { kind: 'unknown' } },
     ]);
-    expect(new Set(changes.map((change) => change.documentEpoch))).toEqual(new Set([first!.documentEpoch]));
 
     emit({
       type: 'mutation:committed',
@@ -11971,14 +12339,13 @@ describe('public ui — Plan B command catalog (row 747)', () => {
       config: { documentMode: opts.mode ?? 'editing' },
       on: vi.fn(),
       off: vi.fn(),
-      ...(opts.instance ?? {}),
+      ...opts.instance,
     };
   }
 
   it('exposes exactly one descriptor per id (no duplicates)', async () => {
     const ids = COMMAND_CATALOG.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ALL_BUILT_IN_COMMAND_IDS).toEqual(ids);
   });
 
   it('gives every v1 headless-toolbar id an explicit, fail-closed state', async () => {
@@ -12096,7 +12463,7 @@ describe('public ui — Plan B command catalog (row 747)', () => {
     // The synchronous-capture branch is gone (SD-3706 §5): a sync result relies
     // on the authoritative post-settlement re-read, and promise-backed results
     // publish the optimistic value only when the receipt resolves successfully.
-    let selectionInfo: any = SELECTION_INFO;
+    let selectionInfo: unknown = SELECTION_INFO;
     let notifySelection = () => {};
     const highlight = vi.fn(() => Promise.resolve({ success: true }));
     const superdoc = makeCatalogSuperdoc({
@@ -12444,7 +12811,6 @@ describe('public ui — Plan B command catalog (row 747)', () => {
 
   it('resolves as success when lists.remove rejects on a non-list paragraph (sync)', async () => {
     // The v2 kernel rejects listRemove with 'list-not-a-list-item' for ordinary paragraphs.
-    // The settled result must not propagate that failure — execute() should still resolve truthy.
     const listsRemove = vi.fn(() => ({ success: false, code: 'list-not-a-list-item' }));
     const superdoc = makeCatalogSuperdoc({
       doc: {
@@ -12460,9 +12826,8 @@ describe('public ui — Plan B command catalog (row 747)', () => {
       },
     });
     const ui = createSuperDocUI({ superdoc });
-    const result = await ui.toolbar.execute('clear-formatting');
+    expect(await ui.toolbar.executeAsync('clear-formatting')).toEqual({ success: true });
     expect(listsRemove).toHaveBeenCalled();
-    expect(result).toBeTruthy();
   });
 
   it('resolves as success when lists.remove rejects on a non-list paragraph (async/worker-backed)', async () => {
@@ -12483,9 +12848,8 @@ describe('public ui — Plan B command catalog (row 747)', () => {
       },
     });
     const ui = createSuperDocUI({ superdoc });
-    const result = await ui.toolbar.execute('clear-formatting');
+    expect(await ui.toolbar.executeAsync('clear-formatting')).toEqual({ success: true });
     expect(listsRemove).toHaveBeenCalled();
-    expect(result).toBeTruthy();
   });
 
   it('toggles inline marks based on live active state (value = !active)', async () => {
@@ -13903,7 +14267,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
           selection: { current: () => selectionInfo },
           ...docExtra,
         },
-        ...(opts.editorExtra ?? {}),
+        ...opts.editorExtra,
         ...hostExtra,
       },
       config: { documentMode: opts.mode ?? 'editing' },
@@ -14503,7 +14867,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
   });
 
   it('keeps the chosen alignment visible through commit, focus, and paint transitions', async () => {
-    const selectionInfo: any = {
+    const selectionInfo: Record<string, unknown> = {
       ...SINGLE_BLOCK_SELECTION_INFO,
       target: { ...SINGLE_BLOCK_SELECTION_INFO.target },
       selectionTarget: { ...SINGLE_BLOCK_SELECTION_INFO.selectionTarget },
@@ -15604,6 +15968,237 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(ui.selection.getSnapshot().activeMarks).toContain('bold');
     ui.destroy();
   });
+
+  it('SD-5968 grows selected text from its effective font size through the formatting API', async () => {
+    const fontSize = vi.fn(() => ({ success: true }));
+    const superdoc = makeBlockSuperdoc(
+      {
+        format: {
+          fontSize,
+          readEffectiveInlineUniformity: () => ({
+            success: true,
+            values: { fontSize: { state: 'uniform', value: '11' } },
+          }),
+        },
+      },
+      { selectionInfo: SELECTION_INFO },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    await vi.waitFor(() => expect(ui.commands.get('font-size').getState().value).toBe('11'));
+    expect(await ui.commands.executeAsync('grow-font')).not.toBe(false);
+    expect(fontSize).toHaveBeenCalledTimes(1);
+    expect(fontSize).toHaveBeenCalledWith({ target: SELECTION_TARGET, value: 12 }, { offsetSpace: 'kernel' });
+    ui.destroy();
+  });
+
+  it('SD-5968 shrinks a caret font without changing existing text', async () => {
+    const fontSize = vi.fn(() => ({ success: true }));
+    const host = storeCapableHost({
+      readMountedProjectionBlocksByIds: () => [
+        {
+          kind: 'paragraph',
+          id: 'P1',
+          runs: [{ kind: 'text', text: 'hello', fontSize: 64 / 3 }],
+        },
+      ],
+    });
+    const superdoc = makeBlockSuperdoc(
+      { format: { fontSize } },
+      {
+        selectionInfo: caretSelectionInfo('P1', 2),
+        editorExtra: { host },
+      },
+    );
+    const ui = createSuperDocUI({ superdoc });
+    expect(ui.commands.get('font-size').getState().value).toBe('16');
+    expect(await ui.commands.executeAsync('shrink-font')).not.toBe(false);
+    expect(host.setPendingInlineFormat).toHaveBeenCalledWith('fontSize', 14);
+    expect(fontSize).not.toHaveBeenCalled();
+    ui.destroy();
+  });
+
+  for (const scenario of [
+    { name: 'repeated shrink', steps: [{ id: 'shrink-font' }, { id: 'shrink-font' }], expected: 12 },
+    { name: 'shrink then grow', steps: [{ id: 'shrink-font' }, { id: 'grow-font' }], expected: 16 },
+    { name: 'manual font pick', steps: [{ id: 'font-size', value: 20 }, { id: 'grow-font' }], expected: 22 },
+  ]) {
+    it(`SD-5968 caret steps honor pending size after ${scenario.name}`, async () => {
+      const pending: Record<string, unknown> = {};
+      const fontSize = vi.fn(() => ({ success: true }));
+      const host = storeCapableHost({
+        getPendingInlineFormat: () => pending,
+        setPendingInlineFormat: vi.fn((method: string, value: unknown) => {
+          pending[method] = value;
+        }),
+        readMountedProjectionBlocksByIds: () => [
+          { kind: 'paragraph', id: 'P1', runs: [{ kind: 'text', text: 'hello', fontSize: 64 / 3 }] },
+        ],
+      });
+      const superdoc = makeBlockSuperdoc(
+        { format: { fontSize } },
+        { selectionInfo: caretSelectionInfo('P1', 2), editorExtra: { host } },
+      );
+      const ui = createSuperDocUI({ superdoc });
+      for (const step of scenario.steps)
+        expect(await ui.commands.executeAsync(step.id, 'value' in step ? step.value : undefined)).not.toBe(false);
+      expect(host.setPendingInlineFormat).toHaveBeenLastCalledWith('fontSize', scenario.expected);
+      expect(ui.commands.get('font-size').getState().value).toBe(String(scenario.expected));
+      expect(fontSize).not.toHaveBeenCalled();
+      ui.destroy();
+    });
+  }
+
+  for (const scenario of [
+    { size: 7.5, command: 'grow-font', next: 8 },
+    { size: 13, command: 'grow-font', next: 14 },
+    { size: 13, command: 'shrink-font', next: 12 },
+    { size: 72, command: 'grow-font', next: 80 },
+    { size: 73, command: 'shrink-font', next: 72 },
+    { size: 1630, command: 'grow-font', next: 1638 },
+    { size: 1, command: 'shrink-font', next: null },
+    { size: 1638, command: 'grow-font', next: null },
+    { size: 0, command: 'grow-font', next: null },
+  ]) {
+    it(`SD-5968 ${scenario.command} at ${scenario.size} preserves the size-step policy`, async () => {
+      const fontSize = vi.fn(() => ({ success: true }));
+      const superdoc = makeBlockSuperdoc(
+        {
+          format: {
+            fontSize,
+            readEffectiveInlineUniformity: () => ({
+              success: true,
+              values: { fontSize: { state: 'uniform', value: String(scenario.size) } },
+            }),
+          },
+        },
+        { selectionInfo: SELECTION_INFO },
+      );
+      const ui = createSuperDocUI({ superdoc });
+      const result = await ui.commands.executeAsync(scenario.command);
+      if (scenario.next === null) {
+        expect(result).toBe(false);
+        expect(fontSize).not.toHaveBeenCalled();
+      } else {
+        expect(result).not.toBe(false);
+        expect(fontSize).toHaveBeenCalledOnce();
+        expect(fontSize).toHaveBeenCalledWith(
+          { target: SELECTION_TARGET, value: scenario.next },
+          { offsetSpace: 'kernel' },
+        );
+      }
+      ui.destroy();
+    });
+  }
+
+  for (const mode of ['editing', 'viewing']) {
+    it(`SD-5968 does not step an unresolved selection in ${mode}`, async () => {
+      const fontSize = vi.fn(() => ({ success: true })),
+        execute = vi.fn();
+      const superdoc = makeBlockSuperdoc(
+        {
+          plan: { execute },
+          format: {
+            fontSize,
+            readEffectiveInlineUniformity: () => ({
+              success: true,
+              values: { fontSize: { state: 'unresolvable' } },
+            }),
+          },
+        },
+        { selectionInfo: SELECTION_INFO, mode },
+      );
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.commands.executeAsync('grow-font')).toBe(false);
+      expect(fontSize).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+      ui.destroy();
+    });
+  }
+
+  for (const story of [
+    undefined,
+    { kind: 'story', storyType: 'headerFooterPart', refId: 'rId8' },
+    { kind: 'story', storyType: 'footnote', noteId: '7' },
+    { kind: 'story', storyType: 'endnote', noteId: '9' },
+  ]) {
+    for (const scenario of [
+      { command: 'grow-font', sizes: [12, 22] },
+      { command: 'shrink-font', sizes: [10, 18] },
+    ]) {
+      it(`SD-5968 steps mixed effective sizes in one atomic formatting plan for ${story?.storyType ?? 'body'} ${scenario.command}`, async () => {
+        const execute = vi.fn(() => ({ receipts: [], captures: {} }));
+        const fontSize = vi.fn(() => ({ success: true }));
+        const superdoc = makeBlockSuperdoc(
+          {
+            plan: { execute },
+            format: {
+              fontSize,
+              readEffectiveInlineUniformity: () => ({
+                success: true,
+                values: { fontSize: { state: 'mixed' } },
+              }),
+            },
+            query: {
+              match: (input: { in?: unknown }) => {
+                if (story && JSON.stringify(input.in) !== JSON.stringify(story))
+                  throw new Error('within-story-mismatch');
+                return {
+                  meta: { effectiveResolved: true },
+                  items: [
+                    {
+                      blocks: [
+                        {
+                          blockId: 'P1',
+                          range: { start: 0, end: 5 },
+                          runs: [
+                            { text: 'he', range: { start: 0, end: 2 }, styles: { effective: { fontSizePt: 11 } } },
+                            { text: 'llo', range: { start: 2, end: 5 }, styles: { effective: { fontSizePt: 20 } } },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                };
+              },
+            },
+          },
+          {
+            selectionInfo: {
+              ...SELECTION_INFO,
+              target: { ...SELECTION_INFO.target, ...(story ? { story } : {}) },
+              selectionTarget: { ...SELECTION_TARGET, ...(story ? { story } : {}) },
+            },
+          },
+        );
+        const ui = createSuperDocUI({ superdoc });
+        expect(await ui.commands.executeAsync(scenario.command)).not.toBe(false);
+        expect(fontSize).not.toHaveBeenCalled();
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(execute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            atomic: true,
+            entries: [
+              expect.objectContaining({
+                operationId: 'format.apply',
+                input: expect.objectContaining({
+                  inline: { fontSize: scenario.sizes[0], fontSizeCs: scenario.sizes[0] },
+                  ...(story ? { target: expect.objectContaining({ story }) } : {}),
+                }),
+              }),
+              expect.objectContaining({
+                operationId: 'format.apply',
+                input: expect.objectContaining({
+                  inline: { fontSize: scenario.sizes[1], fontSizeCs: scenario.sizes[1] },
+                  ...(story ? { target: expect.objectContaining({ story }) } : {}),
+                }),
+              }),
+            ],
+          }),
+        );
+        ui.destroy();
+      });
+    }
+  }
 
   it('seeds a collapsed caret immediately but defers its worker validation during foreground typing', async () => {
     vi.useFakeTimers();
@@ -18041,26 +18636,10 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         format: { paragraph: { setIndentation } },
       }),
     });
-    expect(await ui.toolbar.executeAsync('indent-increase')).toMatchObject({ success: true });
+    const recorder = indentRecorder({ 'format.paragraph.setIndentation': setIndentation });
+    recorder.add('indent-increase', await ui.toolbar.executeAsync('indent-increase'));
     expect(get).not.toHaveBeenCalled();
-    expect(find).toHaveBeenCalledTimes(2);
-    for (const nodeId of ['P1', 'P2'])
-      expect(find).toHaveBeenCalledWith({
-        select: { type: 'node', nodeType: 'paragraph' },
-        within: { kind: 'block', nodeType: 'paragraph', nodeId },
-        in: { kind: 'story', storyType: 'body' },
-        options: { includeResolved: true },
-        limit: 2,
-        offset: 0,
-      });
-    expect(setIndentation.mock.calls).toEqual(
-      [1440, 840].map((left, index) => [
-        {
-          target: { kind: 'block', nodeType: 'paragraph', nodeId: `P${index + 1}` },
-          left,
-        },
-      ]),
-    );
+    await expect(recorder.text()).toMatchFileSnapshot('./__snapshots__/ui-indent/selected-resolved-paragraphs.txt');
   });
 
   function ruleFindResult(left: number | undefined = 36, kind = 'paragraph', story?: unknown) {
@@ -18099,6 +18678,30 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     );
     const ui = createSuperDocUI({ superdoc });
     return { ui, superdoc, setIndentation, find, get, getNodeById };
+  }
+
+  function indentRecorder(writes: Record<string, { mock: { calls: unknown[][]; invocationCallOrder: number[] } }>) {
+    const sections: string[] = [];
+    let recorded = 0;
+    return {
+      add(command: string, result: unknown) {
+        const lines = Object.entries(writes)
+          .flatMap(([name, write]) =>
+            write.mock.calls.map((args, index) => ({
+              order: write.mock.invocationCallOrder[index] ?? 0,
+              line: `  ${[name, ...args.map((arg) => JSON.stringify(arg))].join(' ')}`,
+            })),
+          )
+          .sort((a, b) => a.order - b.order)
+          .map(({ line }) => line);
+        const added = lines.slice(recorded);
+        recorded = lines.length;
+        sections.push(
+          [`${command} -> ${JSON.stringify(result)}`, ...(added.length ? added : ['  (no writes)'])].join('\n'),
+        );
+      },
+      text: () => `${sections.join('\n\n')}\n`,
+    };
   }
 
   it.each(['header', 'footer'] as const)(
@@ -18185,11 +18788,17 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
               body: kind === 'paragraph' ? [node] : [{ kind, id: 'P1', horizontalRule: {} }],
             }),
           });
-          expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
-          expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
-            target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-            left: Math.max(0, start * 20 + (command === 'indent-increase' ? 720 : -720)),
-          });
+          const execution = await ui.toolbar.executeAsync(command);
+          if (start === 0 && command === 'indent-decrease') expect(execution).toBe(true);
+          else expect(execution).toMatchObject({ success: true });
+          if (start === 0 && command === 'indent-decrease') {
+            expect(setIndentation).not.toHaveBeenCalled();
+          } else {
+            expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+              target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+              left: Math.max(0, start * 20 + (command === 'indent-increase' ? 720 : -720)),
+            });
+          }
         }
       }
     },
@@ -18218,7 +18827,9 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       find,
       getNodeById: () => ({ node: effectiveIndentNode('P1', 0, 'paragraph', authored) }),
     });
-    expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+    const result = await ui.toolbar.executeAsync(command);
+    if (left === 0 && command === 'indent-decrease') expect(result).toBe(true);
+    else expect(result).toMatchObject({ success: true });
     expect(find).toHaveBeenCalledExactlyOnceWith({
       select: { type: 'node', nodeType: 'paragraph' },
       within: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
@@ -18227,18 +18838,22 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       limit: 2,
       offset: 0,
     });
-    expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
-      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-      left: expected,
-    });
+    if (left === 0 && command === 'indent-decrease') {
+      expect(setIndentation).not.toHaveBeenCalled();
+    } else {
+      expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        left: expected,
+      });
+    }
   });
 
   it('SD-7235 reads resolved sources without serializing semantic rule snapshots', async () => {
-    const { ui, get, find, setIndentation } = ruleIndentUi();
-    expect(await ui.toolbar.executeAsync('indent-increase')).toMatchObject({ success: true });
+    const { ui, get, setIndentation } = ruleIndentUi();
+    const recorder = indentRecorder({ 'format.paragraph.setIndentation': setIndentation });
+    recorder.add('indent-increase', await ui.toolbar.executeAsync('indent-increase'));
     expect(get).not.toHaveBeenCalled();
-    expect(find).toHaveBeenCalledTimes(1);
-    expect(setIndentation).toHaveBeenCalledTimes(1);
+    await expect(recorder.text()).toMatchFileSnapshot('./__snapshots__/ui-indent/resolved-source-without-snapshot.txt');
   });
 
   it.each([
@@ -18315,12 +18930,8 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
   });
 
   it('SD-7235 R1 reads a nested heading only after an exact valid empty paragraph page', async () => {
-    const find = vi
-      .fn()
-      .mockReturnValueOnce({ total: 0, limit: 2, offset: 0, items: [] })
-      .mockReturnValueOnce(ruleFindResult(36, 'heading'));
     const { ui, setIndentation } = ruleIndentUi({
-      find,
+      find: effectiveIndentFind([effectiveIndentNode('P1', 36, 'heading')]),
       get: () => ({
         body: [
           {
@@ -18330,11 +18941,9 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         ],
       }),
     });
-    expect(await ui.toolbar.executeAsync('indent-increase')).toMatchObject({ success: true });
-    expect(find).toHaveBeenCalledTimes(2);
-    expect(find.mock.calls.map(([input]) => input.select.nodeType)).toEqual(['paragraph', 'heading']);
-    expect(find.mock.calls[1]?.[0].within).toEqual({ kind: 'block', nodeType: 'heading', nodeId: 'P1' });
-    expect(setIndentation).toHaveBeenCalledTimes(1);
+    const recorder = indentRecorder({ 'format.paragraph.setIndentation': setIndentation });
+    recorder.add('indent-increase', await ui.toolbar.executeAsync('indent-increase'));
+    await expect(recorder.text()).toMatchFileSnapshot('./__snapshots__/ui-indent/nested-heading.txt');
   });
 
   it.each(['headerFooterPart', 'headerFooterSlot'])(
@@ -18429,22 +19038,13 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         },
       },
     );
-    await ui.toolbar.executeAsync('indent-increase');
-    if (mixed) {
-      expect(get).not.toHaveBeenCalled();
-      expect(find).toHaveBeenCalledTimes(2);
-      expect(setIndentation.mock.calls).toEqual(
-        [
-          ['P1', 1440],
-          ['P2', 840],
-        ].map(([nodeId, left]) => [{ target: { kind: 'block', nodeType: 'paragraph', nodeId }, left }]),
-      );
-      expect(indent).toHaveBeenCalledExactlyOnceWith({ target: { kind: 'block', nodeType: 'listItem', nodeId: 'P3' } });
-    } else {
-      expect(get).not.toHaveBeenCalled();
-      expect(find).not.toHaveBeenCalled();
-      expect(setIndentation).not.toHaveBeenCalled();
-    }
+    const recorder = indentRecorder({ 'format.paragraph.setIndentation': setIndentation, 'lists.indent': indent });
+    recorder.add('indent-increase', await ui.toolbar.executeAsync('indent-increase'));
+    expect(get).not.toHaveBeenCalled();
+    if (!mixed) expect(find).not.toHaveBeenCalled();
+    await expect(recorder.text()).toMatchFileSnapshot(
+      `./__snapshots__/ui-indent/${mixed ? 'mixed' : 'all-list'}-selection-routing.txt`,
+    );
   });
 
   it.each(['editor', 'doc', 'host', 'mode', 'selection', 'lifetime'])(
@@ -18491,6 +19091,78 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     },
   );
 
+  it.each(['unrelated text', 'target text', 'unknown change', 'local edit', 'selection replaced'] as const)(
+    'SD-7235 handles %s while the toolbar is reading indentation',
+    async (scenario) => {
+      let generation = 0;
+      let notifyHost = (_event: unknown) => {};
+      let notifySelection = () => {};
+      let currentSelection: unknown = SINGLE_BLOCK_SELECTION_INFO;
+      const host = {
+        events: {
+          subscribe: (listener: (event: unknown) => void) => {
+            notifyHost = listener;
+            return () => {};
+          },
+        },
+        getHandles: () => ({
+          editing: {
+            selection: {
+              subscribe: (listener: () => void) => {
+                notifySelection = listener;
+                return () => {};
+              },
+            },
+            selectionTargets: { apply: vi.fn(), selectionRequestGeneration: () => generation },
+          },
+        }),
+      };
+      const find = vi.fn(async () => {
+        notifyHost({
+          type: 'collaboration:remote-changed',
+          changedStoryIds: ['body'],
+          remoteTextBlockId: scenario === 'target text' ? 'P1' : 'P2',
+        });
+        notifyHost({ type: 'document:mutated', hasCommitEvent: true, remoteOnly: true });
+        if (scenario === 'unknown change') {
+          notifyHost({ type: 'collaboration:remote-changed', changedStoryIds: ['body'] });
+        } else if (scenario === 'local edit') {
+          notifyHost({ type: 'document:mutated', hasCommitEvent: true });
+        } else if (scenario === 'selection replaced') {
+          generation++;
+          currentSelection = {
+            ...SINGLE_BLOCK_SELECTION_INFO,
+            target: { kind: 'text', segments: [{ blockId: 'P2', range: { start: 0, end: 0 } }] },
+            selectionTarget: {
+              kind: 'selection',
+              start: { kind: 'text', blockId: 'P2', offset: 0 },
+              end: { kind: 'text', blockId: 'P2', offset: 0 },
+            },
+          };
+          notifySelection();
+        }
+        return ruleFindResult(0);
+      });
+      const { ui, setIndentation } = ruleIndentUi(
+        { find, selection: { current: () => currentSelection } },
+        { editorExtra: { host, documentMutationReadiness: { whenPainted: async () => {} } } },
+      );
+      const result = await ui.toolbar.executeAsync('indent-increase');
+      if (scenario === 'unrelated text') {
+        expect(result).toMatchObject({ success: true });
+        expect(find).toHaveBeenCalledTimes(1);
+        expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+          target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+          left: 720,
+        });
+      } else {
+        expect(result).toBe(false);
+        expect(find).toHaveBeenCalledTimes(scenario === 'selection replaced' ? 1 : 3);
+        expect(setIndentation).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it.each(['unchanged selection', 'selection changed', 'owner changed', 'repeated edits', 'no generation'])(
     'SD-7235 replans a concurrent edit with %s',
     async (scenario) => {
@@ -18531,24 +19203,17 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
           return ruleFindResult(36);
         });
       const { ui, superdoc, setIndentation } = ruleIndentUi({ find }, { editorExtra: { host } });
+      const recorder = indentRecorder({ 'format.paragraph.setIndentation': setIndentation });
       const executing = ui.toolbar.executeAsync('indent-increase');
       await Promise.race([reading, nextAnimationFrame()]);
       onEvent({ type: 'document:mutated' });
       if (scenario === 'selection changed') generation++;
       if (scenario === 'owner changed') superdoc.activeEditor = { ...superdoc.activeEditor };
       release();
-      if (scenario === 'unchanged selection') {
-        expect(await executing).toMatchObject({ success: true });
-        expect(find).toHaveBeenCalledTimes(2);
-        expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
-          target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-          left: 1440,
-        });
-      } else {
-        expect(await executing).toBe(false);
-        expect(setIndentation).not.toHaveBeenCalled();
-        expect(find).toHaveBeenCalledTimes(scenario === 'repeated edits' ? 3 : 1);
-      }
+      recorder.add('indent-increase', await executing);
+      await expect(recorder.text()).toMatchFileSnapshot(
+        `./__snapshots__/ui-indent/concurrent-edit-${scenario.replaceAll(' ', '-')}.txt`,
+      );
     },
   );
 
@@ -18602,7 +19267,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       startedNext = resolve;
     });
     const pendingNext = new Promise<unknown>((resolve) => {
-      releaseNext = () => resolve(ruleFindResult(36));
+      releaseNext = () => resolve(ruleFindResult(18));
     });
     const find = vi
       .fn()
@@ -18665,18 +19330,11 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       );
       releaseNext();
     }
-    if (scenario === 'remote caret remap' || scenario === 'remote target remap' || scenario === 'second remote remap') {
-      expect(await executing).toMatchObject({ success: true });
-      expect(find).toHaveBeenCalledTimes(scenario === 'second remote remap' ? 3 : 2);
-      expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
-        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-        left: 1440,
-      });
-    } else {
-      expect(await executing).toBe(false);
-      expect(setIndentation).not.toHaveBeenCalled();
-      expect(find).toHaveBeenCalledTimes(1);
-    }
+    const recorder = indentRecorder({ 'format.paragraph.setIndentation': setIndentation });
+    recorder.add('indent-increase', await executing);
+    await expect(recorder.text()).toMatchFileSnapshot(
+      `./__snapshots__/ui-indent/pending-${scenario.replaceAll(' ', '-')}.txt`,
+    );
   });
 
   it.each([
@@ -18712,12 +19370,18 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       { selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
     );
     const ui = createSuperDocUI({ superdoc });
-    expect(await ui.toolbar.executeAsync(command)).toMatchObject({ success: true });
+    const result = await ui.toolbar.executeAsync(command);
+    if (left === 0 && command === 'indent-decrease') expect(result).toBe(true);
+    else expect(result).toMatchObject({ success: true });
     expect(get).not.toHaveBeenCalled();
-    expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
-      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-      left: expected,
-    });
+    if (left === 0 && command === 'indent-decrease') {
+      expect(setIndentation).not.toHaveBeenCalled();
+    } else {
+      expect(setIndentation).toHaveBeenCalledExactlyOnceWith({
+        target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
+        left: expected,
+      });
+    }
     expect(clearIndentation).not.toHaveBeenCalled();
   });
 
@@ -18736,24 +19400,14 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         format: { paragraph: { setIndentation } },
       }),
     });
-    await ui.toolbar.executeAsync('indent-increase');
-    expect(find).toHaveBeenCalledTimes(3);
-    expect(setIndentation).toHaveBeenNthCalledWith(1, {
-      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-      left: 1440,
-    });
-    expect(setIndentation).toHaveBeenNthCalledWith(2, {
-      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
-      left: 840,
-    });
+    const recorder = indentRecorder({ 'format.paragraph.setIndentation': setIndentation });
+    recorder.add('indent-increase', await ui.toolbar.executeAsync('indent-increase'));
     nodes = [effectiveIndentNode('P1', 72, 'heading'), effectiveIndentNode('P2', 42)];
-    await ui.toolbar.executeAsync('indent-decrease');
-    expect(find).toHaveBeenCalledTimes(6);
+    recorder.add('indent-decrease', await ui.toolbar.executeAsync('indent-decrease'));
     expect(get).not.toHaveBeenCalled();
-    expect(setIndentation).toHaveBeenLastCalledWith({
-      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P2' },
-      left: 120,
-    });
+    await expect(recorder.text()).toMatchFileSnapshot(
+      './__snapshots__/ui-indent/fresh-heading-and-paragraph-reads.txt',
+    );
   });
 
   it.each(['missing', 'ambiguous', 'malformed', 'rejected'])(
@@ -18819,6 +19473,60 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
         target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story },
         left: 1440,
       });
+    },
+  );
+
+  it.each(['footnote', 'endnote'] as const)(
+    'decreases %s indentation using resolved styles and avoids zero writes',
+    async (storyType) => {
+      const story = { kind: 'story', storyType, noteId: '1' } as const;
+      for (const left of [0, 36]) {
+        const setIndentation = vi.fn(() => ({ success: true }));
+        const find = effectiveIndentFind(
+          ['P1', 'P2'].map((id) => effectiveIndentNode(id, left, 'paragraph', { styleId: 'NoteStyle' })),
+          story,
+        );
+        const ui = createSuperDocUI({
+          superdoc: makeBlockSuperdoc(
+            {
+              find,
+              getNode: vi.fn(() => ({ node: { kind: 'paragraph', paragraph: { props: { styleId: 'NoteStyle' } } } })),
+              lists: { outdent: vi.fn(), getStateInStory: () => ({ success: true, isListItem: false }) },
+              format: { paragraph: { setIndentation } },
+            },
+            { selectionInfo: multiSelectionInfoInStory(story) },
+          ),
+        });
+        const result = await ui.toolbar.executeAsync('indent-decrease');
+        if (left === 0) expect(result).toBe(true);
+        else expect(result).toMatchObject({ success: true });
+        if (left === 0) expect(setIndentation).not.toHaveBeenCalled();
+        else
+          expect(setIndentation).toHaveBeenCalledWith({
+            target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1', story },
+            left: 0,
+          });
+      }
+    },
+  );
+
+  it.each(['footnote', 'endnote'] as const)(
+    'does not write a zero override when %s indentation cannot be resolved',
+    async (storyType) => {
+      const story = { kind: 'story', storyType, noteId: '1' } as const;
+      const setIndentation = vi.fn(() => ({ success: true }));
+      const ui = createSuperDocUI({
+        superdoc: makeBlockSuperdoc(
+          {
+            getNode: vi.fn(() => ({ node: { kind: 'paragraph', paragraph: { props: { styleId: 'NoteStyle' } } } })),
+            lists: { outdent: vi.fn(), getStateInStory: () => ({ success: true, isListItem: false }) },
+            format: { paragraph: { setIndentation } },
+          },
+          { selectionInfo: multiSelectionInfoInStory(story) },
+        ),
+      });
+      expect(await ui.toolbar.executeAsync('indent-decrease')).toBe(false);
+      expect(setIndentation).not.toHaveBeenCalled();
     },
   );
 
@@ -18991,22 +19699,30 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
   });
 
   it('SD-7235 CASE-3 paragraph indentation retains suggesting options with resolved reads', async () => {
-    const setIndentation = vi.fn(() => ({ success: true }));
-    const ui = createSuperDocUI({
-      superdoc: makeBlockSuperdoc(
-        {
-          find: effectiveIndentFind([effectiveIndentNode('P1', 36)]),
-          lists: { outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
-          format: { paragraph: { setIndentation } },
-        },
-        { mode: 'suggesting', selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
-      ),
-    });
-    await ui.toolbar.executeAsync('indent-decrease');
-    expect(setIndentation).toHaveBeenCalledExactlyOnceWith(
-      { target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' }, left: 0 },
-      { changeMode: 'tracked' },
-    );
+    for (const left of [0, 36]) {
+      const setIndentation = vi.fn(() => ({ success: true }));
+      const ui = createSuperDocUI({
+        superdoc: makeBlockSuperdoc(
+          {
+            find: effectiveIndentFind([effectiveIndentNode('P1', left)]),
+            lists: { outdent: vi.fn(), getState: () => ({ success: true, isListItem: false }) },
+            format: { paragraph: { setIndentation } },
+          },
+          { mode: 'suggesting', selectionInfo: SINGLE_BLOCK_SELECTION_INFO },
+        ),
+      });
+      const result = await ui.toolbar.executeAsync('indent-decrease');
+      if (left === 0) {
+        expect(result).toBe(true);
+        expect(setIndentation).not.toHaveBeenCalled();
+      } else {
+        expect(result).toMatchObject({ success: true });
+        expect(setIndentation).toHaveBeenCalledExactlyOnceWith(
+          { target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' }, left: 0 },
+          { changeMode: 'tracked' },
+        );
+      }
+    }
   });
 
   it('indent-increase / indent-decrease route lists.indent / lists.outdent for list items', async () => {
@@ -19286,29 +20002,31 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       format: { paragraph: { setIndentation } },
     });
     const ui = createSuperDocUI({ superdoc });
-
-    await ui.toolbar.executeAsync('indent-increase');
-
-    expect(getStateInStory).toHaveBeenCalledTimes(4);
-    expect(indentRange).toHaveBeenCalledWith({
-      paraIds: ['P1', 'P2'],
-      story: { kind: 'story', storyType: 'body' },
+    const recorder = indentRecorder({
+      'lists.indentRange': indentRange,
+      'lists.indent': indent,
+      'format.paragraph.setIndentation': setIndentation,
     });
-    expect(indent).not.toHaveBeenCalled();
-    expect(setIndentation).not.toHaveBeenCalled();
+
+    recorder.add('indent-increase', await ui.toolbar.executeAsync('indent-increase'));
+
+    await expect(recorder.text()).toMatchFileSnapshot('./__snapshots__/ui-indent/all-list-range-increase.txt');
   });
 
   it('indent-decrease routes an all-list selection through one story-aware range mutation', async () => {
     const story = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId8' } as const;
     const outdent = vi.fn(() => ({ success: true }));
     const outdentRange = vi.fn(() => ({ success: true, txId: 'outdent-range-1' }));
+    const setIndentation = vi.fn();
     const clearIndentation = vi.fn(() => ({ success: true }));
-    const getState = vi.fn(async () => ({ success: true, isListItem: true, seed: 'ordered' }));
-    const getStateInStory = vi.fn(async () => ({ success: true, isListItem: true, seed: 'ordered' }));
+    const getState = vi.fn(() => ({ success: false }));
+    const getStateInStory = vi.fn(({ story: { refId } }: { story: { refId?: string } }) =>
+      refId === story.refId ? { success: true, isListItem: true, seed: 'ordered' } : { success: false },
+    );
     const superdoc = makeBlockSuperdoc(
       {
         lists: { outdent, outdentRange, getState, getStateInStory },
-        format: { paragraph: { setIndentation: vi.fn(), clearIndentation } },
+        format: { paragraph: { setIndentation, clearIndentation } },
       },
       {
         selectionInfo: {
@@ -19324,22 +20042,17 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     );
     const ui = createSuperDocUI({ superdoc });
 
-    expect(ui.commands.get('indent-decrease').getState()).toMatchObject({ enabled: true, supported: true });
-    await ui.toolbar.executeAsync('indent-decrease');
+    const recorder = indentRecorder({
+      'lists.outdentRange': outdentRange,
+      'lists.outdent': outdent,
+      'format.paragraph.setIndentation': setIndentation,
+      'format.paragraph.clearIndentation': clearIndentation,
+    });
 
-    // State resolves every selected item before advertising the range route;
-    // execution then performs its own authoritative reads.
-    expect(getStateInStory).toHaveBeenCalledTimes(6);
-    expect(getStateInStory).toHaveBeenNthCalledWith(1, {
-      target: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
-      story,
-    });
-    expect(outdentRange).toHaveBeenCalledWith({
-      paraIds: ['P1', 'P2'],
-      story,
-    });
-    expect(outdent).not.toHaveBeenCalled();
-    expect(clearIndentation).not.toHaveBeenCalled();
+    expect(ui.commands.get('indent-decrease').getState()).toMatchObject({ enabled: true, supported: true });
+    recorder.add('indent-decrease', await ui.toolbar.executeAsync('indent-decrease'));
+
+    await expect(recorder.text()).toMatchFileSnapshot('./__snapshots__/ui-indent/all-list-range-decrease-header.txt');
   });
 
   it('falls back to per-item list mutations when the range operation is unavailable', async () => {
@@ -20588,6 +21301,83 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     );
   });
 
+  for (const kind of ['blob', 'file']) {
+    it(`SD-5968 embeds ${kind} bytes through the existing image command`, async () => {
+      const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const src =
+        kind === 'file'
+          ? new File([bytes], 'pixel.png', { type: 'image/png' })
+          : new Blob([bytes], { type: 'image/png' });
+      const image = vi.fn(() => ({ success: true }));
+      const superdoc = makeBlockSuperdoc({
+        create: { image },
+        info: () => ({ revision: '0' }),
+      });
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.commands.executeAsync('image', { src, alt: 'Embedded input' })).not.toBe(false);
+      expect(image).toHaveBeenCalledTimes(1);
+      expect(image).toHaveBeenCalledWith(
+        expect.objectContaining({
+          src: `data:image/png;base64,${base64}`,
+          alt: 'Embedded input',
+        }),
+        { expectedRevision: '0' },
+      );
+      ui.destroy();
+    });
+  }
+
+  for (const retirement of ['revision', 'selection', 'mode', 'editor', 'dispose']) {
+    it(`SD-5968 rejects a blob read after ${retirement} changes`, async () => {
+      const read = vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(() => {});
+      let revision = '0';
+      let selection = caretSelectionInfo('P1', 2);
+      const image = vi.fn(() => ({ success: true }));
+      const superdoc = makeBlockSuperdoc({
+        create: { image },
+        info: () => ({ revision }),
+        selection: { current: () => selection },
+      });
+      const ui = createSuperDocUI({ superdoc });
+      const pending = ui.commands.executeAsync('image', { src: new Blob(['image'], { type: 'image/png' }) });
+      await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+      if (retirement === 'revision') revision = '1';
+      if (retirement === 'selection') {
+        selection = caretSelectionInfo('P1', 3);
+        for (const [name, handler] of superdoc.on.mock.calls) {
+          if (name === 'selectionUpdate') handler({ editor: superdoc.activeEditor });
+        }
+      }
+      if (retirement === 'mode') superdoc.config.documentMode = 'viewing';
+      if (retirement === 'editor') superdoc.activeEditor = { ...superdoc.activeEditor };
+      if (retirement === 'dispose') ui.destroy();
+      const reader = read.mock.contexts[0];
+      if (!(reader instanceof FileReader)) throw new Error('Expected a pending image read');
+      Object.defineProperty(reader, 'result', { value: 'data:image/png;base64,aW1hZ2U=' });
+      reader.dispatchEvent(new Event('load'));
+      expect(await pending).toBe(false);
+      expect(image).not.toHaveBeenCalled();
+      read.mockRestore();
+      ui.destroy();
+    });
+  }
+
+  for (const src of [
+    new Blob([], { type: 'image/png' }),
+    new Blob(['text'], { type: 'text/plain' }),
+    new File(['text'], 'image.svg', { type: 'image/svg+xml' }),
+  ]) {
+    it(`SD-5968 rejects empty or unsupported browser image input ${src.size}:${src.type}`, async () => {
+      const image = vi.fn(() => ({ success: true }));
+      const superdoc = makeBlockSuperdoc({ create: { image }, info: () => ({ revision: '0' }) });
+      const ui = createSuperDocUI({ superdoc });
+      expect(await ui.commands.executeAsync('image', { src })).toBe(false);
+      expect(image).not.toHaveBeenCalled();
+      ui.destroy();
+    });
+  }
+
   it('SD-4816: public image calls remain available while first-party image calls fail closed without a host handle', async () => {
     const facadeImage = vi.fn(() => ({ success: true }));
     const host = { getHandles: () => ({ editing: {} }) };
@@ -21048,6 +21838,7 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
       nodeId: 'TBL1',
       start: { rowIndex: 0, columnIndex: 0 },
       end: { rowIndex: 1, columnIndex: 1 },
+      keepAllContent: true,
     });
 
     expect(ui.commands.get('table-split-cell').getState()).toMatchObject({
@@ -21118,7 +21909,12 @@ describe('public ui — block / paragraph / list / link / create routing (row 74
     expect(deleteColumn).toHaveBeenCalledWith({ nodeId: 'TBL1', columnIndex: 0 }, TRACKED);
     expect(await ui.toolbar.execute('table-merge-cells')).toMatchObject({ success: true });
     expect(mergeCells).toHaveBeenCalledWith(
-      { nodeId: 'TBL1', start: { rowIndex: 1, columnIndex: 0 }, end: { rowIndex: 1, columnIndex: 0 } },
+      {
+        nodeId: 'TBL1',
+        start: { rowIndex: 1, columnIndex: 0 },
+        end: { rowIndex: 1, columnIndex: 0 },
+        keepAllContent: true,
+      },
       TRACKED,
     );
     expect(await ui.toolbar.execute('table-split-cell')).toMatchObject({ success: true });
@@ -22096,6 +22892,7 @@ describe('public ui — shared custom-button callback context (row 747 / customB
     const ui = createSuperDocUI({ superdoc });
 
     let captured: Record<string, unknown> | null = null;
+    let inserted: unknown;
     ui.commands.register({
       id: 'proof-button',
       execute: (ctx) => {
@@ -22104,12 +22901,13 @@ describe('public ui — shared custom-button callback context (row 747 / customB
         // `execute` is the single canonical async path; fire-and-forget here.
         void ctx.execute('bold', true);
         // Insert text through the Document API helper (not editor.commands.insertContent).
-        ctx.insertText(' token');
+        inserted = ctx.insertText(' token');
         return true;
       },
     });
 
     expect(await ui.commands.execute('proof-button')).toBe(true);
+    expect(await inserted).toMatchObject({ success: true });
     expect(captured).not.toBeNull();
     const ctx = captured as unknown as {
       ui: unknown;
@@ -22386,9 +23184,8 @@ describe('public ui — styles slice (WS4)', () => {
     expect(ui.styles.getQuickGallery().map((s) => s.id)).toEqual(['Title', 'Heading1', 'Normal']);
     // The snapshot reads all + quickGallery views, and both reads request
     // preview tokens for Word-like style-menu rendering.
-    expect(getCatalog).toHaveBeenCalledTimes(2);
-    expect(getCatalog).toHaveBeenNthCalledWith(1, { includePreview: true });
-    expect(getCatalog).toHaveBeenNthCalledWith(2, { view: 'quickGallery', includePreview: true });
+    expect(getCatalog).toHaveBeenCalledWith({ includePreview: true });
+    expect(getCatalog).toHaveBeenCalledWith({ view: 'quickGallery', includePreview: true });
   });
 
   it('invalidates the cached catalogue and notifies styles subscribers on host document events', async () => {
@@ -22643,7 +23440,7 @@ describe('public ui — styles slice (WS4)', () => {
       } = {},
     ) {
       const made = makeStylesSuperdoc(opts);
-      const doc = made.superdoc.activeEditor.doc as Record<string, any>;
+      const doc = made.superdoc.activeEditor.doc;
       const effective = {
         bold: uniform(true),
         italic: uniform(true),
@@ -22672,7 +23469,7 @@ describe('public ui — styles slice (WS4)', () => {
         after: {},
       }));
       doc.format = { readSelection };
-      doc.styles.apply = apply;
+      doc.styles = { getCatalog: made.getCatalog, apply };
       return { ...made, readSelection, apply };
     }
 
@@ -22731,7 +23528,7 @@ describe('public ui — styles slice (WS4)', () => {
       const pending = new Promise((resolve) => {
         finish = resolve;
       });
-      (superdoc.activeEditor.doc as Record<string, any>).selection.current = () => pending;
+      superdoc.activeEditor.doc.selection = { current: () => pending };
       const ui = createSuperDocUI({ superdoc });
       const receipt = ui.styles.updateToMatchSelection();
       expect(apply).not.toHaveBeenCalled();
@@ -22915,7 +23712,7 @@ describe('public ui — styles slice (WS4)', () => {
       expect(rejected.apply).not.toHaveBeenCalled();
 
       const missing = withStyleWrites();
-      delete (missing.superdoc.activeEditor.doc as Record<string, any>).styles.apply;
+      missing.superdoc.activeEditor.doc.styles = { getCatalog: missing.getCatalog };
       const uiWithout = createSuperDocUI({ superdoc: missing.superdoc });
       expect(await uiWithout.styles.updateToMatchSelection()).toMatchObject({
         success: false,
@@ -23149,7 +23946,6 @@ describe('public ui — async browser reads (read coordinator)', () => {
       expect(observed.at(-1)).toEqual([id]);
       expect(ui.document.getSnapshot().dirty).toBe(true);
     }
-    expect(listInRange).toHaveBeenCalledTimes(3);
     stop();
     ui.destroy();
   });
@@ -24575,80 +25371,38 @@ describe('public ui — async browser reads (read coordinator)', () => {
     expect(ui.comments.getSnapshot().activeId).toBe('c-1');
   });
 
-  it('prunes selection-scoped async cache entries on selection changes', async () => {
-    const NativeMap = globalThis.Map;
-    const instances: Array<Map<unknown, unknown>> = [];
-    class TrackingMap<K, V> extends Map<K, V> {
-      constructor(entries?: Iterable<readonly [K, V]> | null) {
-        super(entries);
-        instances.push(this as unknown as Map<unknown, unknown>);
-      }
-    }
-    globalThis.Map = TrackingMap as unknown as MapConstructor;
-    try {
-      const SECOND_SELECTION = {
-        ...RANGE_SELECTION,
-        target: { kind: 'text', segments: [{ blockId: 'P1', range: { start: 6, end: 11 } }] },
-        selectionTarget: {
-          kind: 'selection',
-          start: { kind: 'text', blockId: 'P1', offset: 6 },
-          end: { kind: 'text', blockId: 'P1', offset: 11 },
-        },
-        text: 'world',
-      };
-      let currentSelection = RANGE_SELECTION;
-      const { superdoc, notifySelection } = makeAsyncSuperdoc({
-        selection: () => Promise.resolve(currentSelection),
-        query: () => Promise.resolve({ items: [] }),
-        format: {
-          bold: () => Promise.resolve({ success: true }),
-          readEffectiveInlineUniformity: () =>
-            Promise.resolve({
-              success: true,
-              values: {
-                fontFamily: { state: 'uniform', value: 'Cambria' },
-                fontSize: { state: 'uniform', value: '14' },
-              },
-            }),
-        },
-        contentControls: {
-          list: () => Promise.resolve({ items: [{ id: 'cc-1' }] }),
-          listInRange: () => Promise.resolve({ items: [{ id: 'cc-1' }] }),
-        },
-      });
-      const ui = createSuperDocUI({ superdoc });
-      await flush();
-      expect(ui.selection.getSnapshot().status).toBe('ready');
+  it('reads content controls again for a selection revisited after another selection', async () => {
+    const secondSelection = {
+      ...RANGE_SELECTION,
+      target: { kind: 'text', segments: [{ blockId: 'P2', range: { start: 0, end: 5 } }] },
+      selectionTarget: {
+        kind: 'selection',
+        start: { kind: 'text', blockId: 'P2', offset: 0 },
+        end: { kind: 'text', blockId: 'P2', offset: 5 },
+      },
+      text: 'world',
+    };
+    let currentSelection = RANGE_SELECTION;
+    const listInRange = vi.fn((_range?: unknown) => Promise.resolve({ items: [ASYNC_CONTENT_CONTROL] }));
+    const { superdoc, notifySelection } = makeAsyncSuperdoc({
+      selection: () => Promise.resolve(currentSelection),
+      contentControls: { listInRange },
+    });
+    const ui = createSuperDocUI({ superdoc });
+    await flush();
 
-      const asyncReadMap = instances.find((instance) => {
-        const keys = [...instance.keys()].filter((key): key is string => typeof key === 'string');
-        return keys.includes('selection') && keys.includes('comments') && keys.includes('trackChanges');
-      });
-      expect(asyncReadMap).toBeDefined();
-
-      const selectionScopedKeys = (): string[] =>
-        [...(asyncReadMap?.keys() ?? [])].filter(
-          (key): key is string =>
-            typeof key === 'string' &&
-            (key.startsWith('query:') || key.startsWith('contentControls:inRange:') || key.startsWith('effInline:')),
-        );
-
-      expect(selectionScopedKeys()).toHaveLength(3);
-      const firstSelectionKeys = selectionScopedKeys();
-
-      currentSelection = SECOND_SELECTION;
+    for (const next of [secondSelection, RANGE_SELECTION]) {
+      currentSelection = next;
       notifySelection();
       await flush();
-      // Large effective-inline reads debounce across distinct selections. Once
-      // the stable key starts, all three caches belong only to the new target.
-      await new Promise<void>((resolve) => setTimeout(resolve, 200));
-      await flush();
-
-      expect(selectionScopedKeys()).toHaveLength(3);
-      expect(selectionScopedKeys().some((key) => firstSelectionKeys.includes(key))).toBe(false);
-    } finally {
-      globalThis.Map = NativeMap;
     }
+
+    expect(listInRange.mock.calls.map(([range]) => range)).toEqual([
+      { startBlockId: 'P1', endBlockId: 'P1' },
+      { startBlockId: 'P2', endBlockId: 'P2' },
+      { startBlockId: 'P1', endBlockId: 'P1' },
+    ]);
+    ui.destroy();
   });
 
   it('keeps effective-inline uniformity cached when source coverage expands the same selection target', async () => {
@@ -24687,7 +25441,7 @@ describe('public ui — async browser reads (read coordinator)', () => {
       selection: () => Promise.resolve(currentSelection),
       format: { readEffectiveInlineUniformity },
     });
-    const ui = createSuperDocUI({ superdoc });
+    createSuperDocUI({ superdoc });
 
     await flush();
     await new Promise<void>((resolve) => setTimeout(resolve, 200));

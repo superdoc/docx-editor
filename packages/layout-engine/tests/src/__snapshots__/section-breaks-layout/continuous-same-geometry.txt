@@ -1,0 +1,3 @@
+page 1 size=- orientation=portrait margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=0 sectionRefs={-}
+  "First 1" x=96 y=96
+  "Second 1" x=96 y=116

@@ -13,12 +13,13 @@ import useComment, {
   COMMENT_RECONCILIATION_TOKEN,
   type CommentModel,
 } from '../components/CommentsLayer/use-comment.js';
-import type {
-  CommentInputParams,
-  CommentMention,
-  CommentIdentity,
-  CommentSelectionParams,
-  TrackedChangeDecision,
+import {
+  isCommentResolved,
+  type CommentInputParams,
+  type CommentMention,
+  type CommentIdentity,
+  type CommentSelectionParams,
+  type TrackedChangeDecision,
 } from '../components/CommentsLayer/comment-params.js';
 import type {
   BrowserDocumentApi,
@@ -53,6 +54,7 @@ import {
   waitForTrackedDecisionCanonicalPaint,
 } from './helpers/tracked-change-decision.js';
 import { normalizeV2CommentDraftText } from './helpers/comment-draft-text.js';
+import { commentBodyAsHtml, isBlankCommentBody } from '../components/CommentsLayer/comment-text-html.js';
 import { createCommentIdentity, trackedChangeThreadParentIdForComment } from './helpers/comment-identity.js';
 import type { TrackedChangeSideGroup } from './helpers/tracked-change-thread-index.js';
 import {
@@ -244,8 +246,6 @@ type ApplyReviewWindowInput = {
 };
 
 type RemappedPair = { from?: unknown; to?: unknown };
-
-type V2CommentInput = CommentInputParams & { resolvedTimeWasSynthesized?: boolean };
 
 type TrackedChangeReplyTarget = {
   kind?: 'trackedChange';
@@ -949,7 +949,7 @@ export const useCommentsStore = defineStore('comments', () => {
 
       const updateExistingTrackedChange = (trackedComment: CommentModel) => {
         const wasResolved = Boolean(
-          trackedComment.resolvedTime ||
+          isCommentResolved(trackedComment) ||
           trackedComment.resolvedById ||
           trackedComment.resolvedByEmail ||
           trackedComment.resolvedByName,
@@ -1002,7 +1002,7 @@ export const useCommentsStore = defineStore('comments', () => {
           superdoc,
         };
 
-        if (existingTrackedChange && !existingTrackedChange.resolvedTime) {
+        if (existingTrackedChange && !isCommentResolved(existingTrackedChange)) {
           // Selection/toolbar reject emits tracked-change resolve events. Use the same
           // resolution path as the comment dialog so one method owns state + sync + emit.
           // This is canonical reconciliation, not a user mutation: read-only viewers
@@ -1262,6 +1262,10 @@ export const useCommentsStore = defineStore('comments', () => {
     resetPendingCommentState(superdoc);
   };
 
+  const cancelPendingCommentRequest = () => {
+    pendingCommentRequest += 1;
+  };
+
   const getV2CreatedComment = ({
     outcome,
     reconciled,
@@ -1311,7 +1315,7 @@ export const useCommentsStore = defineStore('comments', () => {
       // `host.getHandles().comments.list()`. This keeps the sidebar
       // receipt-driven; rejected mutations never produce orphan sidebar rows.
       const submittedPendingRequest = pendingCommentRequest;
-      const text = normalizeV2CommentDraftText(pendingDraft ? currentCommentText.value : comment.commentText);
+      const text = normalizeV2CommentDraftText(pendingDraft ? currentCommentText.value : commentBodyAsHtml(comment));
       const mentions = pendingComment.value ? currentCommentMentions.value : (comment.mentions ?? []);
       const target = pendingComment.value ? pendingV2CommentTarget.value : null;
       const parentCommentId = comment.parentCommentId
@@ -1355,6 +1359,7 @@ export const useCommentsStore = defineStore('comments', () => {
           adapter: v2Adapter,
           documentId: v2Adapter.documentId,
           items: outcome.items,
+          pruneStale: outcome.complete !== false,
         });
         const created = getV2CreatedComment({ outcome, reconciled, documentId: v2Adapter.documentId });
         const createdId = created?.commentId ?? null;
@@ -1402,10 +1407,13 @@ export const useCommentsStore = defineStore('comments', () => {
 
     const newComment = useComment(comment.getValues());
 
-    const text = pendingComment.value && !preserveDraft ? currentCommentText.value : comment.commentText;
+    const usesDraft = Boolean(pendingComment.value) && !preserveDraft;
+    const text = usesDraft ? currentCommentText.value : comment.commentText;
     if (text === '') {
       newComment.commentText = '';
       newComment.mentions = [];
+    } else if (!usesDraft && newComment.commentFormat === 'text') {
+      newComment.commentText = text;
     } else {
       newComment.setText({ text, suppressUpdate: true });
     }
@@ -1688,11 +1696,9 @@ export const useCommentsStore = defineStore('comments', () => {
   //     `reconcileCommentsFromV2(...)`
   //   - both paths emit UPDATE / RESOLVED / DELETED using existing shapes
   const applyV2ThreadLifecycleReceipt = ({
-    superdoc,
     documentId,
     lifecycle,
   }: {
-    superdoc?: CommentsStoreHost | null | undefined;
     documentId?: CommentId | null;
     lifecycle?: ThreadLifecycle | null;
   } = {}): ReconcileResult | null => {
@@ -1746,12 +1752,15 @@ export const useCommentsStore = defineStore('comments', () => {
     }
 
     const isResolved = status === 'resolved';
-    const resolvedAt = Date.now();
+    const resolution = isResolved ? lifecycle?.resolution : undefined;
     for (const row of family) {
-      row.resolvedTime = isResolved ? (row.resolvedTime ?? resolvedAt) : null;
-      row.resolvedById = isResolved ? (superdoc?.user?.id ?? null) : null;
-      row.resolvedByEmail = isResolved ? (superdoc?.user?.email ?? null) : null;
-      row.resolvedByName = isResolved ? (superdoc?.user?.name ?? null) : null;
+      const wasResolved = isCommentResolved(row);
+      row.isResolved = isResolved;
+      if (wasResolved && isResolved && !resolution) continue;
+      row.resolvedTime = resolution?.resolvedTime ?? null;
+      row.resolvedById = resolution?.resolvedById ?? null;
+      row.resolvedByEmail = resolution?.resolvedByEmail ?? null;
+      row.resolvedByName = resolution?.resolvedByName ?? null;
     }
     return { added: null, lifecycleUpdated: family.length };
   };
@@ -1833,7 +1842,6 @@ export const useCommentsStore = defineStore('comments', () => {
     const documentId = adapter.documentId ?? fileId;
     const reconciled =
       applyV2ThreadLifecycleReceipt({
-        superdoc,
         documentId,
         lifecycle: outcome.threadLifecycle,
       }) ??
@@ -1878,13 +1886,6 @@ export const useCommentsStore = defineStore('comments', () => {
       )
       .filter(isPresent);
   };
-
-  const isBlankDirectoryCommentText = (value: unknown) =>
-    typeof value !== 'string' ||
-    value
-      .replace(/<[^>]*>/g, '')
-      .replace(/&nbsp;/gi, ' ')
-      .trim().length === 0;
 
   const trackedChangeDirectoryComment = (params: V2TrackedChangeCommentParams | null) => {
     if (!params || params.event === 'omit' || params.changeId == null) return null;
@@ -1973,7 +1974,7 @@ export const useCommentsStore = defineStore('comments', () => {
         input.trackedChange !== true &&
         input.trackedChangeThreadParentId &&
         !input.parentCommentId &&
-        isBlankDirectoryCommentText(input.commentText)
+        isBlankCommentBody(input)
       ) {
         trackedParentBySidecarId.set(String(input.commentId), String(input.trackedChangeThreadParentId));
       }
@@ -2057,14 +2058,13 @@ export const useCommentsStore = defineStore('comments', () => {
 
     const directReplies = inputs.filter((input) => commentInputParentId(input) === rootId);
     const family = [root, ...directReplies];
-    const isResolved = (input: CommentInputParams | null | undefined) => Boolean(input?.resolvedTime);
-    const mismatched = family.filter((input) => isResolved(input) !== expectedResolved);
+    const mismatched = family.filter((input) => isCommentResolved(input) !== expectedResolved);
     if (mismatched.length === 0) {
       return { ok: true };
     }
 
-    const rootResolved = isResolved(root);
-    const hasMixedLifecycle = family.some((input) => isResolved(input) !== rootResolved);
+    const rootResolved = isCommentResolved(root);
+    const hasMixedLifecycle = family.some((input) => isCommentResolved(input) !== rootResolved);
     if (hasMixedLifecycle) {
       return {
         ok: false,
@@ -2075,7 +2075,7 @@ export const useCommentsStore = defineStore('comments', () => {
           observed: family.map((input) => ({
             commentId: commentInputId(input),
             parentCommentId: commentInputParentId(input),
-            status: isResolved(input) ? 'resolved' : 'open',
+            status: isCommentResolved(input) ? 'resolved' : 'open',
           })),
         },
       };
@@ -2293,7 +2293,7 @@ export const useCommentsStore = defineStore('comments', () => {
       // Clear the active target only after the mutation outcome has applied
       // the resolved lifecycle to the hydrated thread (plan §4.3).
       const refreshed = commentsList.value.find((c) => String(c.commentId) === id);
-      const isResolved = Boolean(refreshed?.resolvedTime);
+      const isResolved = isCommentResolved(refreshed);
       const activeKey = activeComment.value != null ? String(activeComment.value) : null;
       if (isResolved && activeKey === id) {
         clearActiveCommentSelection();
@@ -2365,7 +2365,7 @@ export const useCommentsStore = defineStore('comments', () => {
         // thread is open again (resolvedTime cleared). If the row is missing or
         // still resolved we surface nothing rather than claim a false reopen.
         const refreshed = commentsList.value.find((c) => String(c.commentId) === id);
-        if (!refreshed || refreshed.resolvedTime) return null;
+        if (!refreshed || isCommentResolved(refreshed)) return null;
         return {
           type: COMMENT_EVENTS.UPDATE,
           comment: getCommentEventPayload(refreshed),
@@ -2760,19 +2760,10 @@ export const useCommentsStore = defineStore('comments', () => {
         const normalizedEffectiveDocumentId = effectiveDocumentId != null ? String(effectiveDocumentId) : null;
         const document = effectiveDocumentId ? findDocument(effectiveDocumentId) : null;
         const fileType = document?.type ?? null;
-        const isBlankV2CommentText = (value: unknown) => {
-          if (typeof value !== 'string') return true;
-          return (
-            value
-              .replace(/<[^>]*>/g, '')
-              .replace(/&nbsp;/gi, ' ')
-              .trim().length === 0
-          );
-        };
         const isV2TrackedChangeSidecarCommentInput = (input: CommentInputParams | null | undefined) => {
           if (!input || input.trackedChange === true) return false;
           if (!input.trackedChangeThreadParentId || input.parentCommentId) return false;
-          return isBlankV2CommentText(input.commentText);
+          return isBlankCommentBody(input);
         };
 
         // Capture active row family BEFORE mutation so active-row clearing is
@@ -2895,22 +2886,17 @@ export const useCommentsStore = defineStore('comments', () => {
           return false;
         };
 
-        const applyUpdate = (existing: CommentModel, input: V2CommentInput) => {
+        const applyUpdate = (existing: CommentModel, input: CommentInputParams) => {
           existing.commentText = input.commentText ?? existing.commentText;
+          existing.commentFormat = input.commentFormat ?? existing.commentFormat;
           existing.mentions = Array.isArray(input.mentions) ? input.mentions : [];
           existing.isInternal = typeof input.isInternal === 'boolean' ? input.isInternal : existing.isInternal;
-          const hasResolvedTime = typeof input.resolvedTime === 'number';
-          if (hasResolvedTime) {
-            const preserveExistingResolvedTime =
-              input.resolvedTimeWasSynthesized === true && typeof existing.resolvedTime === 'number';
-            existing.resolvedTime = preserveExistingResolvedTime ? existing.resolvedTime : (input.resolvedTime ?? null);
-            existing.resolvedByEmail = input.resolvedByEmail ?? null;
-            existing.resolvedByName = input.resolvedByName ?? null;
-          } else {
-            existing.resolvedTime = null;
-            existing.resolvedByEmail = null;
-            existing.resolvedByName = null;
-          }
+          const resolved = isCommentResolved(input);
+          existing.isResolved = input.isResolved;
+          existing.resolvedTime = resolved ? (input.resolvedTime ?? null) : null;
+          existing.resolvedById = resolved ? (input.resolvedById ?? null) : null;
+          existing.resolvedByEmail = resolved ? (input.resolvedByEmail ?? null) : null;
+          existing.resolvedByName = resolved ? (input.resolvedByName ?? null) : null;
           if (input.parentCommentId !== undefined) {
             existing.parentCommentId = input.parentCommentId;
           } else {
@@ -3172,7 +3158,7 @@ export const useCommentsStore = defineStore('comments', () => {
           if ((!commentId && !importedId && !anchorKey) || hasLiveCommentId || hasLiveImportedId || hasLiveAnchorKey) {
             return true;
           }
-          if (comment.resolvedTime) return true;
+          if (isCommentResolved(comment)) return true;
 
           const resolutionSnapshot = trackedChangeResolutionSnapshots.get(comment);
           if (resolutionSnapshot) {
@@ -3225,7 +3211,7 @@ export const useCommentsStore = defineStore('comments', () => {
               (trackedChangeThreadParentId && removedIds.has(trackedChangeThreadParentId));
 
             if (!isLinkedToRemovedParent) return true;
-            if (comment.resolvedTime) return true;
+            if (isCommentResolved(comment)) return true;
 
             const commentId = comment.commentId != null ? String(comment.commentId) : null;
             const importedId = comment.importedId != null ? String(comment.importedId) : null;
@@ -3294,7 +3280,7 @@ export const useCommentsStore = defineStore('comments', () => {
 
     getTrackedChangeDecisionLinks(comment).forEach((linkedComment) => {
       if (!linkedComment || linkedComment === comment) return;
-      if (linkedComment.resolvedTime) return;
+      if (isCommentResolved(linkedComment)) return;
       const parentKeys = [
         trackedChangeThreadParentIdForComment(linkedComment),
         linkedComment.threadingParentCommentId,
@@ -4051,7 +4037,7 @@ export const useCommentsStore = defineStore('comments', () => {
                 row.trackedChangeType === params.trackedChangeType &&
                 row.trackedChangeDisplayType === params.trackedChangeDisplayType &&
                 normalizeTrackedChangeStoryKey(getTrackedChangeStoryKey(row)) === anchorStoryKey &&
-                !row.resolvedTime &&
+                !isCommentResolved(row) &&
                 !row.resolvedById &&
                 !row.resolvedByEmail &&
                 !row.resolvedByName;
@@ -4186,7 +4172,7 @@ export const useCommentsStore = defineStore('comments', () => {
     };
 
     commentsList.value.forEach((comment) => {
-      if (!comment?.trackedChange || comment.resolvedTime) return;
+      if (!comment?.trackedChange || isCommentResolved(comment)) return;
       const live = findTrackedChangePosition(comment, normalizedPositions);
       if (live) {
         writeTrackedChangeAliases(live, comment);
@@ -4213,7 +4199,7 @@ export const useCommentsStore = defineStore('comments', () => {
 
   const getFloatingComments = computed(() => {
     const comments = getGroupedComments.value?.parentComments
-      .filter((c) => !c.resolvedTime)
+      .filter((c) => !isCommentResolved(c))
       .filter((c) => {
         // Non-editor comments (e.g. PDF) are always shown.
         if (!isEditorBackedComment(c)) return true;
@@ -4296,7 +4282,7 @@ export const useCommentsStore = defineStore('comments', () => {
       const comment = getGroupedComments.value.parentComments.find(
         (row) =>
           !row.trackedChange &&
-          !row.resolvedTime &&
+          !isCommentResolved(row) &&
           belongsToDocument(row, documentId) &&
           getCommentAliasIds(row).includes(id),
       );
@@ -4413,6 +4399,7 @@ export const useCommentsStore = defineStore('comments', () => {
     cancelComment,
     deleteComment,
     removePendingComment,
+    cancelPendingCommentRequest,
     removeCommentsForDocument,
     setReviewDirectoryFromV2,
     clearReviewDirectory,

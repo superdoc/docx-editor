@@ -136,6 +136,33 @@ export default defineConfig({
         files: ['apps/docs/snippets/**', 'examples/**'],
         rules: { 'typescript/no-deprecated': 'error' },
       },
+      {
+        files: ['packages/superdoc/src/**/*.test.*'],
+        rules: {
+          'superdoc/no-hand-copied-output': 'error',
+          'superdoc/no-piece-by-piece-output': 'error',
+          'superdoc/no-source-text-assertions': 'error',
+        },
+      },
+      {
+        files: [
+          'packages/superdoc/src/components/CommentsLayer/CommentDialog.test.ts',
+          'packages/superdoc/src/components/CommentsLayer/CommentInput.test.ts',
+          'packages/superdoc/src/core/config/ui-config-wiring.test.ts',
+          'packages/superdoc/src/core/v2-integration/internal-vue-runtime-exports.test.ts',
+          'packages/superdoc/src/core/v2-integration/reopen-cross-surface-coherence.test.ts',
+          'packages/superdoc/src/core/v2-integration/v2-review-window-route.test.ts',
+        ],
+        rules: { 'superdoc/no-source-text-assertions': 'off' },
+      },
+      {
+        files: [
+          'packages/superdoc/src/components/CommentsLayer/CommentDialog.test.ts',
+          'packages/superdoc/src/core/config/ui-config-wiring.test.ts',
+          'packages/superdoc/src/core/v2-integration/v2-review-window-route.test.ts',
+        ],
+        rules: { 'superdoc/no-piece-by-piece-output': 'off' },
+      },
       snippetsKeepOnContentControlClickUntilTheDocsEmbedRuntimeHasUiContentControlsOnClick,
       {
         files: ['**/*.test.*'],
@@ -185,7 +212,6 @@ export default defineConfig({
       'e2e-tests/**',
       '!packages/superdoc/src/**/*.vue',
       '!packages/superdoc/src/**/*.test.*',
-      'packages/superdoc/src/public/ui.test.ts',
     ],
     options: { reportUnusedDisableDirectives: 'error', typeAware: true },
   },

@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "insertedBlocks": {
+      "items": {
+        "$ref": "#/$defs/BlockMutationEffect"
+      },
+      "type": "array"
+    },
+    "insertedText": {
+      "items": {
+        "$ref": "#/$defs/TextMutationEffect"
+      },
+      "type": "array"
+    },
+    "resultText": {
+      "$ref": "#/$defs/TextTarget"
+    }
+  },
+  "type": "object"
+}

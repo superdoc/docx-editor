@@ -1,0 +1,5474 @@
+{
+  "definition": {
+    "description": "Apply style changes to the active Style Definitions part. Targets docDefaults run and paragraph channels, or the run properties of an existing named paragraph style (scope \"style\"), with set-style patch semantics. Redefining a named style updates every paragraph that references it; its linked character style receives the same patch, null removes a property so the style inherits it again, and an object value replaces that property whole.",
+    "expectedResult": "Returns a StylesApplyReceipt with per-channel success/failure details for each property change.",
+    "memberPath": "styles.apply",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "TARGET_NOT_FOUND",
+        "INVALID_TARGET",
+        "PRECONDITION_FAILED",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "REVISION_MISMATCH"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "styles/apply.mdx",
+    "referenceGroup": "styles",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "resolution": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "enum": [
+                    "run",
+                    "paragraph"
+                  ]
+                },
+                "scope": {
+                  "const": "docDefaults"
+                },
+                "xmlPart": {
+                  "type": "string"
+                },
+                "xmlPath": {
+                  "enum": [
+                    "w:styles/w:docDefaults/w:rPrDefault/w:rPr",
+                    "w:styles/w:docDefaults/w:pPrDefault/w:pPr"
+                  ]
+                }
+              },
+              "required": [
+                "scope",
+                "channel",
+                "xmlPart",
+                "xmlPath"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "const": "run"
+                },
+                "linkedStyleId": {
+                  "type": "string"
+                },
+                "scope": {
+                  "const": "style"
+                },
+                "styleId": {
+                  "type": "string"
+                },
+                "xmlPart": {
+                  "type": "string"
+                },
+                "xmlPath": {
+                  "const": "w:styles/w:style/w:rPr"
+                }
+              },
+              "required": [
+                "scope",
+                "styleId",
+                "channel",
+                "xmlPart",
+                "xmlPath"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "resolution",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "patch": {
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "bold": {
+                  "type": "boolean"
+                },
+                "boldCs": {
+                  "type": "boolean"
+                },
+                "borders": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "color": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "frame": {
+                      "type": "boolean"
+                    },
+                    "shadow": {
+                      "type": "boolean"
+                    },
+                    "size": {
+                      "type": "integer"
+                    },
+                    "space": {
+                      "type": "integer"
+                    },
+                    "themeColor": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeShade": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeTint": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "val": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "color": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "themeColor": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeShade": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeTint": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "val": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "dstrike": {
+                  "type": "boolean"
+                },
+                "eastAsianLayout": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "combine": {
+                      "type": "boolean"
+                    },
+                    "combineBrackets": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "integer"
+                    },
+                    "vert": {
+                      "type": "boolean"
+                    },
+                    "vertCompress": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "effect": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "em": {
+                  "enum": [
+                    "none",
+                    "dot",
+                    "comma",
+                    "circle",
+                    "sesame"
+                  ]
+                },
+                "emboss": {
+                  "type": "boolean"
+                },
+                "fitText": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "val": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "fontFamily": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "ascii": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "asciiTheme": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "cs": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "cstheme": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "eastAsia": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "eastAsiaTheme": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "hAnsi": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "hAnsiTheme": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "hint": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "val": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "fontSize": {
+                  "type": "integer"
+                },
+                "fontSizeCs": {
+                  "type": "integer"
+                },
+                "iCs": {
+                  "type": "boolean"
+                },
+                "imprint": {
+                  "type": "boolean"
+                },
+                "italic": {
+                  "type": "boolean"
+                },
+                "kern": {
+                  "type": "integer"
+                },
+                "lang": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "bidi": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "eastAsia": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "val": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "letterSpacing": {
+                  "type": "integer"
+                },
+                "noProof": {
+                  "type": "boolean"
+                },
+                "outline": {
+                  "type": "boolean"
+                },
+                "position": {
+                  "type": "integer"
+                },
+                "shading": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "color": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "fill": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeColor": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeFill": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeFillShade": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeFillTint": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeShade": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeTint": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "val": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "shadow": {
+                  "type": "boolean"
+                },
+                "smallCaps": {
+                  "type": "boolean"
+                },
+                "snapToGrid": {
+                  "type": "boolean"
+                },
+                "specVanish": {
+                  "type": "boolean"
+                },
+                "strike": {
+                  "type": "boolean"
+                },
+                "textTransform": {
+                  "enum": [
+                    "uppercase",
+                    "none"
+                  ]
+                },
+                "underline": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "color": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeColor": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeShade": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeTint": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "val": {
+                      "enum": [
+                        "single",
+                        "double",
+                        "thick",
+                        "dotted",
+                        "dottedHeavy",
+                        "dash",
+                        "dashedHeavy",
+                        "dashLong",
+                        "dashLongHeavy",
+                        "dotDash",
+                        "dashDotHeavy",
+                        "dotDotDash",
+                        "dashDotDotHeavy",
+                        "wave",
+                        "wavyHeavy",
+                        "wavyDouble",
+                        "words",
+                        "none"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "vanish": {
+                  "type": "boolean"
+                },
+                "vertAlign": {
+                  "enum": [
+                    "superscript",
+                    "subscript",
+                    "baseline"
+                  ]
+                },
+                "w": {
+                  "maximum": 600,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "webHidden": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            },
+            "target": {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "const": "run"
+                },
+                "scope": {
+                  "const": "docDefaults"
+                }
+              },
+              "required": [
+                "scope",
+                "channel"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "target",
+            "patch"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "patch": {
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "adjustRightInd": {
+                  "type": "boolean"
+                },
+                "autoSpaceDE": {
+                  "type": "boolean"
+                },
+                "autoSpaceDN": {
+                  "type": "boolean"
+                },
+                "borders": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "bar": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "frame": {
+                          "type": "boolean"
+                        },
+                        "shadow": {
+                          "type": "boolean"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "space": {
+                          "type": "integer"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "between": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "frame": {
+                          "type": "boolean"
+                        },
+                        "shadow": {
+                          "type": "boolean"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "space": {
+                          "type": "integer"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "bottom": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "frame": {
+                          "type": "boolean"
+                        },
+                        "shadow": {
+                          "type": "boolean"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "space": {
+                          "type": "integer"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "left": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "frame": {
+                          "type": "boolean"
+                        },
+                        "shadow": {
+                          "type": "boolean"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "space": {
+                          "type": "integer"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "right": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "frame": {
+                          "type": "boolean"
+                        },
+                        "shadow": {
+                          "type": "boolean"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "space": {
+                          "type": "integer"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "top": {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "frame": {
+                          "type": "boolean"
+                        },
+                        "shadow": {
+                          "type": "boolean"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "space": {
+                          "type": "integer"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                "contextualSpacing": {
+                  "type": "boolean"
+                },
+                "framePr": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "anchorLock": {
+                      "type": "boolean"
+                    },
+                    "dropCap": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "h": {
+                      "type": "integer"
+                    },
+                    "hAnchor": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "hRule": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "hSpace": {
+                      "type": "integer"
+                    },
+                    "lines": {
+                      "type": "integer"
+                    },
+                    "vAnchor": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "vSpace": {
+                      "type": "integer"
+                    },
+                    "w": {
+                      "type": "integer"
+                    },
+                    "wrap": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "integer"
+                    },
+                    "xAlign": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "y": {
+                      "type": "integer"
+                    },
+                    "yAlign": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "indent": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "end": {
+                      "type": "integer"
+                    },
+                    "endChars": {
+                      "type": "integer"
+                    },
+                    "firstLine": {
+                      "type": "integer"
+                    },
+                    "firstLineChars": {
+                      "type": "integer"
+                    },
+                    "hanging": {
+                      "type": "integer"
+                    },
+                    "hangingChars": {
+                      "type": "integer"
+                    },
+                    "left": {
+                      "type": "integer"
+                    },
+                    "leftChars": {
+                      "type": "integer"
+                    },
+                    "right": {
+                      "type": "integer"
+                    },
+                    "rightChars": {
+                      "type": "integer"
+                    },
+                    "start": {
+                      "type": "integer"
+                    },
+                    "startChars": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "justification": {
+                  "enum": [
+                    "left",
+                    "center",
+                    "right",
+                    "justify",
+                    "distribute"
+                  ]
+                },
+                "keepLines": {
+                  "type": "boolean"
+                },
+                "keepNext": {
+                  "type": "boolean"
+                },
+                "kinsoku": {
+                  "type": "boolean"
+                },
+                "mirrorIndents": {
+                  "type": "boolean"
+                },
+                "numberingProperties": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "ilvl": {
+                      "type": "integer"
+                    },
+                    "numId": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "outlineLvl": {
+                  "maximum": 9,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "overflowPunct": {
+                  "type": "boolean"
+                },
+                "pageBreakBefore": {
+                  "type": "boolean"
+                },
+                "rightToLeft": {
+                  "type": "boolean"
+                },
+                "shading": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "color": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "fill": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeColor": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeFill": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeFillShade": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeFillTint": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeShade": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "themeTint": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "val": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "snapToGrid": {
+                  "type": "boolean"
+                },
+                "spacing": {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "after": {
+                      "type": "integer"
+                    },
+                    "afterAutospacing": {
+                      "type": "boolean"
+                    },
+                    "afterLines": {
+                      "type": "integer"
+                    },
+                    "before": {
+                      "type": "integer"
+                    },
+                    "beforeAutospacing": {
+                      "type": "boolean"
+                    },
+                    "beforeLines": {
+                      "type": "integer"
+                    },
+                    "line": {
+                      "type": "integer"
+                    },
+                    "lineRule": {
+                      "enum": [
+                        "auto",
+                        "exact",
+                        "atLeast"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "suppressAutoHyphens": {
+                  "type": "boolean"
+                },
+                "suppressLineNumbers": {
+                  "type": "boolean"
+                },
+                "suppressOverlap": {
+                  "type": "boolean"
+                },
+                "tabStops": {
+                  "items": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "tab": {
+                        "additionalProperties": false,
+                        "minProperties": 1,
+                        "properties": {
+                          "leader": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "pos": {
+                            "type": "integer"
+                          },
+                          "tabType": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "textAlignment": {
+                  "enum": [
+                    "top",
+                    "center",
+                    "baseline",
+                    "bottom",
+                    "auto"
+                  ]
+                },
+                "textDirection": {
+                  "enum": [
+                    "lrTb",
+                    "tbRl",
+                    "btLr",
+                    "lrTbV",
+                    "tbRlV",
+                    "tbLrV"
+                  ]
+                },
+                "textboxTightWrap": {
+                  "enum": [
+                    "none",
+                    "allLines",
+                    "firstAndLastLine",
+                    "firstLineOnly",
+                    "lastLineOnly"
+                  ]
+                },
+                "topLinePunct": {
+                  "type": "boolean"
+                },
+                "widowControl": {
+                  "type": "boolean"
+                },
+                "wordWrap": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            },
+            "target": {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "const": "paragraph"
+                },
+                "scope": {
+                  "const": "docDefaults"
+                }
+              },
+              "required": [
+                "scope",
+                "channel"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "target",
+            "patch"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "patch": {
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "bold": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "boldCs": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "borders": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "frame": {
+                          "type": "boolean"
+                        },
+                        "shadow": {
+                          "type": "boolean"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "space": {
+                          "type": "integer"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "color": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cs": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "dstrike": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "eastAsianLayout": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "combine": {
+                          "type": "boolean"
+                        },
+                        "combineBrackets": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "integer"
+                        },
+                        "vert": {
+                          "type": "boolean"
+                        },
+                        "vertCompress": {
+                          "type": "boolean"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "em": {
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "none",
+                        "dot",
+                        "comma",
+                        "circle",
+                        "sesame"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "emboss": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fitText": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "val": {
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fontFamily": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "ascii": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "asciiTheme": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "cs": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "cstheme": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "eastAsia": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "eastAsiaTheme": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "hAnsi": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "hAnsiTheme": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "hint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fontSize": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "fontSizeCs": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "highlight": {
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "black",
+                        "blue",
+                        "cyan",
+                        "green",
+                        "magenta",
+                        "red",
+                        "yellow",
+                        "white",
+                        "darkBlue",
+                        "darkCyan",
+                        "darkGreen",
+                        "darkMagenta",
+                        "darkRed",
+                        "darkYellow",
+                        "darkGray",
+                        "lightGray",
+                        "none"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "iCs": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "imprint": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "italic": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kern": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "lang": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "bidi": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "eastAsia": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "letterSpacing": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "noProof": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "oMath": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "outline": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "position": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "rtl": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "shading": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "fill": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeFill": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeFillShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeFillTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "shadow": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "smallCaps": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "snapToGrid": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "specVanish": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "strike": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "textTransform": {
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "uppercase",
+                        "none"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "underline": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "minProperties": 1,
+                      "properties": {
+                        "color": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeColor": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeShade": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "themeTint": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "val": {
+                          "enum": [
+                            "single",
+                            "double",
+                            "thick",
+                            "dotted",
+                            "dottedHeavy",
+                            "dash",
+                            "dashedHeavy",
+                            "dashLong",
+                            "dashLongHeavy",
+                            "dotDash",
+                            "dashDotHeavy",
+                            "dotDotDash",
+                            "dashDotDotHeavy",
+                            "wave",
+                            "wavyHeavy",
+                            "wavyDouble",
+                            "words",
+                            "none"
+                          ]
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "vanish": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "vertAlign": {
+                  "oneOf": [
+                    {
+                      "enum": [
+                        "superscript",
+                        "subscript",
+                        "baseline"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "w": {
+                  "oneOf": [
+                    {
+                      "maximum": 600,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "webHidden": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "target": {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "const": "run"
+                },
+                "scope": {
+                  "const": "style"
+                },
+                "styleId": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "scope",
+                "styleId",
+                "channel"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "target",
+            "patch"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "adjustRightInd": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "autoSpaceDE": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "autoSpaceDN": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "bold": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "boldCs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "borders": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "color": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "contextualSpacing": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "dstrike": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "eastAsianLayout": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "effect": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "em": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "emboss": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "fitText": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontFamily": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontSize": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontSizeCs": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "framePr": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "iCs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "imprint": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "indent": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "italic": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "justification": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "keepLines": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "keepNext": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "kern": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "kinsoku": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "lang": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "letterSpacing": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "mirrorIndents": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "noProof": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "numberingProperties": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "outline": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "outlineLvl": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "overflowPunct": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "pageBreakBefore": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "position": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "rightToLeft": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "shading": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "shadow": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "smallCaps": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "snapToGrid": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "spacing": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "specVanish": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "strike": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "suppressAutoHyphens": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "suppressLineNumbers": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "suppressOverlap": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "tabStops": {
+                      "oneOf": [
+                        {
+                          "type": "array"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "textAlignment": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "textDirection": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "textTransform": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "textboxTightWrap": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "topLinePunct": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "underline": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "vanish": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "vertAlign": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "w": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "webHidden": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "widowControl": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "wordWrap": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bold": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "boldCs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "borders": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "color": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "cs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "dstrike": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "eastAsianLayout": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "effect": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "em": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "emboss": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "fitText": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontFamily": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontSize": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontSizeCs": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "highlight": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "iCs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "imprint": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "italic": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "kern": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "lang": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "letterSpacing": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "noProof": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "oMath": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "outline": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "position": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "rtl": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "shading": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "shadow": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "smallCaps": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "snapToGrid": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "specVanish": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "strike": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "textTransform": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "underline": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "vanish": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "vertAlign": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "w": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "webHidden": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            },
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "before": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "adjustRightInd": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "autoSpaceDE": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "autoSpaceDN": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "bold": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "boldCs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "borders": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "color": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "contextualSpacing": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "dstrike": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "eastAsianLayout": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "effect": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "em": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "emboss": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "fitText": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontFamily": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontSize": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontSizeCs": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "framePr": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "iCs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "imprint": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "indent": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "italic": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "justification": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "keepLines": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "keepNext": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "kern": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "kinsoku": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "lang": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "letterSpacing": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "mirrorIndents": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "noProof": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "numberingProperties": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "outline": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "outlineLvl": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "overflowPunct": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "pageBreakBefore": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "position": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "rightToLeft": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "shading": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "shadow": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "smallCaps": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "snapToGrid": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "spacing": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "specVanish": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "strike": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "suppressAutoHyphens": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "suppressLineNumbers": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "suppressOverlap": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "tabStops": {
+                      "oneOf": [
+                        {
+                          "type": "array"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "textAlignment": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "textDirection": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "textTransform": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "textboxTightWrap": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "topLinePunct": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "underline": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "vanish": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "vertAlign": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "w": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "webHidden": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "widowControl": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "wordWrap": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bold": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "boldCs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "borders": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "color": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "cs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "dstrike": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "eastAsianLayout": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "effect": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "em": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "emboss": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "fitText": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontFamily": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontSize": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "fontSizeCs": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "highlight": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "iCs": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "imprint": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "italic": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "kern": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "lang": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "letterSpacing": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "noProof": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "oMath": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "outline": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "position": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "rtl": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "shading": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "shadow": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "smallCaps": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "snapToGrid": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "specVanish": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "strike": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "textTransform": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "underline": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "vanish": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    },
+                    "vertAlign": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "w": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "const": "inherit"
+                        }
+                      ]
+                    },
+                    "webHidden": {
+                      "enum": [
+                        "on",
+                        "off",
+                        "inherit"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "resolution": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channel": {
+                      "enum": [
+                        "run",
+                        "paragraph"
+                      ]
+                    },
+                    "scope": {
+                      "const": "docDefaults"
+                    },
+                    "xmlPart": {
+                      "type": "string"
+                    },
+                    "xmlPath": {
+                      "enum": [
+                        "w:styles/w:docDefaults/w:rPrDefault/w:rPr",
+                        "w:styles/w:docDefaults/w:pPrDefault/w:pPr"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "channel",
+                    "xmlPart",
+                    "xmlPath"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channel": {
+                      "const": "run"
+                    },
+                    "linkedStyleId": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "const": "style"
+                    },
+                    "styleId": {
+                      "type": "string"
+                    },
+                    "xmlPart": {
+                      "type": "string"
+                    },
+                    "xmlPath": {
+                      "const": "w:styles/w:style/w:rPr"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "styleId",
+                    "channel",
+                    "xmlPart",
+                    "xmlPath"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "changed",
+            "resolution",
+            "dryRun",
+            "before",
+            "after"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "resolution": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channel": {
+                      "enum": [
+                        "run",
+                        "paragraph"
+                      ]
+                    },
+                    "scope": {
+                      "const": "docDefaults"
+                    },
+                    "xmlPart": {
+                      "type": "string"
+                    },
+                    "xmlPath": {
+                      "enum": [
+                        "w:styles/w:docDefaults/w:rPrDefault/w:rPr",
+                        "w:styles/w:docDefaults/w:pPrDefault/w:pPr"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "channel",
+                    "xmlPart",
+                    "xmlPath"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "channel": {
+                      "const": "run"
+                    },
+                    "linkedStyleId": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "const": "style"
+                    },
+                    "styleId": {
+                      "type": "string"
+                    },
+                    "xmlPart": {
+                      "type": "string"
+                    },
+                    "xmlPath": {
+                      "const": "w:styles/w:style/w:rPr"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "styleId",
+                    "channel",
+                    "xmlPart",
+                    "xmlPath"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "resolution",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "adjustRightInd": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "autoSpaceDE": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "autoSpaceDN": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "bold": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "boldCs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "borders": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "color": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "contextualSpacing": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "dstrike": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "eastAsianLayout": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "em": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "emboss": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "fitText": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontFamily": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontSize": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontSizeCs": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "framePr": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "iCs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "imprint": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "indent": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "italic": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "justification": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "keepLines": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "keepNext": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "kern": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "kinsoku": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "lang": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "letterSpacing": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "mirrorIndents": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "noProof": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "numberingProperties": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "outline": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "outlineLvl": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "overflowPunct": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "pageBreakBefore": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "position": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "rightToLeft": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "shading": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "shadow": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "smallCaps": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "snapToGrid": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "spacing": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "specVanish": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "strike": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "suppressAutoHyphens": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "suppressLineNumbers": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "suppressOverlap": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "tabStops": {
+                  "oneOf": [
+                    {
+                      "type": "array"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "textAlignment": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "textDirection": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "textTransform": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "textboxTightWrap": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "topLinePunct": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "underline": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "vanish": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "vertAlign": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "w": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "webHidden": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "widowControl": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "wordWrap": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bold": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "boldCs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "borders": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "color": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "cs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "dstrike": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "eastAsianLayout": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "em": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "emboss": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "fitText": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontFamily": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontSize": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontSizeCs": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "highlight": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "iCs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "imprint": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "italic": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "kern": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "lang": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "letterSpacing": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "noProof": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "oMath": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "outline": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "position": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "rtl": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "shading": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "shadow": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "smallCaps": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "snapToGrid": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "specVanish": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "strike": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "textTransform": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "underline": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "vanish": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "vertAlign": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "w": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "webHidden": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "before": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "adjustRightInd": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "autoSpaceDE": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "autoSpaceDN": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "bold": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "boldCs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "borders": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "color": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "contextualSpacing": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "dstrike": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "eastAsianLayout": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "em": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "emboss": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "fitText": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontFamily": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontSize": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontSizeCs": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "framePr": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "iCs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "imprint": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "indent": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "italic": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "justification": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "keepLines": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "keepNext": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "kern": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "kinsoku": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "lang": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "letterSpacing": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "mirrorIndents": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "noProof": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "numberingProperties": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "outline": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "outlineLvl": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "overflowPunct": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "pageBreakBefore": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "position": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "rightToLeft": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "shading": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "shadow": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "smallCaps": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "snapToGrid": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "spacing": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "specVanish": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "strike": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "suppressAutoHyphens": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "suppressLineNumbers": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "suppressOverlap": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "tabStops": {
+                  "oneOf": [
+                    {
+                      "type": "array"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "textAlignment": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "textDirection": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "textTransform": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "textboxTightWrap": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "topLinePunct": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "underline": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "vanish": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "vertAlign": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "w": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "webHidden": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "widowControl": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "wordWrap": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bold": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "boldCs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "borders": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "color": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "cs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "dstrike": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "eastAsianLayout": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "em": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "emboss": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "fitText": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontFamily": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontSize": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "fontSizeCs": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "highlight": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "iCs": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "imprint": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "italic": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "kern": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "lang": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "letterSpacing": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "noProof": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "oMath": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "outline": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "position": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "rtl": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "shading": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "shadow": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "smallCaps": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "snapToGrid": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "specVanish": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "strike": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "textTransform": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "underline": {
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "vanish": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                },
+                "vertAlign": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "w": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "const": "inherit"
+                    }
+                  ]
+                },
+                "webHidden": {
+                  "enum": [
+                    "on",
+                    "off",
+                    "inherit"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "resolution": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "enum": [
+                    "run",
+                    "paragraph"
+                  ]
+                },
+                "scope": {
+                  "const": "docDefaults"
+                },
+                "xmlPart": {
+                  "type": "string"
+                },
+                "xmlPath": {
+                  "enum": [
+                    "w:styles/w:docDefaults/w:rPrDefault/w:rPr",
+                    "w:styles/w:docDefaults/w:pPrDefault/w:pPr"
+                  ]
+                }
+              },
+              "required": [
+                "scope",
+                "channel",
+                "xmlPart",
+                "xmlPath"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "const": "run"
+                },
+                "linkedStyleId": {
+                  "type": "string"
+                },
+                "scope": {
+                  "const": "style"
+                },
+                "styleId": {
+                  "type": "string"
+                },
+                "xmlPart": {
+                  "type": "string"
+                },
+                "xmlPath": {
+                  "const": "w:styles/w:style/w:rPr"
+                }
+              },
+              "required": [
+                "scope",
+                "styleId",
+                "channel",
+                "xmlPart",
+                "xmlPath"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "changed",
+        "resolution",
+        "dryRun",
+        "before",
+        "after"
+      ],
+      "type": "object"
+    }
+  }
+}

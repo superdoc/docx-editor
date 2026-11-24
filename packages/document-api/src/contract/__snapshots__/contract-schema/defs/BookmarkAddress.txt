@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "entityType": {
+      "const": "bookmark"
+    },
+    "kind": {
+      "const": "entity"
+    },
+    "name": {
+      "type": "string"
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "kind",
+    "entityType",
+    "name"
+  ],
+  "type": "object"
+}

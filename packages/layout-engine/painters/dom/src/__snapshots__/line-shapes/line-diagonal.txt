@@ -1,0 +1,34 @@
+<div class="superdoc-vector-shape">
+  style height: 100%
+  style overflow: hidden
+  style position: relative
+  style width: 100%
+  <div>
+    style height: 200px
+    style left: 0px
+    style position: absolute
+    style top: 0px
+    style width: 200px
+    <svg>
+      height="100%"
+      preserveAspectRatio="none"
+      viewBox="0 0 200 200"
+      width="100%"
+      xmlns="http://www.w3.org/2000/svg"
+      style --superdoc-authored-stroke-color: #00ff00
+      style --superdoc-inactive-stroke-color: #80FF80
+      style display: block
+      style left: 0px
+      style overflow: visible
+      style pointer-events: none
+      style position: absolute
+      style top: 0px
+      style z-index: 0
+      <line>
+        stroke="#00ff00"
+        stroke-width="4"
+        vector-effect="non-scaling-stroke"
+        x1="0"
+        x2="200"
+        y1="0"
+        y2="200"

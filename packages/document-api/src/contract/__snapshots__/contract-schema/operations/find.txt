@@ -1,0 +1,173 @@
+{
+  "definition": {
+    "description": "Search the document for text or node matches using SDM/1 selectors. Returns discovery-grade results: for mutation targeting, use query.match instead.",
+    "expectedResult": "Returns an SDFindResult envelope ({ total, limit, offset, items }). Each item is an SDNodeResult ({ node, address }). Text hits contain only the matched text; use getNode or getNodeById for the full containing node. Node selectors return full node projections. Bookmark selectors return the bookmarks of the searched story in document order: each address is an inline bookmark address whose anchor spans the bookmark range, and each node is an ext.bookmark node whose bookmark.address resolves through bookmarks.get.",
+    "memberPath": "find",
+    "metadata": {
+      "deterministicTargetResolution": false,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT",
+          "ADDRESS_STALE",
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "find.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "options": {
+          "additionalProperties": false,
+          "properties": {
+            "includeContext": {
+              "type": "boolean"
+            },
+            "includeProvenance": {
+              "type": "boolean"
+            },
+            "includeResolved": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "select": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "caseSensitive": {
+                  "type": "boolean"
+                },
+                "includeDeletedText": {
+                  "type": "boolean"
+                },
+                "mode": {
+                  "enum": [
+                    "contains",
+                    "regex"
+                  ]
+                },
+                "pattern": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "text"
+                },
+                "wholeWord": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type",
+                "pattern"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "block",
+                    "inline"
+                  ]
+                },
+                "nodeType": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "node"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "within": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        }
+      },
+      "required": [
+        "select"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "$ref": "#/$defs/NodeAddress"
+              },
+              "context": {
+                "type": "object"
+              },
+              "node": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "node",
+              "address"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "limit",
+        "offset",
+        "items"
+      ],
+      "type": "object"
+    }
+  }
+}

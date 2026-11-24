@@ -1,0 +1,92 @@
+<div class="superdoc-thin-double-border">
+  data-superdoc-table-row-role="body"
+  data-superdoc-thin-double-border="true"
+  style --sd-table-double-left-color: #1F3864
+  style --sd-table-double-left-offset: 0.666667px
+  style --sd-table-double-left-stroke: 0.333333px
+  style --sd-table-double-right-color: #1F3864
+  style --sd-table-double-right-offset: 0.666667px
+  style --sd-table-double-right-stroke: 0.333333px
+  style --sd-table-double-top-color: #1F3864
+  style --sd-table-double-top-offset: 0.666667px
+  style --sd-table-double-top-stroke: 0.333333px
+  style border-left-color: transparent
+  style border-left-style: double
+  style border-left-width: 1px
+  style border-right-color: transparent
+  style border-right-style: double
+  style border-right-width: 1px
+  style border-top-color: transparent
+  style border-top-style: double
+  style border-top-width: 1px
+  style height: 20px
+  style left: 0px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 200px
+<svg class="superdoc-thin-double-border-overlay">
+  aria-hidden="true"
+  data-superdoc-thin-double-border-overlay="true"
+  style height: 20px
+  style left: 0px
+  style top: 0px
+  style width: 200px
+--- next row ---
+<div>
+  data-superdoc-table-row-role="body"
+  style border-top-color: transparent
+  style border-top-style: dashed
+  style border-top-width: 1px
+  style height: 20px
+  style left: 0px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px
+<svg>
+  aria-hidden="true"
+  data-superdoc-cell-border-overlay="true"
+  viewBox="0 0 100 20"
+  style height: 20px
+  style left: 0px
+  style top: 0px
+  style width: 100px
+  <g>
+    data-side="top"
+    stroke-linecap="round"
+    transform="translate(0 0.5)"
+    <path>
+      d="M 0 0 H 100"
+      fill="none"
+      stroke="#E55A2A"
+      stroke-dasharray="0.1 2 4 2"
+      stroke-width="1"
+<div class="superdoc-thin-double-border">
+  data-superdoc-table-row-role="body"
+  data-superdoc-thin-double-border="true"
+  style --sd-table-double-top-color: #1F3864
+  style --sd-table-double-top-offset: 0.666667px
+  style --sd-table-double-top-stroke: 0.333333px
+  style border-top-color: transparent
+  style border-top-style: double
+  style border-top-width: 1px
+  style height: 20px
+  style left: 100px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px
+<svg class="superdoc-thin-double-border-overlay">
+  aria-hidden="true"
+  data-superdoc-thin-double-border-overlay="true"
+  style height: 20px
+  style left: 100px
+  style top: 0px
+  style width: 100px

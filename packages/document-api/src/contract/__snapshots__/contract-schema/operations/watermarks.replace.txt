@@ -1,0 +1,1032 @@
+{
+  "definition": {
+    "description": "Replace an existing watermark while retaining its stable identity and owner scope.",
+    "expectedResult": "Returns the replaced watermark, or TARGET_NOT_FOUND when its identity is stale.",
+    "memberPath": "watermarks.replace",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "TARGET_NOT_FOUND",
+        "PRECONDITION_FAILED",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "watermarks/replace.mdx",
+    "referenceGroup": "watermarks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "TARGET_NOT_FOUND",
+                "PRECONDITION_FAILED",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "watermark"
+            },
+            "watermarkId": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "watermarkId"
+          ],
+          "type": "object"
+        },
+        "watermark": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bold": {
+                  "type": "boolean"
+                },
+                "color": {
+                  "pattern": "^#?[0-9A-Fa-f]{6}$",
+                  "type": "string"
+                },
+                "fontFamily": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "fontSizePt": {
+                  "oneOf": [
+                    {
+                      "const": "auto"
+                    },
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  ]
+                },
+                "italic": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "const": "text"
+                },
+                "opacity": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "orientation": {
+                  "enum": [
+                    "horizontal",
+                    "diagonal"
+                  ]
+                },
+                "placement": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "behindText": {
+                      "type": "boolean"
+                    },
+                    "heightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    "horizontal": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alignment": {
+                          "enum": [
+                            "left",
+                            "center",
+                            "right"
+                          ]
+                        },
+                        "offsetPt": {
+                          "type": "number"
+                        },
+                        "relativeFrom": {
+                          "enum": [
+                            "page",
+                            "margin"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "relativeFrom"
+                      ],
+                      "type": "object"
+                    },
+                    "rotationDegrees": {
+                      "type": "number"
+                    },
+                    "vertical": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alignment": {
+                          "enum": [
+                            "top",
+                            "center",
+                            "bottom"
+                          ]
+                        },
+                        "offsetPt": {
+                          "type": "number"
+                        },
+                        "relativeFrom": {
+                          "enum": [
+                            "page",
+                            "margin"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "relativeFrom"
+                      ],
+                      "type": "object"
+                    },
+                    "widthPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "type": "object"
+                },
+                "text": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "text"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "heightPt": {
+                  "exclusiveMinimum": 0,
+                  "type": "number"
+                },
+                "kind": {
+                  "const": "picture"
+                },
+                "lockAspectRatio": {
+                  "type": "boolean"
+                },
+                "opacity": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "placement": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "behindText": {
+                      "type": "boolean"
+                    },
+                    "heightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    "horizontal": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alignment": {
+                          "enum": [
+                            "left",
+                            "center",
+                            "right"
+                          ]
+                        },
+                        "offsetPt": {
+                          "type": "number"
+                        },
+                        "relativeFrom": {
+                          "enum": [
+                            "page",
+                            "margin"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "relativeFrom"
+                      ],
+                      "type": "object"
+                    },
+                    "rotationDegrees": {
+                      "type": "number"
+                    },
+                    "vertical": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "alignment": {
+                          "enum": [
+                            "top",
+                            "center",
+                            "bottom"
+                          ]
+                        },
+                        "offsetPt": {
+                          "type": "number"
+                        },
+                        "relativeFrom": {
+                          "enum": [
+                            "page",
+                            "margin"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "relativeFrom"
+                      ],
+                      "type": "object"
+                    },
+                    "widthPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "type": "object"
+                },
+                "scalePercent": {
+                  "enum": [
+                    "auto",
+                    50,
+                    100,
+                    150,
+                    200,
+                    500
+                  ]
+                },
+                "src": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "washout": {
+                  "type": "boolean"
+                },
+                "widthPt": {
+                  "exclusiveMinimum": 0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kind",
+                "src"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "target",
+        "watermark"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "watermark": {
+              "additionalProperties": false,
+              "properties": {
+                "effectiveIn": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "headerFooterKind": {
+                        "const": "header"
+                      },
+                      "kind": {
+                        "const": "headerFooterSlot"
+                      },
+                      "section": {
+                        "$ref": "#/$defs/SectionAddress"
+                      },
+                      "variant": {
+                        "enum": [
+                          "default",
+                          "first",
+                          "even"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "section",
+                      "headerFooterKind",
+                      "variant"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "owner": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "partPath": {
+                      "type": "string"
+                    },
+                    "refId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "refId",
+                    "partPath"
+                  ],
+                  "type": "object"
+                },
+                "watermark": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "bold": {
+                          "type": "boolean"
+                        },
+                        "color": {
+                          "pattern": "^#?[0-9A-Fa-f]{6}$",
+                          "type": "string"
+                        },
+                        "fontFamily": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "fontSizePt": {
+                          "oneOf": [
+                            {
+                              "const": "auto"
+                            },
+                            {
+                              "exclusiveMinimum": 0,
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "italic": {
+                          "type": "boolean"
+                        },
+                        "kind": {
+                          "const": "text"
+                        },
+                        "opacity": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "orientation": {
+                          "enum": [
+                            "horizontal",
+                            "diagonal"
+                          ]
+                        },
+                        "placement": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "behindText": {
+                              "type": "boolean"
+                            },
+                            "heightPt": {
+                              "exclusiveMinimum": 0,
+                              "type": "number"
+                            },
+                            "horizontal": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "alignment": {
+                                  "enum": [
+                                    "left",
+                                    "center",
+                                    "right"
+                                  ]
+                                },
+                                "offsetPt": {
+                                  "type": "number"
+                                },
+                                "relativeFrom": {
+                                  "enum": [
+                                    "page",
+                                    "margin"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "relativeFrom"
+                              ],
+                              "type": "object"
+                            },
+                            "rotationDegrees": {
+                              "type": "number"
+                            },
+                            "vertical": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "alignment": {
+                                  "enum": [
+                                    "top",
+                                    "center",
+                                    "bottom"
+                                  ]
+                                },
+                                "offsetPt": {
+                                  "type": "number"
+                                },
+                                "relativeFrom": {
+                                  "enum": [
+                                    "page",
+                                    "margin"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "relativeFrom"
+                              ],
+                              "type": "object"
+                            },
+                            "widthPt": {
+                              "exclusiveMinimum": 0,
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "text": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "contentType": {
+                          "type": "string"
+                        },
+                        "heightPt": {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        },
+                        "kind": {
+                          "const": "picture"
+                        },
+                        "lockAspectRatio": {
+                          "type": "boolean"
+                        },
+                        "mediaPartPath": {
+                          "type": "string"
+                        },
+                        "opacity": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "placement": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "behindText": {
+                              "type": "boolean"
+                            },
+                            "heightPt": {
+                              "exclusiveMinimum": 0,
+                              "type": "number"
+                            },
+                            "horizontal": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "alignment": {
+                                  "enum": [
+                                    "left",
+                                    "center",
+                                    "right"
+                                  ]
+                                },
+                                "offsetPt": {
+                                  "type": "number"
+                                },
+                                "relativeFrom": {
+                                  "enum": [
+                                    "page",
+                                    "margin"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "relativeFrom"
+                              ],
+                              "type": "object"
+                            },
+                            "rotationDegrees": {
+                              "type": "number"
+                            },
+                            "vertical": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "alignment": {
+                                  "enum": [
+                                    "top",
+                                    "center",
+                                    "bottom"
+                                  ]
+                                },
+                                "offsetPt": {
+                                  "type": "number"
+                                },
+                                "relativeFrom": {
+                                  "enum": [
+                                    "page",
+                                    "margin"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "relativeFrom"
+                              ],
+                              "type": "object"
+                            },
+                            "widthPt": {
+                              "exclusiveMinimum": 0,
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "scalePercent": {
+                          "enum": [
+                            "auto",
+                            50,
+                            100,
+                            150,
+                            200,
+                            500
+                          ]
+                        },
+                        "washout": {
+                          "type": "boolean"
+                        },
+                        "widthPt": {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "mediaPartPath",
+                        "contentType",
+                        "scalePercent",
+                        "widthPt",
+                        "heightPt",
+                        "lockAspectRatio",
+                        "washout",
+                        "opacity",
+                        "placement"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "watermarkId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "watermarkId",
+                "owner",
+                "effectiveIn",
+                "watermark"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "success",
+            "watermark"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "TARGET_NOT_FOUND",
+                    "PRECONDITION_FAILED",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "success": {
+          "const": true
+        },
+        "watermark": {
+          "additionalProperties": false,
+          "properties": {
+            "effectiveIn": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "headerFooterKind": {
+                    "const": "header"
+                  },
+                  "kind": {
+                    "const": "headerFooterSlot"
+                  },
+                  "section": {
+                    "$ref": "#/$defs/SectionAddress"
+                  },
+                  "variant": {
+                    "enum": [
+                      "default",
+                      "first",
+                      "even"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "section",
+                  "headerFooterKind",
+                  "variant"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "owner": {
+              "additionalProperties": false,
+              "properties": {
+                "partPath": {
+                  "type": "string"
+                },
+                "refId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "refId",
+                "partPath"
+              ],
+              "type": "object"
+            },
+            "watermark": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bold": {
+                      "type": "boolean"
+                    },
+                    "color": {
+                      "pattern": "^#?[0-9A-Fa-f]{6}$",
+                      "type": "string"
+                    },
+                    "fontFamily": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "fontSizePt": {
+                      "oneOf": [
+                        {
+                          "const": "auto"
+                        },
+                        {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "italic": {
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "const": "text"
+                    },
+                    "opacity": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "orientation": {
+                      "enum": [
+                        "horizontal",
+                        "diagonal"
+                      ]
+                    },
+                    "placement": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "behindText": {
+                          "type": "boolean"
+                        },
+                        "heightPt": {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        },
+                        "horizontal": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alignment": {
+                              "enum": [
+                                "left",
+                                "center",
+                                "right"
+                              ]
+                            },
+                            "offsetPt": {
+                              "type": "number"
+                            },
+                            "relativeFrom": {
+                              "enum": [
+                                "page",
+                                "margin"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "relativeFrom"
+                          ],
+                          "type": "object"
+                        },
+                        "rotationDegrees": {
+                          "type": "number"
+                        },
+                        "vertical": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alignment": {
+                              "enum": [
+                                "top",
+                                "center",
+                                "bottom"
+                              ]
+                            },
+                            "offsetPt": {
+                              "type": "number"
+                            },
+                            "relativeFrom": {
+                              "enum": [
+                                "page",
+                                "margin"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "relativeFrom"
+                          ],
+                          "type": "object"
+                        },
+                        "widthPt": {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "text": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "heightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    "kind": {
+                      "const": "picture"
+                    },
+                    "lockAspectRatio": {
+                      "type": "boolean"
+                    },
+                    "mediaPartPath": {
+                      "type": "string"
+                    },
+                    "opacity": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "placement": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "behindText": {
+                          "type": "boolean"
+                        },
+                        "heightPt": {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        },
+                        "horizontal": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alignment": {
+                              "enum": [
+                                "left",
+                                "center",
+                                "right"
+                              ]
+                            },
+                            "offsetPt": {
+                              "type": "number"
+                            },
+                            "relativeFrom": {
+                              "enum": [
+                                "page",
+                                "margin"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "relativeFrom"
+                          ],
+                          "type": "object"
+                        },
+                        "rotationDegrees": {
+                          "type": "number"
+                        },
+                        "vertical": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "alignment": {
+                              "enum": [
+                                "top",
+                                "center",
+                                "bottom"
+                              ]
+                            },
+                            "offsetPt": {
+                              "type": "number"
+                            },
+                            "relativeFrom": {
+                              "enum": [
+                                "page",
+                                "margin"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "relativeFrom"
+                          ],
+                          "type": "object"
+                        },
+                        "widthPt": {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "scalePercent": {
+                      "enum": [
+                        "auto",
+                        50,
+                        100,
+                        150,
+                        200,
+                        500
+                      ]
+                    },
+                    "washout": {
+                      "type": "boolean"
+                    },
+                    "widthPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "mediaPartPath",
+                    "contentType",
+                    "scalePercent",
+                    "widthPt",
+                    "heightPt",
+                    "lockAspectRatio",
+                    "washout",
+                    "opacity",
+                    "placement"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "watermarkId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "watermarkId",
+            "owner",
+            "effectiveIn",
+            "watermark"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "success",
+        "watermark"
+      ],
+      "type": "object"
+    }
+  }
+}

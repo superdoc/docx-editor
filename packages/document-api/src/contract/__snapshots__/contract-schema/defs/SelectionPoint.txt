@@ -1,0 +1,52 @@
+{
+  "description": "A point in the document. Use {kind:'text', blockId, offset} for character positions or {kind:'nodeEdge', node:{kind:'block', nodeType, nodeId}, edge:'before'|'after'} for block boundaries.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "blockId": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "text"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "story": {
+          "$ref": "#/$defs/StoryLocator"
+        }
+      },
+      "required": [
+        "kind",
+        "blockId",
+        "offset"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "edge": {
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "kind": {
+          "const": "nodeEdge"
+        },
+        "node": {
+          "$ref": "#/$defs/SelectionEdgeNodeAddress"
+        }
+      },
+      "required": [
+        "kind",
+        "node",
+        "edge"
+      ],
+      "type": "object"
+    }
+  ]
+}

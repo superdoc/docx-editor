@@ -1,0 +1,35 @@
+<div>
+  data-superdoc-table-row-role="body"
+  style border-left-color: #BDD7EE
+  style border-left-style: solid
+  style border-left-width: 1.333px
+  style border-top-color: #BDD7EE
+  style border-top-style: solid
+  style border-top-width: 1.333px
+  style height: 20px
+  style left: 0px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px
+<div>
+  data-superdoc-table-row-role="body"
+  style border-left-color: #BDD7EE
+  style border-left-style: solid
+  style border-left-width: 1.333px
+  style border-right-color: #BDD7EE
+  style border-right-style: solid
+  style border-right-width: 1.333px
+  style border-top-color: #BDD7EE
+  style border-top-style: solid
+  style border-top-width: 1.333px
+  style height: 20px
+  style left: 100px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px

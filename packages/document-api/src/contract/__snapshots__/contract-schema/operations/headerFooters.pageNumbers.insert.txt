@@ -1,0 +1,256 @@
+{
+  "definition": {
+    "description": "Atomically number a section's pages with a live PAGE field in its header or footer, with alignment, a first-page choice, and an optional number style and start.",
+    "expectedResult": "Returns the numbered header/footer parts and whether the section uses a distinct first page; PRECONDITION_FAILED with reason page-number-exists when the target already shows a page number.",
+    "memberPath": "headerFooters.pageNumbers.insert",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "TARGET_NOT_FOUND",
+        "PRECONDITION_FAILED",
+        "CAPABILITY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "header-footers/page-numbers/insert.mdx",
+    "referenceGroup": "headerFooters",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "TARGET_NOT_FOUND",
+                "PRECONDITION_FAILED",
+                "CAPABILITY_UNAVAILABLE",
+                "INTERNAL_ERROR"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "alignment": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "format": {
+          "enum": [
+            "decimal",
+            "lowerLetter",
+            "upperLetter",
+            "lowerRoman",
+            "upperRoman",
+            "numberInDash",
+            "hebrew1",
+            "hebrew2"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "header",
+            "footer"
+          ]
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "showOnFirstPage": {
+          "type": "boolean"
+        },
+        "start": {
+          "oneOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "section",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "header",
+                "footer"
+              ]
+            },
+            "parts": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "headerFooterPart"
+                  },
+                  "refId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "refId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "success": {
+              "const": true
+            },
+            "titlePage": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "success",
+            "section",
+            "kind",
+            "parts",
+            "titlePage"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "TARGET_NOT_FOUND",
+                    "PRECONDITION_FAILED",
+                    "CAPABILITY_UNAVAILABLE",
+                    "INTERNAL_ERROR"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "header",
+            "footer"
+          ]
+        },
+        "parts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "headerFooterPart"
+              },
+              "refId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "refId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "success": {
+          "const": true
+        },
+        "titlePage": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success",
+        "section",
+        "kind",
+        "parts",
+        "titlePage"
+      ],
+      "type": "object"
+    }
+  }
+}

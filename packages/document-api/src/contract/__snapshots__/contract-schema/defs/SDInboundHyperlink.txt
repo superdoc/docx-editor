@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "hyperlink": {
+      "additionalProperties": false,
+      "properties": {
+        "history": {
+          "type": "boolean"
+        },
+        "href": {
+          "pattern": "^(?:[Hh][Tt][Tt][Pp][Ss]?:|[Mm][Aa][Ii][Ll][Tt][Oo]:)",
+          "type": "string"
+        },
+        "inlines": {
+          "items": {
+            "$ref": "#/$defs/SDInboundHyperlinkLeaf"
+          },
+          "type": "array"
+        },
+        "targetFrame": {
+          "type": "string"
+        },
+        "tooltip": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "href",
+        "inlines"
+      ],
+      "type": "object"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "hyperlink"
+    }
+  },
+  "required": [
+    "kind",
+    "hyperlink"
+  ],
+  "type": "object"
+}

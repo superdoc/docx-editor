@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "list"
+    },
+    "list": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/SDInboundListItem"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "levels": {
+          "items": {
+            "$ref": "#/$defs/SDInboundListLevel"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "list"
+  ],
+  "type": "object"
+}

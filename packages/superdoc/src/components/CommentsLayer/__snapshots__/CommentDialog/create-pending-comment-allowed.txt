@@ -1,0 +1,71 @@
+before:
+
+store:
+{
+  "activeComment": "pending-viewing-mode-comment",
+  "editingCommentId": null,
+  "draft": "<p>New viewing-mode comment</p>",
+  "pendingComment": "pending-viewing-mode-comment",
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+new comment composer
+
+action: click Comment on the pending comment
+
+document calls:
+comments.commitPendingComment {"text":"New viewing-mode comment","target":null}
+comments.setActiveComment "viewing-mode-comment"
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "viewing-mode-comment",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "New viewing-mode comment",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+superdoc.focus calls: []
+
+after:
+
+store:
+{
+  "activeComment": "viewing-mode-comment",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    },
+    {
+      "commentId": "viewing-mode-comment",
+      "commentText": "New viewing-mode comment"
+    }
+  ]
+}
+
+dialog:
+classes: (none)

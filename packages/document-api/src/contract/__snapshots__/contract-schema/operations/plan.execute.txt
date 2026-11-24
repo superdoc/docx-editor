@@ -1,0 +1,270 @@
+{
+  "definition": {
+    "batchable": false,
+    "description": "Execute a compiled batch of plan-safe operation entries with per-entry transactions, capture resolution between entries, and keep-prefix-and-continue failure semantics. Hosts may support atomic: true for all-or-nothing single-commit execution with operation restrictions.",
+    "expectedResult": "Returns a PlanExecuteResult with per-entry receipts, projected captures, and the first hard failure if any.",
+    "memberPath": "plan.execute",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "mutations/plan-execute.mdx",
+    "referenceGroup": "mutations",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_INPUT",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "atomic": {
+          "const": true,
+          "description": "Opt in to host-supported all-or-nothing execution. Check host support and operation restrictions.",
+          "type": "boolean"
+        },
+        "captureReturns": {
+          "oneOf": [
+            {
+              "const": "*"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "entries": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "captureAs": {
+                "type": "string"
+              },
+              "expect": {
+                "additionalProperties": false,
+                "properties": {
+                  "allowFailureMessageIncludes": {
+                    "type": "string"
+                  },
+                  "failureCode": {
+                    "type": "string"
+                  },
+                  "failureMessageIncludes": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "input": {},
+              "operationId": {
+                "type": "string"
+              },
+              "options": {}
+            },
+            "required": [
+              "operationId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "entries"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "captures": {
+          "type": "object"
+        },
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "entryIndex": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            },
+            "operationId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entryIndex",
+            "operationId",
+            "message"
+          ],
+          "type": "object"
+        },
+        "receipts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "captureAs": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "entryIndex": {
+                "type": "integer"
+              },
+              "error": {
+                "type": "string"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "passed",
+                  "allowed-failure",
+                  "expected-failure"
+                ]
+              }
+            },
+            "required": [
+              "entryIndex",
+              "operationId",
+              "status",
+              "captureAs"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "receipts",
+        "captures"
+      ],
+      "type": "object"
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "captures": {
+          "type": "object"
+        },
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "entryIndex": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            },
+            "operationId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entryIndex",
+            "operationId",
+            "message"
+          ],
+          "type": "object"
+        },
+        "receipts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "captureAs": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "entryIndex": {
+                "type": "integer"
+              },
+              "error": {
+                "type": "string"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "passed",
+                  "allowed-failure",
+                  "expected-failure"
+                ]
+              }
+            },
+            "required": [
+              "entryIndex",
+              "operationId",
+              "status",
+              "captureAs"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "receipts",
+        "captures"
+      ],
+      "type": "object"
+    }
+  }
+}

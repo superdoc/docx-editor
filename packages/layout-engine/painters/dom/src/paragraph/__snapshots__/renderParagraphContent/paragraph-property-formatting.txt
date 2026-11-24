@@ -1,0 +1,31 @@
+<div>
+  data-story-key="body"
+  data-track-change-anchor="paragraph-property"
+  data-track-change-author="Ada"
+  data-track-change-author-color="#6b7280"
+  data-track-change-id="tc-format-1"
+  data-track-change-ids="tc-format-1"
+  data-track-change-kind="format"
+  data-track-change-marker-visible="true"
+  data-track-change-subtype="paragraph-formatting"
+  data-track-change-target-kind="paragraph"
+  data-track-change-type="formatting"
+  style --sd-tracked-changes-format-background-focused: #6b728044
+  style --sd-tracked-changes-format-border: #6b7280
+  style --sd-tracked-changes-paragraph-property-marker-left: 55px
+  style height: 20px
+  style text-align: center
+  <div>
+  <span class="highlighted superdoc-paragraph-property-review-marker track-format-dec">
+    data-story-key="body"
+    data-track-change-anchor="paragraph-property"
+    data-track-change-author="Ada"
+    data-track-change-author-color="#6b7280"
+    data-track-change-id="tc-format-1"
+    data-track-change-ids="tc-format-1"
+    data-track-change-kind="format"
+    data-track-change-subtype="paragraph-formatting"
+    data-track-change-target-kind="paragraph"
+    data-track-change-type="formatting"
+    style --sd-tracked-changes-format-background-focused: #6b728044
+    style --sd-tracked-changes-format-border: #6b7280

@@ -49,6 +49,25 @@ export function normalizeHostSelectionApplyResult(result: unknown): WorkflowActi
   return { ok: true };
 }
 
+const COMMENT_COMPOSER_REASONS: Readonly<Record<string, SuperDocUIReason>> = {
+  'editing-range-required': SUPERDOC_UI_REASONS.rangeSelectionRequired,
+  'read-only': SUPERDOC_UI_REASONS.documentReadonly,
+  'read-only-document': SUPERDOC_UI_REASONS.documentReadonly,
+  'review-surface-read-only': SUPERDOC_UI_REASONS.documentReadonly,
+  'host-not-ready': SUPERDOC_UI_REASONS.notReady,
+  'document-replaced': SUPERDOC_UI_REASONS.notReady,
+};
+
+export function normalizeCommentComposerResult(result: { ok: boolean; reason?: string }): WorkflowActionResult {
+  if (result.ok) return { ok: true };
+  const reason = result.reason ?? '';
+  return {
+    ok: false,
+    reason:
+      COMMENT_COMPOSER_REASONS[reason] ?? coerceSuperDocUIReason(reason, SUPERDOC_UI_REASONS.operationUnavailable),
+  };
+}
+
 export const LIST_TOGGLE_KINDS: Record<string, 'bullet' | 'ordered'> = {
   [BUILT_IN_COMMAND_IDS.bulletList]: 'bullet',
   [BUILT_IN_COMMAND_IDS.numberedList]: 'ordered',

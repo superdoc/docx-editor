@@ -24,11 +24,11 @@ const { tools, systemPrompt, dispatch } = await createAgentToolkit({
 ```
 
 <Callout variant='warning' title='Always pass a preset'>
-  `preset: 'core'` is the surface to build on. Omitting `preset` selects the older `legacy` tool surface for backward
+  Pass `preset: 'full'` or `preset: 'core'`. Omitting `preset` selects the older `legacy` tool surface for backward
   compatibility, which advertises a different set of tools.
 </Callout>
 
-Need more Document API operations? See the [full preset](/agents/build/tools#the-full-preset).
+Need more Document API operations? See the [full preset](/agents/build/full-preset).
 
 `provider` accepts `openai`, `anthropic`, `vercel`, or `generic`. It changes the wire shape of the tool definitions, not the operations available.
 
@@ -136,6 +136,8 @@ allowDirectActions: ['add_comments', 'comment_paragraphs', 'reply_to_comment', '
 A drafting agent typically allows nothing. Pass `['*']` to allow every direct-only action while still forcing tracked mode on everything that supports it — the tools and prompt then match an unenforced agent exactly, and the policy's remaining job is the forced upgrade. Weigh that one carefully: it reopens the eight actions that change the document with nothing to review (`apply_style`, `style_table`, `move_table`, `move_range`, `set_paragraph_spacing`, `insert_page_break`, `add_hyperlink`, `split_list`), plus the review and history actions, which materialize or discard existing tracked changes.
 
 Which actions are which is published rather than guessed. `getActionDispositions()` returns the `tracked` or `direct` disposition of every action, and the core preset's catalog carries the same table under `dispositions`. Read one of those rather than hardcoding a list, so your configuration follows the registry when an action changes bucket. The [action reference](/agents/build/actions#changemode) carries the same dispositions per action alongside each action's arguments.
+
+Under the `full` preset, the policy also governs every `superdoc_api_call`, including each call in a batch. [Full preset](/agents/build/full-preset#tracked-only-mode) describes what it forces, what it refuses, and how a refusal reads.
 
 The policy is the same on every surface, because all three run the same preset code. The Python SDK takes `enforce_change_mode` and `allow_direct_actions`:
 

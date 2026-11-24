@@ -1,0 +1,101 @@
+{
+  "definition": {
+    "description": "Retrieve details of a specific table of contents.",
+    "expectedResult": "Returns a TocInfo object with the instruction, source/display configuration, and entry count.",
+    "memberPath": "toc.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "toc/get.mdx",
+    "referenceGroup": "toc",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "block"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "tableOfContents"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "block"
+        },
+        "nodeType": {
+          "const": "tableOfContents"
+        },
+        "properties": {
+          "additionalProperties": false,
+          "properties": {
+            "displayConfig": {
+              "type": "object"
+            },
+            "entryCount": {
+              "type": "integer"
+            },
+            "instruction": {
+              "type": "string"
+            },
+            "preservedSwitches": {
+              "type": "object"
+            },
+            "sourceConfig": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "instruction",
+            "entryCount"
+          ],
+          "type": "object"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodeType",
+        "kind",
+        "properties"
+      ],
+      "type": "object"
+    }
+  }
+}

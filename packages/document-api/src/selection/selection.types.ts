@@ -101,6 +101,7 @@ export interface SelectionCurrentInput {
    * Omit or set `false` to skip text extraction for performance.
    */
   includeText?: boolean;
+  includeLogicalChanges?: boolean;
 }
 
 /**
@@ -179,6 +180,7 @@ export interface SelectionInfo {
    * `trackChanges.list()`.
    */
   activeChangeIds: string[];
+  logicalChangeIds?: string[];
   /**
    * Quoted text of the selection. Populated only when `includeText: true`.
    * Undefined otherwise.

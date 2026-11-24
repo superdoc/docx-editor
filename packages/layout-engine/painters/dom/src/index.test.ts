@@ -3,11 +3,10 @@ import { createDomPainter, sanitizeUrl, linkMetrics, applyRunDataAttributes } fr
 import { paintResolvedLayoutPersistent } from './_test-utils.js';
 import { DomPainter } from './renderer.js';
 import { DOM_CLASS_NAMES } from './constants.js';
-import { underlineOffsetFromLineTop } from './runs/tab-run.js';
 import { resolveLayout } from '@superdoc/layout-resolved';
 import { layoutHeaderFooter } from '@superdoc/layout-engine';
 import type { DomPainterOptions, DomPainterInput, PaintSnapshot } from './index.js';
-import { resolveListMarkerGeometry } from '../../../../../shared/common/list-marker-utils.js';
+import { describeElement } from './test-utils/describe-element.js';
 import type {
   FlowBlock,
   ImageHyperlink,
@@ -26,6 +25,7 @@ import type {
 } from '@superdoc/contracts';
 
 const emptyResolved: ResolvedLayout = { version: 1, flowMode: 'paginated', pageGap: 0, pages: [] };
+const RECORDINGS = './__snapshots__/index';
 
 /**
  * Test-only bridge: accepts old-style `{ blocks, measures, ...options }` and
@@ -724,7 +724,7 @@ describe('DomPainter', () => {
     expect(parseFloat(lines[0].style.wordSpacing)).toBeGreaterThan(0);
   });
 
-  it('paints underlined text and default-positioned tabs with one measured overlay', () => {
+  it('paints underlined text and default-positioned tabs with one measured overlay', async () => {
     const block: FlowBlock = {
       kind: 'paragraph',
       id: 'underlined-default-tabs',
@@ -787,19 +787,9 @@ describe('DomPainter', () => {
     painter.paint(layout, mount);
 
     const lineEl = mount.querySelector('.superdoc-line') as HTMLElement;
-    const overlay = lineEl.querySelector('.superdoc-underline-overlay') as HTMLElement;
-    const textRun = lineEl.querySelector('span:not(.superdoc-tab):not(.superdoc-underline-overlay)') as HTMLElement;
-    const tabRuns = Array.from(lineEl.querySelectorAll('.superdoc-tab')) as HTMLElement[];
 
-    expect(overlay).toBeTruthy();
-    expect(overlay.style.left).toBe('0px');
-    expect(overlay.style.width).toBe('528px');
-    expect(overlay.style.borderTop).toContain('solid');
-    // Pin the underline y to the computed offset - the whole point of SD-3330 - not just > ascent.
-    expect(parseFloat(overlay.style.top)).toBeCloseTo(underlineOffsetFromLineTop(measure.lines[0]), 5);
-    expect(textRun.style.textDecorationLine).toBe('none');
-    expect(tabRuns).toHaveLength(5);
-    tabRuns.forEach((tab) => expect(tab.style.borderBottom).toBe(''));
+    expect(lineEl.querySelectorAll('.superdoc-underline-overlay')).toHaveLength(1);
+    await expect(describeElement(lineEl)).toMatchFileSnapshot(`${RECORDINGS}/underlined-default-tabs-line.txt`);
   });
 
   it('keeps native underlines (no overlay) on RTL tab lines', () => {
@@ -960,7 +950,7 @@ describe('DomPainter', () => {
     expect(fieldEl.style.textDecorationLine).not.toBe('none');
   });
 
-  it('paints one measured overlay for underlined text + tabs on the segment-positioned path', () => {
+  it('paints one measured overlay for underlined text + tabs on the segment-positioned path', async () => {
     // Regression for SD-3330: a line with an explicit segment x (e.g. text after a tab stop)
     // takes the segment-positioned branch. The line-level underline overlay must own the mark
     // there too, so text + preserved spaces + tabs share one y instead of text-decoration and
@@ -1016,27 +1006,9 @@ describe('DomPainter', () => {
     painter.paint(layout, mount);
 
     const lineEl = mount.querySelector('.superdoc-line') as HTMLElement;
-    const overlays = Array.from(lineEl.querySelectorAll('.superdoc-underline-overlay')) as HTMLElement[];
-    const textRuns = Array.from(lineEl.querySelectorAll('span')).filter((s) =>
-      /Name:|Value/.test(s.textContent || ''),
-    ) as HTMLElement[];
-    const borderedEls = Array.from(lineEl.querySelectorAll('span, div')).filter(
-      (el) => (el as HTMLElement).style.borderBottom !== '',
-    );
 
-    // The positioned branch must coalesce text + both tabs + the x=192 "Value" segment into a
-    // SINGLE continuous overlay spanning the whole content - Name: [0,50], tab [50,98], tab
-    // [98,192] (filling to the next segment x), Value [192,232] - not several abutting spans
-    // that could each round to a different sub-pixel edge and reintroduce a seam.
-    expect(overlays).toHaveLength(1);
-    expect(overlays[0].style.left).toBe('0px');
-    expect(overlays[0].style.width).toBe('232px');
-    expect(overlays[0].style.borderTop).toContain('solid');
-    expect(parseFloat(overlays[0].style.top)).toBeCloseTo(underlineOffsetFromLineTop(measure.lines[0]), 5);
-    // Native underlines are suppressed where the overlay owns the mark.
-    expect(textRuns.length).toBeGreaterThan(0);
-    textRuns.forEach((t) => expect(t.style.textDecorationLine).toBe('none'));
-    expect(borderedEls).toHaveLength(0);
+    expect(lineEl.querySelectorAll('.superdoc-underline-overlay')).toHaveLength(1);
+    await expect(describeElement(lineEl)).toMatchFileSnapshot(`${RECORDINGS}/underlined-positioned-tabs-line.txt`);
   });
 
   it('uses first-line hanging width when justifying default-tab positioned segments', () => {
@@ -4752,7 +4724,7 @@ describe('DomPainter', () => {
     expect(textSpan?.style.left).toBe('48px');
   });
 
-  it('preserves measured justification width for inline list first lines without explicit segments', () => {
+  it('preserves measured justification width for inline list first lines without explicit segments', async () => {
     const block: FlowBlock = {
       kind: 'paragraph',
       id: 'inline-justify-list-block',
@@ -4852,28 +4824,9 @@ describe('DomPainter', () => {
     painter.paint(listLayout, mount);
 
     const lineEl = mount.querySelector('.superdoc-line') as HTMLElement;
-    expect(lineEl).toBeTruthy();
-    const markerEl = mount.querySelector('.superdoc-paragraph-marker') as HTMLElement;
-    const tabEl = mount.querySelector('.superdoc-tab') as HTMLElement;
 
-    const expectedMarkerGeometry = resolveListMarkerGeometry(
-      block.attrs?.wordLayout as Parameters<typeof resolveListMarkerGeometry>[0],
-      0,
-      0,
-      0,
-      () => 16.6669921875,
-    );
-
-    const appliedWordSpacing = Number.parseFloat(lineEl.style.wordSpacing);
-    const expectedWordSpacing = (325.7330078125 - 309.5732421875) / 9;
-
-    expect(markerEl).toBeTruthy();
-    expect(tabEl).toBeTruthy();
-    expect(expectedMarkerGeometry).toBeTruthy();
-    expect(lineEl.style.paddingLeft).toBe(`${expectedMarkerGeometry!.markerStartPx}px`);
-    expect(Number.parseFloat(tabEl.style.width)).toBeCloseTo(expectedMarkerGeometry!.suffixWidthPx, 4);
-    expect(appliedWordSpacing).toBeGreaterThan(0);
-    expect(appliedWordSpacing).toBeCloseTo(expectedWordSpacing, 5);
+    expect(lineEl.querySelector('.superdoc-paragraph-marker')).toBeTruthy();
+    await expect(describeElement(lineEl)).toMatchFileSnapshot(`${RECORDINGS}/inline-justify-list-first-line.txt`);
   });
 
   it('rebuilds fragment DOM nodes when layout geometry changes to keep line epochs in sync', () => {
@@ -7053,8 +7006,12 @@ describe('DomPainter', () => {
 
       const styleEl = document.head.querySelector('[data-superdoc-track-change-styles="true"]') as HTMLStyleElement;
       expect(styleEl).toBeTruthy();
-      expect(styleEl.textContent).toMatch(
-        /\.track-delete-dec\.highlighted\s*\{[\s\S]*text-decoration:\s*line-through\s+solid\s+var\(--sd-tracked-changes-delete-text,\s*currentColor\)\s+var\(--sd-tracked-changes-delete-decoration-thickness,\s*2px\)\s*!important;/,
+      const deleteRule =
+        styleEl.textContent?.match(
+          /\.superdoc-layout\s+\.track-delete-dec\.highlighted\s*(?:,[^{}]+)?\{([^{}]*)\}/,
+        )?.[1] ?? '';
+      expect(deleteRule).toMatch(
+        /text-decoration:\s*line-through\s+solid\s+var\(--sd-tracked-changes-delete-text,\s*currentColor\)\s+var\(--sd-tracked-changes-delete-decoration-thickness,\s*2px\)\s*!important;/,
       );
     } finally {
       mount.remove();
@@ -9620,74 +9577,108 @@ describe('DomPainter', () => {
     expect(mount.querySelector('.superdoc-vector-shape')?.textContent).toContain('Page V');
   });
 
-  it('preserves cached SECTIONPAGES drawing text when section context is unavailable', () => {
-    const painter = new DomPainter();
-    const resolvePartText = (
-      painter as unknown as {
-        resolveShapeTextPartText: (
-          part: { text: string; fieldType: string; pageNumberFormat?: string },
-          context: { pageNumber: number; totalPages: number; section: 'body' },
-        ) => string;
-      }
-    ).resolveShapeTextPartText.bind(painter);
-
-    expect(
-      resolvePartText({ text: '3', fieldType: 'SECTIONPAGES' }, { pageNumber: 1, totalPages: 9, section: 'body' }),
-    ).toBe('3');
-  });
-
-  it('formats NUMPAGES drawing text with supported pageNumberFormat', () => {
-    const painter = new DomPainter();
-    const resolvePartText = (
-      painter as unknown as {
-        resolveShapeTextPartText: (
-          part: { text: string; fieldType: string; pageNumberFormat?: string },
-          context: { pageNumber: number; totalPages: number; section: 'body' },
-        ) => string;
-      }
-    ).resolveShapeTextPartText.bind(painter);
-
-    expect(
-      resolvePartText(
-        { text: '9', fieldType: 'NUMPAGES', pageNumberFormat: 'upperRoman' },
-        { pageNumber: 1, totalPages: 9, section: 'body' },
-      ),
-    ).toBe('IX');
-    expect(
-      resolvePartText(
-        { text: '9', fieldType: 'NUMPAGES', pageNumberFormat: 'ordinal' },
-        { pageNumber: 1, totalPages: 12, section: 'body' },
-      ),
-    ).toBe('12th');
-  });
-
-  it('preserves cached drawing totals provisionally and uses an em dash when the cache is empty', () => {
-    const painter = new DomPainter();
-    const resolvePartText = (
-      painter as unknown as {
-        resolveShapeTextPartText: (
-          part: { text: string; fieldType: string; pageNumberFormat?: string },
-          context: {
-            pageNumber: number;
-            totalPages: number;
-            sectionPageCount: number;
-            section: 'footer';
-            pageCountFieldsExact: false;
-          },
-        ) => string;
-      }
-    ).resolveShapeTextPartText.bind(painter);
-    const context = {
-      pageNumber: 1,
-      totalPages: 1,
-      sectionPageCount: 1,
-      section: 'footer' as const,
-      pageCountFieldsExact: false as const,
+  describe('page-count fields in drawing text', () => {
+    type ShapeTextPart = {
+      text: string;
+      fieldType: 'NUMPAGES' | 'SECTIONPAGES';
+      pageNumberFormat?: 'upperRoman' | 'ordinal';
+    };
+    const geometry = { width: 100, height: 50, rotation: 0, flipH: false, flipV: false };
+    const shapeMeasure: Measure = {
+      kind: 'drawing',
+      drawingKind: 'vectorShape',
+      width: 100,
+      height: 50,
+      scale: 1,
+      naturalWidth: 100,
+      naturalHeight: 50,
+      geometry,
     };
 
-    expect(resolvePartText({ text: '19', fieldType: 'NUMPAGES' }, context)).toBe('19');
-    expect(resolvePartText({ text: '7', fieldType: 'SECTIONPAGES' }, context)).toBe('7');
-    expect(resolvePartText({ text: '', fieldType: 'NUMPAGES' }, context)).toBe('—');
+    const paintShapeTextOnPages = (
+      parts: ShapeTextPart[],
+      pageSectionIndexes: number[],
+      pageCountFieldsExact?: boolean,
+    ): string[] => {
+      const shapeBlock: FlowBlock = {
+        kind: 'drawing',
+        id: 'drawing-page-count-fields',
+        drawingKind: 'vectorShape',
+        geometry,
+        shapeKind: 'rect',
+        textContent: {
+          parts: parts.flatMap((part) => [part, { text: '|', formatting: { fontFamily: 'Arial', fontSize: 12 } }]),
+        },
+      };
+      const shapeLayout: Layout = {
+        pageSize: { w: 400, h: 500 },
+        pages: pageSectionIndexes.map((sectionIndex, index) => ({
+          number: index + 1,
+          sectionIndex,
+          fragments: [
+            {
+              kind: 'drawing',
+              drawingKind: 'vectorShape',
+              blockId: shapeBlock.id,
+              x: 30,
+              y: 40,
+              width: 100,
+              height: 50,
+              geometry,
+              scale: 1,
+            },
+          ],
+        })),
+      };
+      const painter = createTestPainter({ blocks: [shapeBlock], measures: [shapeMeasure] });
+      painter.setResolvedLayout(
+        resolveLayout({
+          layout: shapeLayout,
+          flowMode: 'paginated',
+          blocks: [shapeBlock],
+          measures: [shapeMeasure],
+          pageCountFieldsExact,
+        }),
+      );
+      painter.paint(shapeLayout, mount);
+      return Array.from(mount.querySelectorAll('.superdoc-vector-shape'), (shape) => shape.textContent?.trim() ?? '');
+    };
+
+    it('formats NUMPAGES with its pageNumberFormat from the document page count', () => {
+      const pageTexts = paintShapeTextOnPages(
+        [
+          { text: '9', fieldType: 'NUMPAGES', pageNumberFormat: 'upperRoman' },
+          { text: '9', fieldType: 'NUMPAGES', pageNumberFormat: 'ordinal' },
+          { text: '9', fieldType: 'NUMPAGES' },
+        ],
+        Array.from({ length: 12 }, () => 0),
+      );
+
+      expect(new Set(pageTexts)).toEqual(new Set(['XII|12th|12|']));
+    });
+
+    it('counts SECTIONPAGES within each page section', () => {
+      const pageTexts = paintShapeTextOnPages(
+        [
+          { text: '3', fieldType: 'SECTIONPAGES' },
+          { text: '3', fieldType: 'SECTIONPAGES', pageNumberFormat: 'upperRoman' },
+        ],
+        [0, 0, 0, 1, 1],
+      );
+
+      expect(pageTexts).toEqual(['3|III|', '3|III|', '3|III|', '2|II|', '2|II|']);
+    });
+
+    it('keeps cached page counts while counts are provisional and uses an em dash when the cache is empty', () => {
+      const parts: ShapeTextPart[] = [
+        { text: '19', fieldType: 'NUMPAGES' },
+        { text: '7', fieldType: 'SECTIONPAGES' },
+        { text: '', fieldType: 'NUMPAGES' },
+      ];
+
+      expect(paintShapeTextOnPages(parts, [0], false)).toEqual(['19|7|—|']);
+      expect(paintShapeTextOnPages(parts, [0], true)).toEqual(['1|1|1|']);
+    });
   });
 
   it('keeps body total-page text aligned with provisional measurement and upgrades it when exact', () => {

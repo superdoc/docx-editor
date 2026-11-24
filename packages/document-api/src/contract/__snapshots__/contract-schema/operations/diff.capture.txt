@@ -1,0 +1,95 @@
+{
+  "definition": {
+    "description": "Capture the current document's diffable state as a versioned snapshot. v2 capture requires source-complete state and reports coverage for body, comments, styles, numbering, and header/footers, with extended family coverage carried in the opaque payload. Legacy body-only v2 artifacts remain accepted for compare/apply compatibility.",
+    "expectedResult": "Returns a DiffSnapshot with a fingerprint and opaque payload.",
+    "memberPath": "diff.capture",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "PRECONDITION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "diff/capture.mdx",
+    "referenceGroup": "diff",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "const": true,
+              "type": "boolean"
+            },
+            "comments": {
+              "type": "boolean"
+            },
+            "headerFooters": {
+              "type": "boolean"
+            },
+            "numbering": {
+              "type": "boolean"
+            },
+            "styles": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "body",
+            "comments",
+            "styles",
+            "numbering",
+            "headerFooters"
+          ],
+          "type": "object"
+        },
+        "engine": {
+          "enum": [
+            "superdoc-v2"
+          ],
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "payload": {
+          "description": "Opaque engine-owned snapshot data.",
+          "type": "object"
+        },
+        "version": {
+          "enum": [
+            "sd-diff-snapshot/v1",
+            "sd-diff-snapshot/v2"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "engine",
+        "fingerprint",
+        "coverage",
+        "payload"
+      ],
+      "type": "object"
+    }
+  }
+}

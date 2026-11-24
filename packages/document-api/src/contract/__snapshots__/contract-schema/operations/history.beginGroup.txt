@@ -1,0 +1,47 @@
+{
+  "definition": {
+    "batchable": false,
+    "description": "Begin one editor-local undo group across awaited public writes. Nesting and temporary mutation overlap are rejected. Finish with endGroup in finally; failed writes leave the successful prefix undoable. Native input and undo/redo finish the group; remote peer edits retain their own ownership.",
+    "expectedResult": "Returns a session-local groupId. Empty groups create no history entry. The handle does not survive document replacement or reopen.",
+    "memberPath": "history.beginGroup",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "PRECONDITION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "history/begin-group.mdx",
+    "referenceGroup": "history",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "groupId": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "groupId"
+      ],
+      "type": "object"
+    }
+  }
+}

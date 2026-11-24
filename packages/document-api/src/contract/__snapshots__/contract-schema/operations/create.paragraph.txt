@@ -1,0 +1,276 @@
+{
+  "definition": {
+    "description": "Create a standalone paragraph at the target position. To add a list item, use lists.insert instead.",
+    "expectedResult": "Returns a CreateParagraphResult with the new paragraph block ID and address.",
+    "intentAction": "paragraph",
+    "intentGroup": "create",
+    "memberPath": "create.paragraph",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET",
+          "AMBIGUOUS_TARGET",
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "create/paragraph.mdx",
+    "referenceGroup": "create",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_TARGET",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "description": "Position: {kind:'documentEnd'} to append, {kind:'documentStart'} to prepend, or {kind:'before'|'after', target:{kind:'block', nodeType:'...', nodeId:'...'}} for relative placement.",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "documentStart"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "documentEnd"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "before"
+                },
+                "target": {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "after"
+                },
+                "target": {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "styleId": {
+          "description": "Explicit paragraph style id (e.g. \"BodyText\") to apply instead of the default resolved from the anchor/document. An unknown style id fails with INVALID_INPUT and does not mutate the document.",
+          "type": "string"
+        },
+        "text": {
+          "description": "Paragraph text content. Each call creates ONE paragraph. For multiple items (e.g. list items), call superdoc_create separately for each item: do NOT use newlines to put multiple items in one paragraph.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "evaluatedRevision": {
+              "type": "string"
+            },
+            "handle": {
+              "$ref": "#/$defs/ResolvedHandle"
+            },
+            "insertionPoint": {
+              "$ref": "#/$defs/TextAddress"
+            },
+            "paragraph": {
+              "$ref": "#/$defs/ParagraphAddress"
+            },
+            "ref": {
+              "description": "Deprecated: use handle.ref instead. Kept as an alias of handle.ref for backward compatibility.",
+              "type": "string"
+            },
+            "success": {
+              "const": true
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success",
+            "paragraph",
+            "insertionPoint",
+            "handle",
+            "evaluatedRevision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "INVALID_TARGET",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "handle": {
+          "$ref": "#/$defs/ResolvedHandle"
+        },
+        "insertionPoint": {
+          "$ref": "#/$defs/TextAddress"
+        },
+        "paragraph": {
+          "$ref": "#/$defs/ParagraphAddress"
+        },
+        "ref": {
+          "description": "Deprecated: use handle.ref instead. Kept as an alias of handle.ref for backward compatibility.",
+          "type": "string"
+        },
+        "success": {
+          "const": true
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "paragraph",
+        "insertionPoint",
+        "handle",
+        "evaluatedRevision"
+      ],
+      "type": "object"
+    }
+  }
+}

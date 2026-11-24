@@ -1,0 +1,30 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "atChar": {
+      "type": "integer"
+    },
+    "atCharInBlock": {
+      "type": "integer"
+    },
+    "blockId": {
+      "type": "string"
+    },
+    "delta": {
+      "type": "integer"
+    },
+    "replacedLength": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "story",
+    "atChar",
+    "delta"
+  ],
+  "type": "object"
+}

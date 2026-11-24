@@ -1,0 +1,86 @@
+{
+  "definition": {
+    "description": "Get a single anchored-metadata entry by id, including its JSON payload.",
+    "expectedResult": "Returns an AnchoredMetadataInfo with id, namespace, partName, and payload; or null if not found.",
+    "memberPath": "metadata.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "metadata/get.mdx",
+    "referenceGroup": "metadata",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "contentControlId"
+            ]
+          },
+          "then": {
+            "required": [
+              "story"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "story"
+            ]
+          },
+          "then": {
+            "required": [
+              "contentControlId"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "contentControlId": {
+          "description": "Physical content control ID the record must be anchored to. Pass together with story.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "story": {
+          "$ref": "#/$defs/StoryLocator",
+          "description": "Story holding that content control. Pass together with contentControlId."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

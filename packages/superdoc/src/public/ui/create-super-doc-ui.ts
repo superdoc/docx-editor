@@ -24,8 +24,9 @@ import { beginInteraction, recordInteraction } from '../../internal/diagnostics/
  */
 
 import { shallowEqual } from './equality.js';
+import { stepFontSize } from './font-size-steps.js';
+import { fileToDataUri, isSupportedImageFile } from '../../internal/toolbar/image-upload.js';
 import { createWatermarkController } from './watermark-controller.js';
-import { captureParagraphPaintOperations } from './format-painter-paragraph.js';
 import { sdRunPropsToInlineRunPatch, selectionKey } from './format-painter-helpers.js';
 import {
   getV2TrackedChangeMutationImpact,
@@ -35,6 +36,7 @@ import {
 import { isV2EditableTextMutationEvent } from '../../helpers/v2-typing-mutation-event.js';
 import { isSyntheticTrackedChangeCommentLaneItem } from '../../helpers/tracked-change-comment-lane.js';
 import { ALL_BUILT_IN_COMMAND_IDS, getCommandDescriptor, type CommandDescriptor, type UiDocRoute } from './commands.js';
+import type { ResolvedBlockListState } from './paragraph-command-reads.js';
 import { SUPERDOC_UI_REASONS, type SuperDocUIReason } from './reasons.js';
 import { remoteChangeRecordsOf, remoteDocumentChange } from './document-change-records.js';
 import type { ChangeRecord } from '@superdoc/document-api';
@@ -113,12 +115,12 @@ import type {
 } from './types.js';
 import { collectDecorationProvidersFromChain } from './entity-at.js';
 
-import { getParagraphInlineDirection } from '@superdoc/contracts';
+import { getParagraphInlineDirection, trackedChangeListPresentation } from '@superdoc/contracts';
 import { isPlainObject } from '../../helpers/object-guards.js';
 import { isFiniteNumber } from '../../helpers/is-finite-number.js';
 import type { SurfaceHandle } from '../../core/types/index.js';
 import { type TextSegment } from '@superdoc/document-api';
-import type { AnyFn, LooseRecord } from './loose-record.js';
+import { readRecord, readRecordList, type AnyFn, type LooseRecord } from './loose-record.js';
 import {
   CLEAR_INLINE_PATCH,
   EFFECTIVE_MARK_KEYS,
@@ -170,6 +172,7 @@ import {
   isSuccessfulReceipt,
   listToggleKind,
   normalizeCommandState,
+  normalizeCommentComposerResult,
   normalizeHostSelectionApplyResult,
   partialLinkEditFailure,
   presetFromToolbarStyleKey,
@@ -180,12 +183,7 @@ import {
   safeCall,
   trackDecisionCommand,
 } from './command-results.js';
-import {
-  PARAGRAPH_INDENT_STEP_TWIPS,
-  buildTableCommandInput,
-  readMergeRange,
-  type ResolvedTableContext,
-} from './block-commands.js';
+import { buildTableCommandInput, readMergeRange, type ResolvedTableContext } from './block-commands.js';
 import {
   entityRowMatchesRequest,
   isHostGeometryTarget,
@@ -236,6 +234,7 @@ import {
   selectionTouchesDeletedText,
   selectionHasOnlyDeletedText,
   selectionBlockIds,
+  selectionCellParagraphScope,
   selectionBlockRange,
   selectionStory,
   selectionTargetForRestore,
@@ -259,6 +258,7 @@ import { createDocumentPolicy } from './document-policy.js';
 import { createViewportPointQueries } from './viewport-point-queries.js';
 import { createStyleReads, createStylesHandle, documentDefaultParagraphStyleId } from './styles-handle.js';
 import { schedulePostFrame } from './post-frame.js';
+import { getCommentComposerBridge } from '../../helpers/comment-composer-bridge.js';
 
 type FirstPartyCommandMutation = {
   selectionReader?: {
@@ -366,7 +366,13 @@ function documentChangeFromHostEvent(event: LooseRecord): DocumentChangeFacts | 
 function projectTrackChangesItem(item: unknown): TrackChangesItem | null {
   if (!isPlainObject(item)) return null;
   const change = isPlainObject(item.change) ? item.change : item;
-  const projected: Record<string, unknown> = { ...item, id: item.id ?? change.id, change };
+  const listLabel = trackedChangeListPresentation(change)?.label;
+  const projected: Record<string, unknown> = {
+    ...item,
+    id: item.id ?? change.id,
+    change,
+    ...(listLabel ? { listLabel } : {}),
+  };
   return projected as unknown as TrackChangesItem;
 }
 
@@ -400,6 +406,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const paintedInlineTargets = new WeakSet<object>();
   let painterCaptureEpoch = 0;
   let painterSettlement: Promise<boolean> = Promise.resolve(false);
+  let painterMutation: Promise<void> = Promise.resolve();
   let painterSingleApplication: object | null = null;
   let painterCommandDoc: LooseRecord | null = null;
   const painterModeListeners = new Set<(mode: FormatPainterMode) => void>();
@@ -847,7 +854,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             entityType,
             entityId: next.id,
             ...(next.paintedEntityId ? { paintedEntityId: next.paintedEntityId } : {}),
-            origin: 'panel',
+            origin: entityType === 'comment' ? 'api' : 'panel',
             layoutEpoch: typeof layout?.generation === 'number' ? layout.generation : 0,
             ...(entityType === 'trackedChange' ? { story: next.story ?? { kind: 'story', storyType: 'body' } } : {}),
           }),
@@ -1430,8 +1437,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return isV2EditableTextMutationEvent(event);
   };
 
-  const invalidateDocumentContentAndRecompute = (): void => {
-    invalidateDocumentContent();
+  const invalidateDocumentContentAndRecompute = (remoteTextBlockId?: string): void => {
+    invalidateDocumentContent(remoteTextBlockId);
     recompute();
   };
 
@@ -1439,6 +1446,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     editor: LooseRecord;
     whenPainted: (...args: unknown[]) => unknown;
     afterEpoch: number | null;
+    remoteTextBlockId: string | undefined;
   } | null = null;
   let pendingPostPaintSelectionRefresh: {
     editor: LooseRecord;
@@ -1462,7 +1470,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     postPaintSelectionRefreshDrainToken += 1;
   };
 
-  const schedulePostPaintContentRefresh = (): void => {
+  const schedulePostPaintContentRefresh = (remoteTextBlockId?: string): void => {
     const editor = getEditor();
     const readiness = editor?.documentMutationReadiness;
     const whenPainted = hostMethod(readiness, 'whenPainted');
@@ -1470,7 +1478,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const getRenderEpoch = hostMethod(readiness, 'getRenderEpoch');
     const epoch = getRenderEpoch ? safeCall<unknown>(() => getRenderEpoch(), null) : null;
     const afterEpoch = typeof epoch === 'number' ? epoch : null;
-    pendingPostPaintContentRefresh = { editor, whenPainted, afterEpoch };
+    if (pendingPostPaintContentRefresh && pendingPostPaintContentRefresh.remoteTextBlockId !== remoteTextBlockId) {
+      remoteTextBlockId = undefined;
+    }
+    pendingPostPaintContentRefresh = { editor, whenPainted, afterEpoch, remoteTextBlockId };
     if (postPaintContentRefreshRunning) return;
     postPaintContentRefreshRunning = true;
     const drainToken = postPaintContentRefreshDrainToken;
@@ -1498,7 +1509,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           resetPostPaintContentRefresh();
           return;
         }
-        if (paintCompleted) invalidateDocumentContentAndRecompute();
+        if (paintCompleted) invalidateDocumentContentAndRecompute(request.remoteTextBlockId);
       }
     };
 
@@ -1588,6 +1599,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       status: SliceStatus,
     ): { value: T | null; status: SliceStatus } =>
       entry?.hasSettled ? { value: entry.value as T | null, status } : { value: null, status: 'pending' };
+    if (!getEditor()) return serve(null, 'pending');
     const entry = asyncReads.get(key);
     if (entry && entry.token === token && entry.hasSettled) return serve(entry, 'ready');
     if (holdsTypedCaretSelection(key)) {
@@ -1671,9 +1683,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     allTrackedChangesResolvedToken = null;
   };
 
+  const indentMutationObservers = new Set<(remoteTextBlockId?: string) => void>();
+
   /** Bump the document-mutation revision so content reads re-fetch on the next compute. */
-  const invalidateDocumentContent = (): void => {
+  const invalidateDocumentContent = (remoteTextBlockId?: string): void => {
     documentMutationRevision += 1;
+    for (const observe of indentMutationObservers) observe(remoteTextBlockId);
     heavyReadGate.invalidateSourceCoverage();
     clearPostDecisionTrackChanges();
   };
@@ -1770,10 +1785,21 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     raw && typeof raw === 'object' ? (raw as SelectionInfo) : null;
 
   const selectionContentLocks = new WeakMap<SelectionSlice, boolean>();
+  const selectionParagraphTextLengths = new WeakMap<SelectionSlice, LooseRecord>();
+  const readSelectionParagraphTextLengths = (info: SelectionInfo | null) => {
+    const lengths = readRecord(readRecord(info)?.paragraphTextLengths);
+    if (lengths) return lengths;
+    const presentation = normalizeSelectionInfo(readSelectionPresentation()?.selection);
+    return info && presentation && selectionKey(info) === selectionKey(presentation)
+      ? readRecord(readRecord(presentation)?.paragraphTextLengths)
+      : null;
+  };
 
   const selectionSliceFromInfo = (info: SelectionInfo | null, status: SliceStatus): SelectionSlice => {
     if (!info) return { ...EMPTY_SELECTION, status };
     const slice = buildSelectionSlice(info, status);
+    const paragraphTextLengths = readSelectionParagraphTextLengths(info);
+    if (paragraphTextLengths) selectionParagraphTextLengths.set(slice, paragraphTextLengths);
     if (isPlainObject(info) && typeof info.contentControlLocked === 'boolean') {
       selectionContentLocks.set(slice, info.contentControlLocked);
     }
@@ -3783,6 +3809,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           : trackedChangeDecisionPermissionReason(trackCommand.kind, selection.activeChangeIds));
       return normalizeCommandState({ enabled: reason == null, active: false, supported, reason }, 'builtin');
     }
+    if (id === 'apply-format') {
+      return normalizeCommandState(
+        {
+          supported: true,
+          enabled: !readonly && !!getEditor() && painter.mode !== 'idle',
+          active: false,
+          ...(readonly ? { reason: SUPERDOC_UI_REASONS.documentReadonly } : {}),
+        },
+        'builtin',
+      );
+    }
     if (id === 'copy-format') {
       if (readonly) {
         return normalizeCommandState({ supported: true, enabled: false, active: false }, 'builtin');
@@ -3958,6 +3995,12 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         'builtin',
       );
     }
+    if (descriptor.fontStep && value !== undefined && stepFontSize(Number(value), descriptor.fontStep) === null) {
+      return normalizeCommandState(
+        { enabled: false, active, supported: true, value, reason: SUPERDOC_UI_REASONS.operationUnavailable },
+        'builtin',
+      );
+    }
     // Inline-format commands operate on the live selection target. With a range
     // they mutate it directly; with a collapsed caret in a block they store the
     // pick for the next typed text (stored marks, SD-3654/SD-3652) - a mark
@@ -3982,9 +4025,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // Block-level paragraph / list commands resolve the current paragraph
     // block(s) from the selection. A caret is enough (it still has a block id);
     // with no resolvable block they fail closed with `selection-required`.
-    if ((descriptor.blockParagraph || descriptor.list) && selectionBlockIds(selection).length === 0) {
+    const cellParagraphScope = descriptor.blockParagraph ? selectionCellParagraphScope(selection) : null;
+    if (
+      (descriptor.blockParagraph || descriptor.list) &&
+      selectionBlockIds(selection).length === 0 &&
+      !cellParagraphScope
+    ) {
       return normalizeCommandState(
         { enabled: false, active, supported: true, value, reason: SUPERDOC_UI_REASONS.selectionRequired },
+        'builtin',
+      );
+    }
+    if (cellParagraphScope && typeof doc?.find !== 'function') {
+      return normalizeCommandState(
+        { enabled: false, active, supported: false, value, reason: unavailableRouteReason(doc) },
         'builtin',
       );
     }
@@ -4471,72 +4525,30 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     optimistic.settled = true;
   };
 
-  /**
-   * Await a block's list membership authoritatively. Membership comes from
-   * `isListItem`, not `seed`: linked/custom Word numbering can be a valid list
-   * item while returning `seed: null`. Command execution must also fail closed
-   * when membership cannot be resolved instead of assuming a plain paragraph.
-   *
-   * The read resolves directly instead of peeking at the async cache. Only the
-   * first selected block is warmed by the command-state snapshot, so command
-   * execution cannot depend on that cache being warm (SD-3659).
-   */
-  const resolveListMembershipForBlockAsync = async (
-    doc: LooseRecord | null,
-    blockId: string,
-    story: LooseRecord,
-  ): Promise<boolean | null> => {
-    const listsApi = doc?.lists as LooseRecord | undefined;
-    if (!listsApi) return null;
-    try {
-      const isBodyStory = story.storyType === 'body';
-      const raw =
-        typeof listsApi.getStateInStory === 'function'
-          ? await listsApi.getStateInStory({ target: listsBlockTarget(blockId), story })
-          : isBodyStory && typeof listsApi.getState === 'function'
-            ? await listsApi.getState({ target: listsBlockTarget(blockId) })
-            : null;
-      const result = raw && typeof raw === 'object' ? (raw as LooseRecord) : null;
-      if (!result || result.success !== true || typeof result.isListItem !== 'boolean') return null;
-      return result.isListItem;
-    } catch {
-      return null;
-    }
-  };
-
-  type ResolvedListSeed = {
-    resolved: boolean;
-    seed: 'bullet' | 'ordered' | null;
-  };
-
   /** Read a list seed directly for mutation planning instead of trusting the reactive cache. */
-  const resolveListSeedForBlock = (
+  const resolveListStateForBlock = (
     doc: LooseRecord | null,
     blockId: string,
     story: LooseRecord,
-  ): ResolvedListSeed | Promise<ResolvedListSeed> => {
-    const unavailable: ResolvedListSeed = { resolved: false, seed: null };
-    const getStateInStory = hostMethod(doc?.lists, 'getStateInStory');
-    const getState = hostMethod(doc?.lists, 'getState');
-    if (!getStateInStory && !getState) return unavailable;
-    const isBodyStory = story.storyType === 'body';
-    const readState = getStateInStory
-      ? () => getStateInStory({ target: listsBlockTarget(blockId), story })
-      : isBodyStory && getState
-        ? () => getState({ target: listsBlockTarget(blockId) })
-        : null;
-    if (!readState) return unavailable;
+  ): ResolvedBlockListState | Promise<ResolvedBlockListState> => {
+    const unavailable: ResolvedBlockListState = { isListItem: null, seed: null };
 
-    const normalize = (raw: unknown): ResolvedListSeed => {
-      const result = raw && typeof raw === 'object' ? (raw as LooseRecord) : null;
+    const normalize = (raw: unknown): ResolvedBlockListState => {
+      const result = readRecord(raw);
       if (!result || result.success !== true || typeof result.isListItem !== 'boolean') return unavailable;
       const seed =
         result.isListItem === true && (result.seed === 'bullet' || result.seed === 'ordered') ? result.seed : null;
-      return { resolved: true, seed };
+      return { isListItem: result.isListItem, seed };
     };
 
     try {
-      const raw = readState();
+      const getStateInStory = hostMethod(doc?.lists, 'getStateInStory');
+      const target = listsBlockTarget(blockId);
+      const raw = getStateInStory
+        ? getStateInStory({ target, story })
+        : story.storyType === 'body'
+          ? hostMethod(doc?.lists, 'getState')?.({ target })
+          : null;
       return isPromiseLike(raw) ? Promise.resolve(raw).then(normalize, () => unavailable) : normalize(raw);
     } catch {
       return unavailable;
@@ -4559,7 +4571,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
 
     const blockIds = selectionBlockIds(selection);
-    if (blockIds.length === 0) {
+    const cellScope = selectionCellParagraphScope(selection);
+    if (blockIds.length === 0 && !cellScope) {
       return normalizeCommandState(
         { enabled: false, active, supported: true, value, reason: SUPERDOC_UI_REASONS.selectionRequired },
         'builtin',
@@ -4570,6 +4583,26 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const paragraphSetIndent = resolveDocOperation(doc, 'format.paragraph.setIndentation');
     const mode = descriptor.list?.mode;
     const paragraphOpAvailable = paragraphSetIndent != null;
+    if (blockIds.length === 0 && cellScope) {
+      let enabled = typeof doc?.find === 'function' && (listOp != null || paragraphOpAvailable);
+      if (enabled && cellScope.story.storyType !== 'body') {
+        const suggesting = readDocumentMode() === 'suggesting';
+        const snapshot = readAsync<boolean>(
+          `cellIndent:${mode}`,
+          `${selectionReadToken()}|${JSON.stringify(cellScope)}`,
+          async () => {
+            const { canIndentCellParagraphs } = await loadParagraphCommandReads();
+            return canIndentCellParagraphs(doc, cellScope, mode, suggesting, paragraphOpAvailable);
+          },
+          (raw) => (typeof raw === 'boolean' ? raw : null),
+        );
+        enabled = snapshot.status === 'ready' && snapshot.value === true;
+      }
+      return normalizeCommandState(
+        { enabled, active, supported: enabled, value, ...(!enabled ? { reason: unavailableRouteReason(doc) } : {}) },
+        'builtin',
+      );
+    }
     const story = selectionStory(selection);
     let listMembership: Array<boolean | null> | null = null;
     if (story.storyType !== 'body') {
@@ -5400,6 +5433,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         if (host) publishDocumentChange(host, event);
         const isStandaloneDocumentMutation = type === 'document:mutated' && event.hasCommitEvent !== true;
         if (
+          (type === 'document:mutated' && (isStandaloneDocumentMutation || event.remoteOnly !== true)) ||
+          type === 'mutation:committed' ||
+          type === 'collaboration:document-replaced'
+        ) {
+          // SD-7235: Local typing can defer the cache invalidation below.
+          for (const observe of indentMutationObservers) observe();
+        }
+        if (
           type === 'collaboration:document-replaced' ||
           isStandaloneDocumentMutation ||
           (type === 'mutation:committed' && mutationCommittedEventChangedVisibleContent(event)) ||
@@ -5524,6 +5565,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             if (event.cause === 'preview') invalidateDocumentContent();
             return;
           }
+          const remoteTextBlockId =
+            type === 'collaboration:remote-changed' && typeof event.remoteTextBlockId === 'string'
+              ? event.remoteTextBlockId
+              : undefined;
           if (
             isStandaloneDocumentMutation ||
             type === 'collaboration:remote-changed' ||
@@ -5533,7 +5578,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // paint. Refresh immediately for direct source values, then once
             // more after mounted projection catches up so inherited paragraph
             // formatting cannot remain stale.
-            schedulePostPaintContentRefresh();
+            schedulePostPaintContentRefresh(remoteTextBlockId);
           }
           const remoteCommentsPartChanged =
             type === 'collaboration:remote-changed' &&
@@ -5552,7 +5597,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
             // the demanded comments read below refreshes immediately.
             heavyReadGate.holdHeavyReadsUntilIdle();
           }
-          invalidateDocumentContent();
+          invalidateDocumentContent(remoteTextBlockId);
           if (remoteCommentsPartChanged && !isTypingBurst) {
             // Comments-part changes are authoritative for the catalog. Story
             // edits also require a refresh when loaded rows may carry shifted
@@ -6546,6 +6591,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     op: AnyFn,
     blockIds: readonly string[],
     buildInput: (blockId: string) => LooseRecord | null,
+    mutate = callEditorMutation,
   ): CommandExecutionResult => {
     const immediateResults: CommandExecutionResult[] = [];
     const settledResults: Array<Promise<CommandExecutionResult>> = [];
@@ -6553,7 +6599,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       const input = buildInput(blockId);
       if (!input) continue;
       try {
-        const result = settleOperationResult(callEditorMutation(route, op, input));
+        const result = settleOperationResult(mutate(route, op, input));
         immediateResults.push(result.immediate);
         settledResults.push(result.settled);
       } catch {
@@ -6675,6 +6721,156 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return op(input, { ...options, offsetSpace: 'selection' });
     if (!(selection as LooseRecord).selectionTarget) return options ? op(input, options) : op(input);
     return op(input, { ...options, offsetSpace: 'kernel' });
+  };
+
+  const executeFontStep = async (
+    descriptor: CommandDescriptor,
+    op: AnyFn,
+    selection: SelectionSlice,
+  ): Promise<unknown> => {
+    const direction = descriptor.fontStep;
+    if (!direction || documentIsReadOnly()) return false;
+    const doc = getDoc(),
+      editor = getEditor(),
+      sourceDoc = editor?.doc;
+    const token = contentToken(),
+      mode = readDocumentMode(),
+      key = selectionKey(selection);
+    const current = () =>
+      !disposed &&
+      getEditor() === editor &&
+      editor?.doc === sourceDoc &&
+      contentToken() === token &&
+      readDocumentMode() === mode &&
+      selectionKey(state.selection) === key;
+    const selectionIsCurrent = async () => {
+      const read = resolveDocOperation(doc, 'selection.current');
+      const fresh = read
+        ? normalizeSelectionInfo(
+            await read({ includeText: true, ...(editor?.editorVersion === 2 ? { offsetSpace: 'selection' } : {}) }),
+          )
+        : null;
+      return current() && fresh !== null && selectionKey(fresh) === key;
+    };
+    const locked = () => {
+      const controls = doc?.contentControls;
+      return contentControlLockReason(
+        computeActiveContentControlLockModes(isPlainObject(controls) ? controls : undefined, selection).lockModesById,
+      );
+    };
+    if (locked()) return false;
+    const target = resolveInlineCommandTarget(selection);
+    if (!target) {
+      if (!canStorePendingInlineFormat(selection)) return false;
+      const pending = pendingInlineValueFor(descriptor);
+      const values = pending === undefined ? await readFormatPainterInlineValues(selection) : null;
+      const next = stepFontSize(Number(pending ?? values?.fontSize), direction);
+      return (await selectionIsCurrent()) && pendingInlineValueFor(descriptor) === pending && !locked() && next !== null
+        ? storePendingInlineFormat(descriptor, next, selection)
+        : false;
+    }
+    const info = resolveDocOperation(doc, 'info');
+    const documentInfo: unknown = info ? await info() : null;
+    const revision =
+      isPlainObject(documentInfo) && typeof documentInfo.revision === 'string' ? documentInfo.revision : undefined;
+    const uniformity = await readEffectiveInlineUniformityNow({
+      ...effectiveInlineUniformityInput(selection),
+      keys: ['fontSize'],
+    });
+    const size = uniformity?.fontSize;
+    if (size?.state === 'uniform') {
+      const next = stepFontSize(Number(size.value), direction);
+      if (next === null || !(await selectionIsCurrent()) || locked()) return false;
+      return callInlineFormatMutation(
+        'format.fontSize',
+        (input: unknown, options?: unknown) =>
+          op(input, {
+            ...(isPlainObject(options) ? options : {}),
+            ...(revision !== undefined ? { expectedRevision: revision } : {}),
+          }),
+        { target, value: next },
+        selection,
+      );
+    }
+    if (size && size.state !== 'mixed') return false;
+    const query = resolveDocOperation(doc, 'query.match');
+    const execute = resolveDocOperation(doc, 'plan.execute');
+    const segments = selectionTextSegments(selection).filter((segment) => segment.end > segment.start);
+    if (
+      !query ||
+      !execute ||
+      segments.length === 0 ||
+      tableCellSelectionForTarget(target) ||
+      (isPlainObject(target) && target.coordinateSpace === 'tracked')
+    )
+      return false;
+    const options = editorMutationOptionsForRoute('format.fontSize');
+    if (options?.success === false) return false;
+    const story = selectionStoryLocator(selection);
+    const entries: Array<{ operationId: string; input: LooseRecord; options: LooseRecord }> = [];
+    for (const segment of segments) {
+      const result: unknown = await query({
+        select: { type: 'text', pattern: '[\\s\\S]+', mode: 'regex' },
+        ...(story ? { in: story } : {}),
+        within: paragraphTarget(segment.blockId, story),
+        require: 'any',
+      });
+      if (
+        !isPlainObject(result) ||
+        !isPlainObject(result.meta) ||
+        result.meta.effectiveResolved !== true ||
+        !Array.isArray(result.items)
+      )
+        return false;
+      let covered = segment.start;
+      for (const item of result.items) {
+        if (!isPlainObject(item) || !Array.isArray(item.blocks)) return false;
+        for (const block of item.blocks) {
+          if (!isPlainObject(block) || block.blockId !== segment.blockId || !Array.isArray(block.runs)) return false;
+          for (const run of block.runs) {
+            if (
+              !isPlainObject(run) ||
+              !isPlainObject(run.range) ||
+              typeof run.range.start !== 'number' ||
+              typeof run.range.end !== 'number'
+            )
+              return false;
+            const start = Math.max(segment.start, run.range.start),
+              end = Math.min(segment.end, run.range.end);
+            if (end <= start) continue;
+            if (
+              start !== covered ||
+              !isPlainObject(run.styles) ||
+              !isPlainObject(run.styles.effective) ||
+              typeof run.styles.effective.fontSizePt !== 'number'
+            )
+              return false;
+            const value = stepFontSize(run.styles.effective.fontSizePt, direction);
+            if (value !== null)
+              entries.push({
+                operationId: 'format.apply',
+                input: {
+                  target: {
+                    kind: 'selection',
+                    ...(story ? { story } : {}),
+                    start: { kind: 'text', blockId: segment.blockId, offset: start },
+                    end: { kind: 'text', blockId: segment.blockId, offset: end },
+                  },
+                  inline: { fontSize: value, fontSizeCs: value },
+                },
+                options: { ...options, offsetSpace: 'kernel' },
+              });
+            else if (run.styles.effective.fontSizePt !== (direction === 'grow' ? 1638 : 1)) return false;
+            covered = end;
+          }
+        }
+      }
+      if (covered !== segment.end || entries.length > PARAGRAPH_BATCH_MAX_EXPANDED_WRITES) return false;
+    }
+    if (entries.length === 0 || !(await selectionIsCurrent()) || locked()) return false;
+    if (revision !== undefined) entries[0].options.expectedRevision = revision;
+    const result: unknown = await execute({ atomic: true, entries });
+    return isPlainObject(result) && !result.failure && result.success !== false ? true : false;
   };
 
   /** Build the `format.paragraph.*` / `styles.paragraph.*` input for a block. */
@@ -6931,239 +7127,255 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     return true;
   };
 
+  const loadParagraphCommandReads = async () => {
+    const { createParagraphCommandReads } = await import('./paragraph-command-reads.js');
+    return createParagraphCommandReads({
+      resolveDocOperation,
+      hostMethod,
+      storyLocatorSignature,
+      readRecord,
+      readRecordList,
+      paragraphTarget,
+      resolveListStateForBlock,
+      combineCommandResults,
+      listItemTarget,
+    });
+  };
+
+  type CellParagraphCommandContext = {
+    doc: LooseRecord | null;
+    selection: SelectionSlice;
+    isCurrent: () => boolean;
+    mutate: typeof callEditorMutation;
+  };
+
+  function captureCommandOwnerIsCurrent(checkMountedHandle = false): () => boolean {
+    const editor = getEditor(),
+      sourceDoc = editor?.doc,
+      host = editor?.host;
+    const mode = readDocumentMode();
+    const mount = checkMountedHandle
+      ? safeCall<unknown>(() => hostMethod(host, 'getMountedHandle')?.(), undefined)
+      : undefined;
+    const rawLifetime = safeCall<unknown>(() => hostMethod(host, 'getForegroundInteractionLifetime')?.(), undefined);
+    const lifetime = hasAbortedFlag(rawLifetime) ? rawLifetime : undefined;
+    return () =>
+      !disposed &&
+      !lifetime?.aborted &&
+      getEditor() === editor &&
+      editor?.doc === sourceDoc &&
+      editor?.host === host &&
+      readDocumentMode() === mode &&
+      (!checkMountedHandle || safeCall<unknown>(() => hostMethod(host, 'getMountedHandle')?.(), undefined) === mount);
+  }
+
+  const executeCellParagraphCommand = (
+    descriptor: CommandDescriptor,
+    op: AnyFn,
+    payload: unknown,
+    selection: SelectionSlice,
+  ): CommandExecutionResult => {
+    const scope = selectionCellParagraphScope(selection);
+    if (!scope) return false;
+    const doc = getDoc();
+    const ownerIsCurrent = captureCommandOwnerIsCurrent(true);
+    const sourceToken = contentToken(),
+      epoch = selectionEpoch;
+    const generation = selectionRequestGeneration();
+    const scopeKey = JSON.stringify(scope);
+    const options = editorMutationOptionsForRoute(descriptor.docRoute ?? '');
+    if (options?.success === false) return false;
+    const isCurrent = () =>
+      ownerIsCurrent() &&
+      contentToken() === sourceToken &&
+      selectionEpoch === epoch &&
+      selectionRequestGeneration() === generation &&
+      selectionRequestGate() === 'open' &&
+      JSON.stringify(selectionCellParagraphScope(state.selection)) === scopeKey;
+    const mutate: typeof callEditorMutation = (_route, operation, input) =>
+      options ? operation(input, options) : operation(input);
+    pendingCommandSettlement = (async () => {
+      const { resolveCellParagraphIds } = await loadParagraphCommandReads();
+      const blockIds = await resolveCellParagraphIds(doc, scope);
+      if (!blockIds?.length || !isCurrent() || hasInactiveTextSelection()) return false;
+      const previous = pendingCommandSettlement;
+      pendingCommandSettlement = null;
+      try {
+        if (descriptor.list) {
+          executeHybridIndentCommand(descriptor, op, blockIds, { doc, selection, isCurrent, mutate });
+        } else {
+          const spec = descriptor.blockParagraph,
+            route = descriptor.docRoute;
+          if (!spec || !route) return false;
+          applyPerBlock(
+            route,
+            op,
+            blockIds,
+            (blockId) => buildBlockParagraphInput(spec, blockId, payload, scope.story),
+            mutate,
+          );
+        }
+        return pendingCommandSettlement ?? false;
+      } finally {
+        pendingCommandSettlement = previous;
+      }
+    })().catch(() => false);
+    return true;
+  };
+
   /** Route a block-level paragraph command (`format.paragraph.*` / `styles.paragraph.*`). */
 
   const executeBlockParagraph = (
     descriptor: CommandDescriptor,
     op: AnyFn,
     payload: unknown,
+    selection = state.selection,
   ): CommandExecutionResult => {
-    const blockIds = selectionBlockIds(state.selection);
+    const blockIds = selectionBlockIds(selection);
+    if (blockIds.length === 0 && selectionCellParagraphScope(selection)) {
+      return executeCellParagraphCommand(descriptor, op, payload, selection);
+    }
     if (blockIds.length === 0) return false;
-    const story = selectionStoryLocator(state.selection);
+    const story = selectionStoryLocator(selection);
     return applyPerBlock(descriptor.docRoute!, op, blockIds, (blockId) =>
       buildBlockParagraphInput(descriptor.blockParagraph!, blockId, payload, story),
     );
-  };
-
-  const captureCommandOwner = () => {
-    const editor = getEditor();
-    const sourceDoc = editor?.doc;
-    const host = editor?.host;
-    const mode = readDocumentMode();
-    const rawLifetime = safeCall<unknown>(() => hostMethod(host, 'getForegroundInteractionLifetime')?.(), undefined);
-    const lifetime = hasAbortedFlag(rawLifetime) ? rawLifetime : undefined;
-    return () =>
-      !disposed &&
-      getEditor() === editor &&
-      editor?.doc === sourceDoc &&
-      editor?.host === host &&
-      readDocumentMode() === mode &&
-      !lifetime?.aborted;
   };
 
   const executeHybridIndentCommand = (
     descriptor: CommandDescriptor,
     listOp: AnyFn,
     blockIds: readonly string[],
+    context?: CellParagraphCommandContext,
   ): CommandExecutionResult => {
-    const doc = getDoc();
-    const paragraphSetIndent = resolveDocOperation(doc, 'format.paragraph.setIndentation');
+    const doc = context?.doc ?? getDoc();
+    const selection = context?.selection ?? state.selection;
+    const mutate = context?.mutate ?? callEditorMutation;
     const mode = descriptor.list?.mode;
-    const story = selectionStory(state.selection);
-    const targetStory = selectionStoryLocator(state.selection);
+    const increasing = mode === 'indent';
+    const listRoute = descriptor.docRoute ?? '';
+    const targetStory = context ? selectionCellParagraphScope(selection)?.story : selectionStoryLocator(selection);
+    const story = readRecord(targetStory) ?? selectionStory(selection);
 
-    const ownerIsCurrent = captureCommandOwner();
-    const selectionAddressKey = (ignoreOffsets = false) => {
-      const target = state.selection?.selectionTarget ?? state.selection?.target;
+    const ownerIsCurrent = captureCommandOwnerIsCurrent();
+    const selectionAddressKey = () => {
+      const target: unknown = state.selection?.selectionTarget ?? state.selection?.target;
       if (!isPlainObject(target)) return selectionKey(state.selection);
       const { captureState: _captureState, ...address } = target;
-      if (ignoreOffsets && address.kind === 'selection') {
-        const withoutOffset = (point: unknown) =>
-          isPlainObject(point) && typeof point.offset === 'number' ? { ...point, offset: 0 } : point;
-        return selectionKey({
-          selectionTarget: { ...address, start: withoutOffset(address.start), end: withoutOffset(address.end) },
-        });
-      }
-      if (ignoreOffsets && address.kind === 'text' && Array.isArray(address.segments)) {
-        const segments = address.segments.map((segment: unknown) => {
-          if (!isPlainObject(segment) || !isPlainObject(segment.range)) return segment;
-          const { range } = segment;
-          return {
-            ...segment,
-            range: {
-              ...range,
-              ...(typeof range.start === 'number' ? { start: 0 } : {}),
-              ...(typeof range.end === 'number' ? { end: 0 } : {}),
-            },
-          };
-        });
-        return selectionKey({ selectionTarget: { ...address, segments } });
-      }
       return selectionKey({ selectionTarget: address });
     };
-    let selectionAddress = selectionAddressKey();
-    const selectionAddressShape = selectionAddressKey(true);
+    const selectionAddress = selectionAddressKey();
     const selectionGeneration = selectionRequestGeneration();
     const ownerAndSelectionAreCurrent = () =>
       ownerIsCurrent() &&
       selectionRequestGeneration() === selectionGeneration &&
-      JSON.stringify(selectionBlockIds(state.selection)) === JSON.stringify(blockIds) &&
-      storyLocatorSignature(selectionStory(state.selection)) === storyLocatorSignature(story);
-    const find = hostMethod(doc, 'find');
-    const useResolved =
-      (find || typeof doc?.get === 'function') &&
-      (story.storyType === 'body' || story.storyType === 'headerFooterPart' || story.storyType === 'headerFooterSlot');
-
-    let indentationReads: Promise<typeof import('./paragraph-indentation.js')> | undefined;
-
-    type HybridIndentPlan =
-      | { kind: 'list'; routeToCall: string; opToCall: AnyFn; input: LooseRecord }
-      | { kind: 'paragraph'; routeToCall: string; opToCall: AnyFn; input: LooseRecord };
-
-    // Resolve each selected block's routing family (list item vs paragraph) by
-    // awaiting the authoritative Document API reads before dispatching, rather
-    // than peeking at the synchronous read cache.
-    // Only the first block is warmed by the command-state snapshot, so a sync
-    // decision misroutes every later block of a multi-item list selection to a
-    // paragraph indent that a list item ignores - the SD-3659 symptom. Awaiting
-    // makes routing correct regardless of cache warmth or block count. The
-    // command-critical reads use the story-aware host route, which is not held
-    // behind the passive `lists.getState` idle delay.
-    const planBlock = async (blockId: string): Promise<HybridIndentPlan | null> => {
-      const isListItem = await resolveListMembershipForBlockAsync(doc, blockId, story);
-      if (isListItem === true) {
-        return {
-          kind: 'list',
-          routeToCall: descriptor.docRoute!,
-          opToCall: listOp,
-          input: { target: listItemTarget(blockId) },
-        };
-      }
-      // An unavailable/malformed list-state read is not evidence that this is a
-      // plain paragraph. Fail this block closed so toolbar indent cannot write a
-      // direct paragraph indent onto a list item.
-      if (isListItem === null) return null;
-      if (!paragraphSetIndent) return null;
-      const { readParagraphLeftIndent, readResolvedParagraphFind } = await (indentationReads ??=
-        import('./paragraph-indentation.js'));
-      let current: number | null;
-      if (useResolved) {
-        if (!find) return null;
-        const readSource = async (kind: 'paragraph' | 'heading') =>
-          readResolvedParagraphFind(
-            await find({
-              select: { type: 'node', nodeType: kind },
-              within: { ...paragraphTarget(blockId, targetStory), nodeType: kind },
-              in: story,
-              options: { includeResolved: true },
-              limit: 2,
-              offset: 0,
-            }),
-            blockId,
-            kind,
-            story,
-          );
-        let source = await readSource('paragraph');
-        if (source === 'empty') source = await readSource('heading');
-        if (typeof source !== 'number') return null;
-        current = source;
-      } else {
-        const getNode = hostMethod(doc, 'getNode');
-        if (story.storyType !== 'body' && !getNode) return null;
-        /** Await a block's current paragraph indentation authoritatively. */
-        try {
-          const raw =
-            targetStory && getNode
-              ? await getNode(paragraphTarget(blockId, targetStory))
-              : story.storyType === 'body'
-                ? await hostMethod(doc, 'getNodeById')?.({ nodeId: blockId, nodeType: 'paragraph', story })
-                : null;
-          current = readParagraphLeftIndent(raw);
-        } catch {
-          current = null;
-        }
-      }
-      const left = current ?? 0;
-      return {
-        kind: 'paragraph',
-        routeToCall: 'format.paragraph.setIndentation',
-        opToCall: paragraphSetIndent,
-        input: {
-          target: paragraphTarget(blockId, targetStory),
-          left: Math.max(0, left + (mode === 'indent' ? PARAGRAPH_INDENT_STEP_TWIPS : -PARAGRAPH_INDENT_STEP_TWIPS)),
-        },
-      };
-    };
-
+      (context
+        ? context.isCurrent()
+        : shallowEqual(selectionBlockIds(state.selection), blockIds) &&
+          storyLocatorSignature(selectionStory(state.selection)) === storyLocatorSignature(story));
     pendingCommandSettlement = (async (): Promise<CommandExecutionResult> => {
-      let plans: (HybridIndentPlan | null)[];
-      for (let attempt = 0; ; attempt++) {
+      const scopedTarget =
+        !context && selectionGeneration !== undefined && blockIds.length === 1 && story.storyType === 'body'
+          ? blockIds[0]
+          : undefined;
+      let sawScopedMutation = false;
+      let relevantMutation = false;
+      const observeMutation = (remoteTextBlockId?: string) => {
+        if (remoteTextBlockId && remoteTextBlockId !== scopedTarget) sawScopedMutation = true;
+        else relevantMutation = true;
+      };
+      if (scopedTarget) indentMutationObservers.add(observeMutation);
+      const readAttempt = () => {
+        sawScopedMutation = false;
+        relevantMutation = false;
         const sourceToken = contentToken();
         const selectionToken = selectionKey(state.selection);
-        plans = await Promise.all(blockIds.map((blockId) => planBlock(blockId).catch(() => null)));
-        if (!ownerAndSelectionAreCurrent()) return false;
-        const contentChanged = contentToken() !== sourceToken;
-        const currentAddress = selectionAddressKey();
-        if (currentAddress !== selectionAddress) {
-          if (
-            !contentChanged ||
-            selectionGeneration === undefined ||
-            selectionAddressKey(true) !== selectionAddressShape
-          )
-            return false;
-          selectionAddress = currentAddress;
-        }
-        if (!contentChanged && selectionKey(state.selection) === selectionToken) break;
-        if (selectionGeneration === undefined || !contentChanged || attempt >= 2) return false;
-      }
-      const allListItems = plans.length === blockIds.length && plans.every((plan) => plan?.kind === 'list');
-      const preserveFirstItemLevel = blockIds.length === 1 && story.storyType === 'body';
-      if (allListItems && (readDocumentMode() !== 'suggesting' || preserveFirstItemLevel)) {
-        const rangeRoute = mode === 'indent' ? 'lists.indentRange' : 'lists.outdentRange';
-        const rangeOp = resolveDocOperation(doc, rangeRoute);
-        if (rangeOp) {
-          try {
-            return await settleOperationResult(
-              callEditorMutation(rangeRoute, rangeOp, {
+        const listStates = Promise.all(blockIds.map((blockId) => resolveListStateForBlock(doc, blockId, story)));
+        return { sourceToken, selectionToken, listStates };
+      };
+      const stopObserving = () => {
+        indentMutationObservers.delete(observeMutation);
+      };
+      const settleMutation = (route: string, operation: AnyFn, input: LooseRecord) =>
+        settleOperationResult(mutate(route, operation, input)).settled;
+      try {
+        const firstAttempt = readAttempt();
+        const states = await firstAttempt.listStates;
+        if (
+          !context &&
+          listRoute &&
+          story.storyType === 'body' &&
+          states.every(({ isListItem }) => isListItem === true) &&
+          ownerAndSelectionAreCurrent() &&
+          contentToken() === firstAttempt.sourceToken &&
+          selectionAddressKey() === selectionAddress &&
+          selectionKey(state.selection) === firstAttempt.selectionToken
+        ) {
+          const preserveFirstItemLevel = blockIds.length === 1;
+          const rangeRoute = increasing ? 'lists.indentRange' : 'lists.outdentRange';
+          const rangeOp = resolveDocOperation(doc, rangeRoute);
+          if (rangeOp && (preserveFirstItemLevel || readDocumentMode() !== 'suggesting')) {
+            stopObserving();
+            try {
+              return await settleMutation(rangeRoute, rangeOp, {
                 paraIds: blockIds,
                 story,
                 ...(preserveFirstItemLevel ? { preserveFirstItemLevel: true } : {}),
-              }),
-            ).settled;
-          } catch {
-            return false;
+              });
+            } catch {
+              return false;
+            }
           }
         }
+        const reader = await loadParagraphCommandReads();
+        return await reader.executeHybridIndent({
+          doc,
+          mode,
+          increasing,
+          listRoute,
+          listOp,
+          targetStory,
+          story,
+          blockIds,
+          cell: context != null,
+          settleMutation,
+          firstAttempt,
+          readAttempt,
+          contentToken,
+          currentSelectionToken: () => selectionKey(state.selection),
+          selectionAddress,
+          selectionAddressKey,
+          selectionGeneration,
+          ownerAndSelectionAreCurrent,
+          onlyUnrelatedTextChanged: () => sawScopedMutation && !relevantMutation,
+          stopObserving,
+          hasInactiveTextSelection,
+          readDocumentMode,
+        });
+      } finally {
+        stopObserving();
       }
-      const nonBodyListPlans = story.storyType !== 'body' && plans.some((plan) => plan?.kind === 'list');
-      const outdentInStory =
-        nonBodyListPlans && mode === 'outdent' ? resolveDocOperation(doc, 'lists.outdentInStory') : null;
-      if (nonBodyListPlans && !outdentInStory) return false;
-      const settledResults = plans.map((plan) => {
-        if (!plan) return Promise.resolve<CommandExecutionResult>(false);
-        try {
-          if (plan.kind === 'list' && outdentInStory) {
-            return settleOperationResult(
-              callEditorMutation('lists.outdentInStory', outdentInStory, { target: plan.input.target, story }),
-            ).settled;
-          }
-          return settleOperationResult(callEditorMutation(plan.routeToCall, plan.opToCall, plan.input)).settled;
-        } catch {
-          return Promise.resolve<CommandExecutionResult>(false);
-        }
-      });
-      return combineCommandResults(await Promise.all(settledResults));
     })();
 
     return true;
   };
 
   /** Route a list command (`lists.apply` / `lists.remove` / list level changes). */
-  const executeListCommand = (descriptor: CommandDescriptor, op: AnyFn): CommandExecutionResult => {
+  const executeListCommand = (
+    descriptor: CommandDescriptor,
+    op: AnyFn,
+    selection = state.selection,
+  ): CommandExecutionResult => {
     const spec = descriptor.list!;
     const doc = getDoc();
-    const blockIds = selectionBlockIds(state.selection);
+    const blockIds = selectionBlockIds(selection);
+    if (
+      blockIds.length === 0 &&
+      (spec.mode === 'indent' || spec.mode === 'outdent') &&
+      selectionCellParagraphScope(selection)
+    ) {
+      return executeCellParagraphCommand(descriptor, op, undefined, selection);
+    }
     if (blockIds.length === 0) return false;
     const story = selectionStory(state.selection);
     const isBodyStory = story.storyType === 'body';
@@ -7177,9 +7389,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // otherwise seed only the blocks that are not already that kind.
     const seed = spec.seed!;
     const executeResolved = (
-      states: readonly ResolvedListSeed[],
+      states: readonly ResolvedBlockListState[],
     ): { immediate: CommandExecutionResult; settled: Promise<CommandExecutionResult> | null } => {
-      if (states.some((listState) => !listState.resolved)) return { immediate: false, settled: null };
+      if (states.some((listState) => listState.isListItem === null)) return { immediate: false, settled: null };
       const shouldRemove = states.every((listState) => listState.seed === seed);
       if (!shouldRemove && !isBodyStory) return { immediate: false, settled: null };
 
@@ -7211,17 +7423,17 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       };
     };
 
-    const stateReads = blockIds.map((blockId) => resolveListSeedForBlock(doc, blockId, story));
-    if (stateReads.some(isPromiseLike)) {
-      pendingCommandSettlement = Promise.all(stateReads).then(async (states) => {
-        const result = executeResolved(states);
-        return result.settled ? await result.settled : result.immediate;
-      });
-      return true;
+    const stateReads = blockIds.map((blockId) => resolveListStateForBlock(doc, blockId, story));
+    if (stateReads.every((listState) => 'isListItem' in listState)) {
+      const result = executeResolved(stateReads);
+      pendingCommandSettlement = result.settled;
+      return result.immediate;
     }
-    const result = executeResolved(stateReads as ResolvedListSeed[]);
-    pendingCommandSettlement = result.settled;
-    return result.immediate;
+    pendingCommandSettlement = Promise.all(stateReads).then(async (states) => {
+      const result = executeResolved(states);
+      return result.settled ? await result.settled : result.immediate;
+    });
+    return true;
   };
 
   function readLinkPayloadRecord(payload: unknown): LooseRecord {
@@ -7572,7 +7784,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     }
     if (kind === 'image') {
       const src = record.src ?? record.value;
-      if (typeof src !== 'string' || src.trim() === '') return false;
+      const blob = typeof Blob !== 'undefined' && src instanceof Blob ? src : null;
+      if (blob ? blob.size === 0 || !isSupportedImageFile(blob) : typeof src !== 'string' || src.trim() === '')
+        return false;
       // A caret inserts INLINE at the text offset (Word parity, and matching
       // the drag-drop/paste path); without a usable text caret the insert
       // falls back to the block-level location (a new paragraph after the
@@ -7608,6 +7822,54 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         : null;
       const create = firstPartyCommandDoc ? trustedImageCommands?.create : op;
       if (typeof create !== 'function') return false;
+      if (blob) {
+        const editor = getEditor(),
+          sourceDoc = editor?.doc,
+          token = contentToken();
+        const mode = readDocumentMode(),
+          key = selectionKey(state.selection);
+        const info = resolveDocOperation(getDoc(), 'info');
+        const readSelection = resolveDocOperation(getDoc(), 'selection.current');
+        const current = () =>
+          !disposed &&
+          getEditor() === editor &&
+          editor?.doc === sourceDoc &&
+          contentToken() === token &&
+          readDocumentMode() === mode &&
+          !documentIsReadOnly() &&
+          selectionKey(state.selection) === key;
+        return (async () => {
+          if (!info || !readSelection) return false;
+          const before: unknown = await info();
+          if (!isPlainObject(before) || typeof before.revision !== 'string' || !current()) return false;
+          const beforeSelection = normalizeSelectionInfo(
+            await readSelection({
+              includeText: true,
+              ...(editor?.editorVersion === 2 ? { offsetSpace: 'selection' } : {}),
+            }),
+          );
+          if (!beforeSelection || selectionKey(beforeSelection) !== key || !current()) return false;
+          const dataUri = await fileToDataUri(blob);
+          const after: unknown = await info();
+          const afterSelection = normalizeSelectionInfo(
+            await readSelection({
+              includeText: true,
+              ...(editor?.editorVersion === 2 ? { offsetSpace: 'selection' } : {}),
+            }),
+          );
+          if (
+            !current() ||
+            !afterSelection ||
+            selectionKey(afterSelection) !== key ||
+            !isPlainObject(after) ||
+            after.revision !== before.revision
+          )
+            return false;
+          const options = editorMutationOptionsForRoute('create.image');
+          if (options?.success === false) return false;
+          return create({ ...input, src: dataUri }, { ...options, expectedRevision: before.revision });
+        })().catch(() => false);
+      }
       try {
         return callEditorMutation(descriptor.docRoute!, create as AnyFn, input);
       } catch {
@@ -7846,7 +8108,13 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     if (descriptor.inline) {
       return resolveInlineCommandTarget(state.selection) != null || canStorePendingInlineFormat(state.selection);
     }
-    if (descriptor.blockParagraph || descriptor.list) return selectionBlockIds(state.selection).length > 0;
+    if (descriptor.blockParagraph || descriptor.list) {
+      return (
+        selectionBlockIds(state.selection).length > 0 ||
+        (!!selectionCellParagraphScope(state.selection) &&
+          (!!descriptor.blockParagraph || descriptor.list?.mode === 'indent' || descriptor.list?.mode === 'outdent'))
+      );
+    }
     if (descriptor.link) {
       return (
         linkPayloadHasExplicitTarget(payload) ||
@@ -7861,6 +8129,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const commandNeedsFreshSelection = (id: string, payload: unknown): boolean => {
     const trackCommand = trackDecisionCommand(id);
     const descriptor = getCommandDescriptor(id);
+    if ((id === 'apply-format' && !customCommands.has(id)) || descriptor?.fontStep) return true;
+    if (
+      descriptor?.create?.kind === 'image' &&
+      isPlainObject(payload) &&
+      typeof Blob !== 'undefined' &&
+      (payload.src ?? payload.value) instanceof Blob
+    )
+      return true;
     // An explicit change id is a complete target. Only a selection-derived
     // decision has to wait for the selection read to settle.
     if (trackCommand?.scope === 'id' && explicitTrackDecisionTarget(payload)) return false;
@@ -7898,6 +8174,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const trackCommand = trackDecisionCommand(id);
     if (trackCommand) return executeTrackDecisionCommand(trackCommand, payload);
     if (id === 'copy-format') return documentIsReadOnly() ? false : settleCommandExecution(executeCopyFormat());
+    if (id === 'apply-format') return documentIsReadOnly() ? false : settleCommandExecution(startPainterApplication());
     const descriptor = getCommandDescriptor(id);
     // Deferred / unsupported / unknown ids fail closed and never mutate.
     if (!descriptor || descriptor.disposition !== 'routed') return false;
@@ -7930,6 +8207,9 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const doc = getDoc();
     const op = resolveDocOperation(doc, route);
     if (!op) return false;
+    if (descriptor.fontStep) {
+      return settleCommandExecution(executeFontStep(descriptor, op, preparedSelection ?? state.selection));
+    }
     // Inline-format commands route through `format.*` against the live selection
     // target with an explicit `{ target, value }` input (the public Document API
     // does not default the selection). They fail closed without a range
@@ -8004,7 +8284,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     // and context from the live selection rather than forwarding the raw payload.
     if ((descriptor.blockParagraph || descriptor.list) && hasInactiveTextSelection()) return false;
     if (descriptor.blockParagraph) {
-      const result = executeBlockParagraph(descriptor, op, normalized);
+      const result = executeBlockParagraph(descriptor, op, normalized, preparedSelection ?? state.selection);
       const optimisticAlignmentGeneration =
         descriptor.blockParagraph.kind === 'alignment' && commandResultSucceeded(result)
           ? armOptimisticParagraphAlignment(state.selection, normalized)
@@ -8014,7 +8294,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       });
     }
     if (descriptor.list) {
-      const result = executeListCommand(descriptor, op);
+      const result = executeListCommand(descriptor, op, preparedSelection ?? state.selection);
       return settleCommandExecution(result);
     }
     if (descriptor.link) {
@@ -8127,7 +8407,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
 
   const executeCopyFormat = async (): Promise<boolean> => {
     const commandDoc = firstPartyCommandDoc ?? null;
-    const isCurrent = captureCommandOwner();
+    const isCurrent = captureCommandOwnerIsCurrent();
     // Toolbar state is optimistic, but format-painter capture must snapshot the
     // authoritative source formatting. An async toolbar command may still be
     // preparing its selection before the mutation scheduler becomes active, so
@@ -8209,16 +8489,22 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const effectiveInput = effectiveInlineUniformityInput(sourceSelection);
     const sourceWholeCells = Boolean(effectiveInput?.tableCellSelection);
     const coveredRunProps: Record<string, unknown>[] = [];
+    const terminalSegment = segments.at(-1);
+    const usesVisibleTextOffsets = getEditor()?.editorVersion === 2;
+    const paragraphTextLengths = selectionParagraphTextLengths.get(sourceSelection);
+    let terminalTextLength: number | undefined;
     // A terminal zero-width segment locates the selected paragraph mark; its
     // following paragraph contributes neither text nor formatting to the source.
     for (const segment of formatPainterTextSegments(segments)) {
-      const nodeResult = (await readBlockNode(paragraphTarget(segment.blockId, sourceStory))) as
-        | LooseRecord
-        | undefined;
+      const address = paragraphTarget(segment.blockId, sourceStory);
+      const nodeResult = await readBlockNode(address);
       const node = (nodeResult?.['node'] as LooseRecord | undefined) ?? null;
       if (!node) return null;
       const para = getParagraphLikeData(node);
       const runs = (Array.isArray(para?.['inlines']) ? para!['inlines'] : []) as LooseRecord[];
+      if (!sourceWholeCells && segment === terminalSegment && segment.range.start === 0 && segment.range.end > 0) {
+        terminalTextLength = paragraphTextLength(runs, usesVisibleTextOffsets, paragraphTextLengths?.[segment.blockId]);
+      }
       coveredRunProps.push(...sliceRunProps(runs, segment.range));
     }
     const mergedRunProps = coveredRunProps.length
@@ -8303,10 +8589,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       mixedInlineKeys.add('highlight');
     }
 
-    // Paragraph properties belong to a caret, whole-cell source, or selected paragraph mark.
-    // Selecting visible characters alone must not copy paragraph formatting.
     let paragraphSnapshot: FormatPainterParagraphSnapshot | null = null;
-    const paragraphSegments = formatPainterParagraphSegments(segments, sourceWholeCells);
+    const paragraphSegments = formatPainterParagraphSegments(segments, sourceWholeCells, terminalTextLength);
     if (paragraphSegments.length > 0) {
       const segment = paragraphSegments[0];
       const nodeResult = (await readBlockNode(paragraphTarget(segment.blockId, sourceStory))) as
@@ -8334,6 +8618,11 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       inline: inlinePatch,
       mixedInlineKeys: [...mixedInlineKeys],
       paragraph: paragraphSnapshot,
+      paragraphFromWholeText:
+        paragraphSnapshot !== null &&
+        !sourceWholeCells &&
+        segments.length === 1 &&
+        segments[0].range.start !== segments[0].range.end,
     };
   };
 
@@ -8349,14 +8638,33 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       ? segments.slice(0, -1)
       : segments;
 
+  const paragraphTextLength = (
+    inlines: readonly LooseRecord[],
+    usesVisibleTextOffsets: boolean,
+    liveTextLength: unknown,
+  ): number | undefined => {
+    if (isFiniteNumber(liveTextLength)) return liveTextLength;
+    let length = 0;
+    for (const inline of inlines) {
+      if (usesVisibleTextOffsets && inline.kind === 'image') continue;
+      const text = readRecord(inline.run)?.text;
+      if (typeof text !== 'string' || (usesVisibleTextOffsets && text.includes('\uFFFC'))) return undefined;
+      length += text.length;
+    }
+    return length;
+  };
+
   const formatPainterParagraphSegments = (
     segments: readonly TextSegment[],
-    wholeCells = false,
+    wholeCells: boolean,
+    terminalTextLength: number | undefined,
   ): readonly TextSegment[] => {
     if (wholeCells) return formatPainterTextSegments(segments);
     if (segments.length === 1 && segments[0].range?.start === segments[0].range?.end) return segments;
-    // Every segment before the endpoint crosses its paragraph mark. The final
-    // segment has no selected paragraph mark, even when all its text is selected.
+    const terminal = segments.at(-1);
+    if (terminal?.range?.start === 0 && terminal.range.end > 0 && terminal.range.end === terminalTextLength) {
+      return segments;
+    }
     return segments.slice(0, -1);
   };
 
@@ -8408,6 +8716,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     doc: LooseRecord,
     story?: unknown,
   ): Promise<FormatPainterParagraphSnapshot> => {
+    const { captureParagraphPaintOperations } = await import('./format-painter-paragraph.js');
     const para = getParagraphLikeData(node)!;
     const props = (para['props'] as LooseRecord | undefined) ?? {};
     const styleId = (para['styleRef'] as string | null) ?? null;
@@ -8518,13 +8827,25 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       (selection.empty && !snapshot?.paragraph)
     )
       return false;
-    return applyFormatPainter(
-      selection,
-      cellTarget,
-      tableCellSelection,
-      selection.selectionTarget ? null : paintedTarget,
-      snapshot,
-    );
+    const previousMutation = painterMutation;
+    let releaseMutation = () => {};
+    painterMutation = new Promise<void>((resolve) => {
+      releaseMutation = resolve;
+    });
+    try {
+      await previousMutation;
+      if (!ownerIsCurrent()) return false;
+      return await applyFormatPainter(
+        selection,
+        cellTarget,
+        tableCellSelection,
+        selection.selectionTarget ? null : paintedTarget,
+        snapshot,
+        releaseMutation,
+      );
+    } finally {
+      releaseMutation();
+    }
   };
 
   const startPainterApplication = (): Promise<boolean> => {
@@ -8547,6 +8868,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     tableCellSelection: ReturnType<typeof tableCellSelectionForTarget>,
     paintedTarget: TextSelectionTarget | null,
     snap: FormatPainterSnapshot | null,
+    writesSettled: () => void = () => {},
   ): Promise<boolean> => {
     if (!snap) {
       if (painter.mode === 'armed') exitFormatPainter();
@@ -8558,6 +8880,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const ownerEditor = getEditor();
     const ownerDoc = ownerEditor?.doc;
     const ownerMode = readDocumentMode();
+    const ownerToken = contentToken();
+    const ownerSelection = selectionKey(state.selection);
 
     const targetSelection = selectionSliceFromInfo(selection, 'ready');
     const { lockModesById } = computeSelectionContentControlLockModes(
@@ -8578,18 +8902,43 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
     const segments: readonly TextSegment[] = Array.isArray(selTarget?.segments) ? selTarget.segments : [];
     const targetStory = selTarget?.story;
     const inline = { ...snap.inline };
+    const terminal = segments.at(-1);
+    const storyType = readRecord(targetStory)?.storyType;
+    const supportsWholeTextParagraphPaint =
+      ownerEditor?.editorVersion !== 2 ||
+      (ownerMode === 'editing' &&
+        (storyType === undefined ||
+          storyType === 'body' ||
+          storyType === 'headerFooterSlot' ||
+          storyType === 'headerFooterPart') &&
+        Boolean(resolveDocOperation(doc, 'plan.execute')));
+    const paragraph = supportsWholeTextParagraphPaint || !snap.paragraphFromWholeText ? snap.paragraph : null;
+    const inheritedFontKeys = paragraph?.inheritedFontKeys ?? [];
+    const needsTerminalTextLength =
+      paragraph !== null &&
+      supportsWholeTextParagraphPaint &&
+      !tableCellSelection &&
+      terminal?.range.start === 0 &&
+      terminal.range.end > 0;
+    const needsContiguousTextLengths = inheritedFontKeys.length > 0 && !tableCellSelection;
+    const paragraphTextLengths = readSelectionParagraphTextLengths(selection);
     const contiguousTextLengths = new Map<string, number>();
+    let terminalTextLength: number | undefined;
     if (!selectionIsEmpty) {
       for (const segment of formatPainterTextSegments(segments)) {
-        const result = await readBlockNode(paragraphTarget(segment.blockId, targetStory));
+        const address = paragraphTarget(segment.blockId, targetStory);
+        const result = await readBlockNode(address);
         const node = result?.node as LooseRecord | undefined;
         const para = node ? getParagraphLikeData(node) : null;
         const runs = (Array.isArray(para?.inlines) ? para.inlines : []) as LooseRecord[];
-        if (runs.every((run) => typeof (run.run as LooseRecord | undefined)?.text === 'string')) {
-          contiguousTextLengths.set(
-            segment.blockId,
-            runs.reduce((length, run) => length + ((run.run as LooseRecord).text as string).length, 0),
+        if (segment === terminal ? needsTerminalTextLength : needsContiguousTextLengths) {
+          const textLength = paragraphTextLength(
+            runs,
+            ownerEditor?.editorVersion === 2,
+            paragraphTextLengths?.[segment.blockId],
           );
+          if (segment === terminal) terminalTextLength = textLength;
+          else if (textLength !== undefined) contiguousTextLengths.set(segment.blockId, textLength);
         }
         for (const props of sliceRunProps(runs, segment.range)) {
           for (const key of Object.keys(sdRunPropsToInlineRunPatch(props))) {
@@ -8606,11 +8955,14 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         painter.snapshot !== snap ||
         getEditor() !== ownerEditor ||
         ownerEditor?.doc !== ownerDoc ||
-        readDocumentMode() !== ownerMode
+        readDocumentMode() !== ownerMode ||
+        contentToken() !== ownerToken ||
+        selectionKey(state.selection) !== ownerSelection
       )
         return false;
     }
 
+    const paragraphSegments = formatPainterParagraphSegments(segments, Boolean(tableCellSelection), terminalTextLength);
     const entries: Array<{ operationId: UiDocRoute; input: LooseRecord; options?: unknown }> = [];
     const options = editorMutationOptionsForRoute('format.apply');
     if (options?.success === false) return false;
@@ -8632,10 +8984,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       selectionTarget &&
       resolveDocOperation(doc, 'format.apply')
     ) {
-      const inheritedFontKeys = snap.paragraph?.inheritedFontKeys ?? [];
-      const styledBlocks = new Set(
-        formatPainterParagraphSegments(segments, Boolean(tableCellSelection)).map((segment) => segment.blockId),
-      );
+      const styledBlocks = new Set(paragraphSegments.map((segment) => segment.blockId));
       if (inheritedFontKeys.length > 0 && styledBlocks.size > 0 && !tableCellSelection) {
         const textSegments = formatPainterTextSegments(segments);
         const original = selectionTarget as LooseRecord;
@@ -8711,7 +9060,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         add('format.apply', { target: selectionTarget, inline }, inlineOptions);
       }
     }
-    if (snap.paragraph) {
+    if (paragraph) {
       const capabilities = (await resolveDocOperation(doc, 'capabilities.get')?.()) as
         | DocumentApiCapabilities
         | undefined;
@@ -8719,7 +9068,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         capabilities?.operations?.['format.paragraph.applyBatch']?.available === true &&
         Boolean(resolveDocOperation(doc, 'format.paragraph.applyBatch'));
       const batchTargets: LooseRecord[] = [];
-      const { styleId, operations, markRunProps, numbering, listStyle } = snap.paragraph;
+      const { styleId, operations, markRunProps, numbering, listStyle } = paragraph;
       const batchOperations: ParagraphBatchOperation[] = [
         ...(styleId
           ? [{ operationId: 'styles.paragraph.setStyleRef' as const, input: { styleId } }]
@@ -8729,7 +9078,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
           ? [{ operationId: 'format.paragraph.setMarkRunProps' as const, input: { markRunProps } }]
           : []),
       ];
-      for (const segment of formatPainterParagraphSegments(segments, Boolean(tableCellSelection))) {
+      for (const segment of paragraphSegments) {
         const blockAddress = paragraphTarget(segment.blockId, targetStory);
         const nodeResult = await readBlockNode(blockAddress);
         const node = nodeResult?.node as LooseRecord | undefined;
@@ -8779,6 +9128,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       getEditor() !== ownerEditor ||
       ownerEditor?.doc !== ownerDoc ||
       readDocumentMode() !== ownerMode ||
+      contentToken() !== ownerToken ||
+      selectionKey(state.selection) !== ownerSelection ||
       readDocumentMode() === 'viewing'
     )
       return false;
@@ -8824,6 +9175,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       recompute();
       return false;
     }
+    writesSettled();
     if (
       disposed ||
       painter.snapshot !== snap ||
@@ -8831,10 +9183,10 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       ownerEditor?.doc !== ownerDoc ||
       readDocumentMode() !== ownerMode
     )
-      return false;
+      return true;
 
     await awaitMutationReadiness(receipt);
-    if (disposed || getEditor() !== ownerEditor || ownerEditor?.doc !== ownerDoc) return false;
+    if (disposed || getEditor() !== ownerEditor || ownerEditor?.doc !== ownerDoc) return true;
     if (painter.mode === 'armed' && painter.snapshot === snap) exitFormatPainter();
     recompute();
     return true;
@@ -9125,7 +9477,8 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         : null;
     let rawSelection: unknown;
     const needsSelection = !!reader || commandNeedsFreshSelection(id, payload);
-    const needsForeground = needsSelection || (id === 'copy-format' && !customCommands.has(id));
+    const needsForeground =
+      needsSelection || ((id === 'copy-format' || id === 'apply-format') && !customCommands.has(id));
     const selectionGeneration = needsSelection ? selectionRequestGeneration() : undefined;
     const selectionConfirmation =
       needsSelection && selectionRequestGate() !== 'open' ? whenSelectionRequestSettled() : null;
@@ -10010,6 +10363,39 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
       const snapshot = selectionSub.get();
       let target = snapshot.target ?? snapshot.selectionTarget;
+      if (!snapshot.empty && target && 'captureState' in target) {
+        const generation = selectionRequestGeneration();
+        const fallback = failedReceipt('comments.create failed.');
+        const createFromCurrent = (raw: unknown): WorkflowReceipt => {
+          const current = normalizeSelectionInfo(raw);
+          const range = current?.target ?? current?.selectionTarget;
+          if (
+            disposed ||
+            getDoc() !== doc ||
+            selectionRequestGeneration() !== generation ||
+            selectionRequestGate() !== 'open' ||
+            !range ||
+            current?.empty
+          ) {
+            return failedReceipt('A range selection is required to comment.', 'NO_SELECTION');
+          }
+          if (!('captureState' in range)) {
+            return failedReceipt('The current selection cannot be verified.', 'PRECONDITION_FAILED');
+          }
+          return (
+            commentWriteRefusal() ??
+            settleWorkflowReceipt(op.call(commentsApi, { target: range, text: input.text }), fallback)
+          );
+        };
+        return safeCall<WorkflowReceipt>(() => {
+          const current = selectionCurrentRun();
+          return isPromiseLike(current)
+            ? Promise.resolve(current)
+                .then(createFromCurrent)
+                .catch(() => fallback)
+            : createFromCurrent(current);
+        }, fallback);
+      }
       // Viewing-mode programmatic SelectionTarget applies update the host
       // controller before the UI selection slice necessarily refreshes. Prefer
       // the live host range so createFromSelection stays available (SD-4470).
@@ -10025,6 +10411,20 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         () => settleWorkflowReceipt(op.call(commentsApi, { target, text: input.text }), fallback),
         fallback,
       );
+    },
+    openComposer: async (): Promise<WorkflowActionResult> => {
+      if (disposed || !getEditor()) return { ok: false, reason: SUPERDOC_UI_REASONS.notReady };
+      if (commentMutationsAreReadOnly()) return { ok: false, reason: SUPERDOC_UI_REASONS.documentReadonly };
+      const composer = getCommentComposerBridge(superdoc);
+      if (!composer) return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
+      try {
+        return normalizeCommentComposerResult(await composer.open());
+      } catch {
+        return { ok: false, reason: SUPERDOC_UI_REASONS.operationUnavailable };
+      }
+    },
+    closeComposer: (): void => {
+      if (!disposed) getCommentComposerBridge(superdoc)?.close();
     },
     reply: (commentId, input): WorkflowReceipt => {
       const refusal = commentWriteRefusal();
@@ -10803,22 +11203,19 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const bindGeometryObserver = (entry: GeometryObserver): void => {
     const host = getHost();
     if (typeof host?.observeGeometry !== 'function') return;
-    // Recorded only when the subscription actually took effect. Setting it
-    // unconditionally means a throwing `observeGeometry()` still looks bound, and
-    // the rebind skip below then never retries it — leaving the observer
-    // permanently without geometry updates on that host.
-    //
-    // Tracked separately from `detach` because the two differ: a host may
-    // subscribe successfully and return no unsubscribe function, and treating
-    // that as a failed bind would rebind on top of a live subscription.
-    let subscribed = false;
-    const off = safeCall<unknown>(() => {
-      const result = hostMethod(host, 'observeGeometry')?.(() => entry.schedule());
-      subscribed = true;
-      return result;
+    const ownerDocument = resolveVisibleHost()?.ownerDocument;
+    const onScroll = ({ target }: Event): void => {
+      if (target instanceof Node && target.contains(resolveVisibleHost())) entry.schedule();
+    };
+    safeCall(() => {
+      const off = hostMethod(host, 'observeGeometry')?.(entry.schedule);
+      ownerDocument?.addEventListener('scroll', onScroll, true);
+      entry.boundHost = host;
+      entry.detach = () => {
+        ownerDocument?.removeEventListener('scroll', onScroll, true);
+        if (typeof off === 'function') off();
+      };
     }, null);
-    entry.detach = typeof off === 'function' ? (off as () => void) : null;
-    entry.boundHost = subscribed ? host : null;
   };
 
   const detachGeometryObserver = (entry: GeometryObserver): void => {
@@ -10830,10 +11227,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       }
       entry.detach = null;
     }
-    // Cleared regardless of whether there was an unsubscribe to call. A host may
-    // subscribe successfully and return nothing, so a null `detach` does not mean
-    // there is no binding state — and leaving a stale host here makes the rebind
-    // skip suppress a genuinely needed rebind later.
     entry.boundHost = null;
   };
 
@@ -10861,10 +11254,6 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
   const scheduleGeometryRelease = (): void => {
     if (geometryReleaseScheduled) return;
     geometryReleaseScheduled = true;
-    if (typeof queueMicrotask === 'function') {
-      queueMicrotask(releaseGeometryObserversIfStillHostless);
-      return;
-    }
     void Promise.resolve().then(releaseGeometryObserversIfStillHostless);
   };
 
@@ -10889,7 +11278,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       // defeating the preservation this split exists to provide. The re-measure
       // below is justified by "the new host's geometry has nothing to do with the
       // old one's", which is simply untrue when the host is unchanged.
-      if (entry.boundHost && entry.boundHost === host) continue;
+      if (entry.boundHost === host) continue;
       detachGeometryObserver(entry);
       bindGeometryObserver(entry);
       entry.schedule();
@@ -11174,24 +11563,23 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
       return rectFailure('unavailable');
     },
     observe: (listener: () => void): (() => void) => {
+      if (disposed) return () => {};
       // Coalesce geometry invalidations into one callback per animation frame so
       // a burst of repaint/scroll/resize/zoom events triggers a single re-measure.
-      const unsubs: Array<() => void> = [];
       let frame = 0;
-      const hasRaf = typeof requestAnimationFrame === 'function';
       const schedule = (): void => {
-        if (!hasRaf) {
+        if (disposed || frame) return;
+        if (typeof requestAnimationFrame !== 'function') {
           listener();
           return;
         }
-        if (frame) return;
         frame = requestAnimationFrame(() => {
           frame = 0;
-          listener();
+          if (!disposed) listener();
         });
       };
       const sub = select((s) => ({ ready: s.ready, selection: s.selection, zoom: s.zoom }));
-      unsubs.push(sub.subscribe(() => schedule()));
+      const unsubscribe = sub.subscribe(schedule);
       // Registered rather than bound inline: the geometry half of this
       // subscription belongs to one host, so an active-editor swap has to move
       // it. The state half above keeps firing on its own, which is why a stale
@@ -11203,13 +11591,7 @@ export function createSuperDocUI(options: SuperDocUIOptions): SuperDocUI {
         geometryObservers.delete(entry);
         detachGeometryObserver(entry);
         if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
-        for (const unsub of unsubs.splice(0)) {
-          try {
-            unsub();
-          } catch {
-            /* ignore */
-          }
-        }
+        safeCall(unsubscribe, null);
       };
     },
     getHost: (): HTMLElement | null => resolveVisibleHost(),

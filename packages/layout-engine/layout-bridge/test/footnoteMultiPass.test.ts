@@ -1,7 +1,24 @@
 import { describe, it, expect, vi } from 'vite-plus/test';
-import type { FlowBlock, Measure } from '@superdoc/contracts';
+import type { FlowBlock, Layout, Measure } from '@superdoc/contracts';
 import * as layoutEngine from '@superdoc/layout-engine';
 import { __test_only_growFootnoteReserves, incrementalLayout } from '../src/incrementalLayout';
+
+const RECORDINGS = './__snapshots__/footnoteMultiPass';
+
+const describePagination = (layout: Layout): string =>
+  layout.pages
+    .map((page) => {
+      const fragments = page.fragments.map((fragment) => {
+        const lines = fragment.kind === 'para' ? ` lines ${fragment.fromLine}-${fragment.toLine}` : '';
+        return `  ${fragment.blockId}${lines} at y ${fragment.y}`;
+      });
+      return [
+        `page ${page.number} footnoteReserved ${page.footnoteReserved ?? 0} bodyMaxY ${page.bodyMaxY}`,
+        ...fragments,
+      ].join('\n');
+    })
+    .join('\n')
+    .concat('\n');
 
 /**
  * Builds a paragraph with pmStart/pmEnd so footnote ref position can be resolved to a page.
@@ -112,8 +129,6 @@ describe('Footnote multi-pass reserve loop', () => {
       topPadding: 4,
       dividerHeight: 2,
     };
-    const layoutDocSpy = vi.spyOn(layoutEngine, 'layoutDocument');
-
     const result = await incrementalLayout(
       [],
       null,
@@ -126,23 +141,10 @@ describe('Footnote multi-pass reserve loop', () => {
       measureBlock,
     );
 
-    const reserveRelayoutCalls = layoutDocSpy.mock.calls.filter((call) =>
-      (call[2] as { footnoteReservedByPageIndex?: number[] })?.footnoteReservedByPageIndex?.some(
-        (height) => height > 0,
-      ),
-    );
-    const localizedReserveRelayoutCalls = reserveRelayoutCalls.filter(([blocks]) => blocks.length < bodyBlocks.length);
-    layoutDocSpy.mockRestore();
-
-    expect(result.bridgeTiming.counters.footnoteRelayouts).toBeGreaterThan(0);
+    expect(result.bridgeTiming.counters.footnoteReserveRelayouts).toBeGreaterThan(0);
     expect(result.bridgeTiming.counters.footnoteReservePassReuseAttempts).toBeGreaterThan(0);
     expect(result.bridgeTiming.counters.footnoteReservePassReuseHits).toBe(
       result.bridgeTiming.counters.footnoteReservePassReuseAttempts,
-    );
-    expect(reserveRelayoutCalls.length).toBeGreaterThan(0);
-    expect(localizedReserveRelayoutCalls).toHaveLength(result.bridgeTiming.counters.footnoteReservePassReuseHits);
-    expect(reserveRelayoutCalls.length - localizedReserveRelayoutCalls.length).toBeLessThan(
-      reserveRelayoutCalls.length,
     );
 
     const footnotePageIndex = result.layout.pages.findIndex((page) =>
@@ -314,8 +316,6 @@ describe('Footnote multi-pass reserve loop', () => {
     const margins = { top: 72, right: 72, bottom: 72, left: 72 };
     const pageHeight = contentHeight + margins.top + margins.bottom;
 
-    const layoutDocSpy = vi.spyOn(layoutEngine, 'layoutDocument');
-
     const result = await incrementalLayout(
       [],
       null,
@@ -332,8 +332,6 @@ describe('Footnote multi-pass reserve loop', () => {
       },
       measureBlock,
     );
-
-    layoutDocSpy.mockRestore();
 
     // The SD-2656 bodyMaxY-anchored architecture is allowed to converge in a
     // single layout pass — the slicer's range-aware demand (charged line by
@@ -390,27 +388,27 @@ describe('Footnote multi-pass reserve loop', () => {
 
   it('stops a doomed tighten regrow at the accepted page-count ceiling', async () => {
     let state = { appliedReserves: [0], plannedReserves: [10], pageCount: 100 };
-    const applied: Array<{ target: number[]; label: string }> = [];
+    const applied: number[][] = [];
     const converged = await __test_only_growFootnoteReserves({
       maxPasses: 10,
       maxAcceptedPageCount: 100,
       readState: () => state,
-      applyReserves: async (target, label) => {
-        applied.push({ target, label });
+      applyReserves: async (target) => {
+        applied.push(target);
         state = { appliedReserves: target, plannedReserves: [20], pageCount: 101 };
       },
     });
 
     expect(converged).toBe(false);
-    expect(applied).toEqual([{ target: [10], label: 'grow-pass-1' }]);
+    expect(applied).toEqual([[10]]);
 
     state = { appliedReserves: [0], plannedReserves: [10], pageCount: 100 };
     applied.length = 0;
     const unboundedConverged = await __test_only_growFootnoteReserves({
       maxPasses: 10,
       readState: () => state,
-      applyReserves: async (target, label) => {
-        applied.push({ target, label });
+      applyReserves: async (target) => {
+        applied.push(target);
         state = {
           appliedReserves: target,
           plannedReserves: [20],
@@ -419,10 +417,7 @@ describe('Footnote multi-pass reserve loop', () => {
       },
     });
     expect(unboundedConverged).toBe(true);
-    expect(applied).toEqual([
-      { target: [10], label: 'grow-pass-1' },
-      { target: [20], label: 'grow-pass-2' },
-    ]);
+    expect(applied).toEqual([[10], [20]]);
   });
 
   it('does not exhaust max reserve passes when reserves oscillate between pages', async () => {
@@ -458,9 +453,7 @@ describe('Footnote multi-pass reserve loop', () => {
     const margins = { top: 72, right: 72, bottom: 72, left: 72 };
     const pageHeight = contentHeight + margins.top + margins.bottom;
 
-    const layoutDocSpy = vi.spyOn(layoutEngine, 'layoutDocument');
-
-    await incrementalLayout(
+    const result = await incrementalLayout(
       [],
       null,
       bodyBlocks,
@@ -477,18 +470,7 @@ describe('Footnote multi-pass reserve loop', () => {
       measureBlock,
     );
 
-    const footnoteReserveCalls = layoutDocSpy.mock.calls.filter((call) =>
-      (call[2] as { footnoteReservedByPageIndex?: number[] })?.footnoteReservedByPageIndex?.some((h) => h > 0),
-    );
-    layoutDocSpy.mockRestore();
-
-    // This scenario genuinely oscillates (A -> B -> A), so we can't collapse it
-    // to the original ≤3 passes. The budget here bounds the combined work of
-    // the outer convergence loop (MAX_FOOTNOTE_LAYOUT_PASSES=4), its merge
-    // relayout, the grow-only post-reserve loop (GROW_MAX_PASSES=10), and the
-    // opportunistic tighten loop (MAX_TIGHTEN_ITERATIONS=8). Observed actual
-    // count is ~19; the ≤30 cap catches regressions that would balloon the
-    // relayout count (e.g. if oscillation detection is removed or caps grow).
-    expect(footnoteReserveCalls.length).toBeLessThanOrEqual(30);
+    expect(result.bridgeTiming.counters.footnoteRelayouts).toBeLessThanOrEqual(30);
+    await expect(describePagination(result.layout)).toMatchFileSnapshot(`${RECORDINGS}/oscillating-reserve-pages.txt`);
   });
 });

@@ -1,0 +1,330 @@
+{
+  "definition": {
+    "description": "Redo the most recently undone action in the document.",
+    "expectedResult": "Returns a HistoryActionResult with noop flag, revision before/after, optional noop reason, and optional ref-effect fields such as inserted, removed, invalidatedRefs, remappedRefs, and affectedStories.",
+    "intentAction": "redo",
+    "intentGroup": "edit",
+    "memberPath": "history.redo",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "history/redo.mdx",
+    "referenceGroup": "history",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "collaboration": {
+          "additionalProperties": false,
+          "properties": {
+            "affectedShards": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "enum": [
+                "session-local",
+                "single-shard",
+                "journaled-multi-shard"
+              ]
+            },
+            "opId": {
+              "type": "string"
+            },
+            "undoGroupId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        "diagnosticCode": {
+          "type": "string"
+        },
+        "history": {
+          "$ref": "#/$defs/HistoryReplay"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "noop": {
+          "type": "boolean"
+        },
+        "reason": {
+          "enum": [
+            "EMPTY_UNDO_STACK",
+            "EMPTY_REDO_STACK",
+            "NO_EFFECT",
+            "no-undo-available",
+            "no-redo-available",
+            "history-entry-missing",
+            "apply-rejected"
+          ]
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "before",
+            "after"
+          ],
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "applied",
+            "noop",
+            "rejected",
+            "partial",
+            "repaired"
+          ]
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "noop",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "collaboration": {
+          "additionalProperties": false,
+          "properties": {
+            "affectedShards": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "enum": [
+                "session-local",
+                "single-shard",
+                "journaled-multi-shard"
+              ]
+            },
+            "opId": {
+              "type": "string"
+            },
+            "undoGroupId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        "diagnosticCode": {
+          "type": "string"
+        },
+        "history": {
+          "$ref": "#/$defs/HistoryReplay"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "noop": {
+          "type": "boolean"
+        },
+        "reason": {
+          "enum": [
+            "EMPTY_UNDO_STACK",
+            "EMPTY_REDO_STACK",
+            "NO_EFFECT",
+            "no-undo-available",
+            "no-redo-available",
+            "history-entry-missing",
+            "apply-rejected"
+          ]
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "before",
+            "after"
+          ],
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "applied",
+            "noop",
+            "rejected",
+            "partial",
+            "repaired"
+          ]
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "noop",
+        "revision"
+      ],
+      "type": "object"
+    }
+  }
+}

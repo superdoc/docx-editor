@@ -26,6 +26,7 @@ export interface TabStop {
   pos: number; // Twips from paragraph start (after left indent)
   leader?: 'none' | 'dot' | 'hyphen' | 'heavy' | 'underscore' | 'middleDot';
   source?: 'explicit' | 'default';
+  implicitIndent?: true;
 }
 
 /**
@@ -159,6 +160,7 @@ export function computeTabStops(context: TabContext): TabStop[] {
       pos: leftIndent,
       leader: 'none',
       source: 'default',
+      implicitIndent: true,
     });
   }
 
@@ -172,7 +174,7 @@ export function computeTabStops(context: TabContext): TabStop[] {
     !hasClearAtPosition(0) &&
     !stops.some((stop) => Math.abs(stop.pos) < TAB_POSITION_TOLERANCE_TWIPS)
   ) {
-    stops.push({ val: 'start', pos: 0, leader: 'none', source: 'default' });
+    stops.push({ val: 'start', pos: 0, leader: 'none', source: 'default', implicitIndent: true });
   }
   const leftIndentStop = Math.abs(rawLeftIndent);
   if (
@@ -182,7 +184,7 @@ export function computeTabStops(context: TabContext): TabStop[] {
     !hasClearAtPosition(leftIndentStop) &&
     !stops.some((stop) => Math.abs(stop.pos - leftIndentStop) < TAB_POSITION_TOLERANCE_TWIPS)
   ) {
-    stops.push({ val: 'start', pos: leftIndentStop, leader: 'none', source: 'default' });
+    stops.push({ val: 'start', pos: leftIndentStop, leader: 'none', source: 'default', implicitIndent: true });
   }
 
   // Generate default stops at regular intervals.

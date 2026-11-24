@@ -67,6 +67,25 @@ export function selectionBlockIds(selection: SelectionSlice): string[] {
   return ids;
 }
 
+export function selectionCellParagraphScope(selection: SelectionSlice) {
+  const table = selection.tableSelection;
+  if (
+    selection.status !== 'ready' ||
+    selection.empty ||
+    table?.kind !== 'tableCells' ||
+    table.selectionMode !== 'cells' ||
+    !table.tableId ||
+    !table.cells.length ||
+    table.cells.some((cell) => !cell.nodeId)
+  )
+    return null;
+  return {
+    tableId: table.tableId,
+    story: table.story ?? ({ kind: 'story', storyType: 'body' } satisfies StoryLocator),
+    cellIds: [...new Set(table.cells.map((cell) => cell.nodeId))],
+  };
+}
+
 export const MAX_REACTIVE_SELECTION_BLOCK_READS = 64;
 
 export function canProbeEverySelectedBlock(blockIds: readonly string[]): boolean {

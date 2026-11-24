@@ -1,0 +1,126 @@
+step: choose Edit on the root comment, type "Submitted text", click Update
+
+document calls:
+comments.setActiveComment "edit-root"
+comments.edit {"commentId":"edit-root","text":"Submitted text"}
+
+store:
+{
+  "activeComment": "edit-root",
+  "editingCommentId": "edit-root",
+  "draft": "Submitted text",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "edit-root",
+      "commentText": "Root"
+    },
+    {
+      "commentId": "edit-reply",
+      "parentCommentId": "edit-root",
+      "commentText": "Reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+edit-root: editing
+edit-reply: comment: Reply
+buttons: Update enabled
+
+---
+
+step: type "New draft"
+
+document calls:
+(none)
+
+store:
+{
+  "activeComment": "edit-root",
+  "editingCommentId": "edit-root",
+  "draft": "New draft",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "edit-root",
+      "commentText": "Root"
+    },
+    {
+      "commentId": "edit-reply",
+      "parentCommentId": "edit-root",
+      "commentText": "Reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+edit-root: editing
+edit-reply: comment: Reply
+buttons: Update enabled
+
+---
+
+step: the document commits the edit
+
+document calls:
+(none)
+
+comments-update events:
+[
+  {
+    "type": "update",
+    "comment": {
+      "commentId": "edit-root",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Submitted text",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    },
+    "changes": [
+      {
+        "key": "text",
+        "value": "Submitted text"
+      }
+    ]
+  }
+]
+
+store:
+{
+  "activeComment": "edit-root",
+  "editingCommentId": "edit-root",
+  "draft": "New draft",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "edit-root",
+      "commentText": "Submitted text"
+    },
+    {
+      "commentId": "edit-reply",
+      "parentCommentId": "edit-root",
+      "commentText": "Reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+edit-root: editing
+edit-reply: comment: Reply
+buttons: Update enabled
+
+---

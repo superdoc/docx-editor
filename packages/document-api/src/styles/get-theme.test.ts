@@ -2,8 +2,6 @@
 // fonts, color mapping) without fetching the whole document through doc.get().
 import { describe, expect, it, mock } from 'bun:test';
 import { createDocumentApi, type DocumentApiAdapters } from '../index.js';
-import { OPERATION_DEFINITIONS } from '../contract/operation-definitions.js';
-import { buildInternalContractSchemas } from '../contract/schemas.js';
 import { DocumentApiValidationError } from '../errors.js';
 import { executeStylesGetTheme, type StylesAdapter, type StylesGetThemeResult } from './index.js';
 
@@ -44,35 +42,6 @@ function expectValidationError(fn: () => unknown, code: string, message: RegExp)
   }
   throw new Error('Expected a DocumentApiValidationError.');
 }
-
-describe('styles.getTheme contract', () => {
-  it('is a documented, idempotent read in the styles reference group', () => {
-    const definition = OPERATION_DEFINITIONS['styles.getTheme'];
-
-    expect(definition).toMatchObject({
-      memberPath: 'styles.getTheme',
-      requiresDocumentContext: true,
-      referenceDocPath: 'styles/get-theme.mdx',
-      referenceGroup: 'styles',
-    });
-    expect(definition.metadata).toMatchObject({ mutates: false, idempotency: 'idempotent' });
-  });
-
-  it('advertises the theme, source status and diagnostics on the output', () => {
-    const output = buildInternalContractSchemas().operations['styles.getTheme'].output;
-
-    expect(output).toBeDefined();
-    expect(output!.additionalProperties).toBe(false);
-    expect(output!.required).toEqual(expect.arrayContaining(['theme', 'sourceStatus', 'diagnostics']));
-  });
-
-  it('accepts no input fields', () => {
-    const input = buildInternalContractSchemas().operations['styles.getTheme'].input;
-
-    expect(input).toMatchObject({ type: 'object', additionalProperties: false });
-    expect(Object.keys((input?.properties ?? {}) as Record<string, unknown>)).toEqual([]);
-  });
-});
 
 describe('styles.getTheme validation', () => {
   it('accepts an omitted or empty input', () => {

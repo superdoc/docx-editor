@@ -142,4 +142,28 @@ describe('FontSizeCombobox', () => {
     expect(input.element.value).toBe('');
     expect(document.body.querySelector('[aria-selected="true"]')).toBeNull();
   });
+
+  it.each([false, true])('leaves the mixed size unchanged on Tab with shiftKey=%s', async (shiftKey) => {
+    const { input } = mountCombobox(makeItem({ label: ref(''), selectedValue: ref('') }));
+
+    await input.trigger('mousedown');
+    expect(input.attributes('aria-expanded')).toBe('true');
+    await input.trigger('keydown', { key: 'Tab', shiftKey });
+
+    expect(wrapper?.emitted('command')).toBeUndefined();
+    expect(wrapper?.emitted('tab-out')).toHaveLength(1);
+    expect(input.attributes('aria-expanded')).toBe('false');
+    expect(input.element.value).toBe('');
+  });
+
+  it('applies a typed size on Tab from the mixed size field', async () => {
+    const { input } = mountCombobox(makeItem({ label: ref(''), selectedValue: ref('') }));
+
+    await input.trigger('mousedown');
+    await input.setValue('11');
+    await input.trigger('keydown', { key: 'Tab' });
+
+    expect(wrapper?.emitted<[FontSizeCommand]>('command')?.[0]?.[0].argument).toBe('11');
+    expect(wrapper?.emitted('tab-out')).toHaveLength(1);
+  });
 });

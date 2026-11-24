@@ -55,7 +55,7 @@ only at the returned `evaluatedRevision`; discard them after any mutation. See
 | Receipts with verification | No                                  | Yes                                                            |
 | Default                    | Yes                                 | No, pass `preset: 'core'`                                      |
 
-Build new integrations on `core`. It narrows the advertised surface, supports exclusions, and returns receipts carrying verification results.
+Build new integrations on `full` or `core`. Both support exclusions, and their core actions return receipts carrying verification results; full's helper actions return their own result shapes.
 
 ## Moving to core
 

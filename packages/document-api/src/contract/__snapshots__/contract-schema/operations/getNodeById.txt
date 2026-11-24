@@ -1,0 +1,79 @@
+{
+  "definition": {
+    "description": "Resolve a block ID across the body, linked headers/footers, and supported textboxes, optionally restricted by story. Paragraphs at every table-cell depth and top-level body/header/footer tables are supported; notes, comments, glossary, and nested table containers are excluded.",
+    "expectedResult": "Returns an SDNodeResult envelope with the projected SDM/1 node and canonical address. Paragraph indent *Chars values remain hundredths of a character; numeric distances remain points. Paragraph setters and fragment materialization retain their operation-specific property limits.",
+    "inputAliases": {
+      "id": "nodeId"
+    },
+    "memberPath": "getNodeById",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "AMBIGUOUS_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "get-node-by-id.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "nodeId": {
+          "type": "string"
+        },
+        "nodeType": {
+          "enum": [
+            "paragraph",
+            "heading",
+            "listItem",
+            "table",
+            "tableRow",
+            "tableCell",
+            "tableOfContents",
+            "image",
+            "sdt"
+          ]
+        },
+        "story": {
+          "$ref": "#/$defs/StoryLocator"
+        }
+      },
+      "required": [
+        "nodeId"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/NodeAddress"
+        },
+        "context": {
+          "type": "object"
+        },
+        "node": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "node",
+        "address"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,1142 @@
+{
+  "definition": {
+    "description": "Apply a previously computed diff payload to the current document. The document fingerprint must match the diff base fingerprint. Omitted changeMode applies story content directly; explicit tracked mode governs all four story families (body, header/footer parts, footnotes, endnotes). Comments, styles, and numbering are always applied directly. Supported mixed full-diff payloads apply atomically across body, comments, styles, numbering, and header/footers. Unsupported/deferred families such as package-graph/media/hyperlink closure, settings/theme, and textboxes fail closed before mutation.",
+    "expectedResult": "Returns a DiffApplyResult with per-operation review receipts, applied operation count, and diagnostics.",
+    "memberPath": "diff.apply",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": false,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNSUPPORTED",
+          "PRECONDITION_FAILED",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "diff/apply.mdx",
+    "referenceGroup": "diff",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "failure": {
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "diff": {
+          "additionalProperties": false,
+          "properties": {
+            "applyEligibility": {
+              "additionalProperties": false,
+              "properties": {
+                "direct": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "blockers": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "code": {
+                            "enum": [
+                              "family-apply-lane-unavailable",
+                              "header-footer-physical-lifecycle-unsafe",
+                              "header-footer-tracked-lifecycle-unsupported",
+                              "comment-replay-unsafe",
+                              "comment-anchor-marker-semantics-unsafe",
+                              "styles-replay-unsafe",
+                              "numbering-replay-unsafe",
+                              "definition-replay-tracked-unsupported",
+                              "package-graph-tracked-unsupported",
+                              "section-reference-replay-unsafe",
+                              "structural-paragraph-unsupported"
+                            ],
+                            "type": "string"
+                          },
+                          "families": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "enum": [
+                        "candidate",
+                        "blocked"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "blockers"
+                  ],
+                  "type": "object"
+                },
+                "tracked": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "blockers": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "code": {
+                            "enum": [
+                              "family-apply-lane-unavailable",
+                              "header-footer-physical-lifecycle-unsafe",
+                              "header-footer-tracked-lifecycle-unsupported",
+                              "comment-replay-unsafe",
+                              "comment-anchor-marker-semantics-unsafe",
+                              "styles-replay-unsafe",
+                              "numbering-replay-unsafe",
+                              "definition-replay-tracked-unsupported",
+                              "package-graph-tracked-unsupported",
+                              "section-reference-replay-unsafe",
+                              "structural-paragraph-unsupported"
+                            ],
+                            "type": "string"
+                          },
+                          "families": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "enum": [
+                        "candidate",
+                        "blocked"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "blockers"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "direct",
+                "tracked"
+              ],
+              "type": "object"
+            },
+            "baseFingerprint": {
+              "type": "string"
+            },
+            "coverage": {
+              "additionalProperties": false,
+              "properties": {
+                "body": {
+                  "const": true,
+                  "type": "boolean"
+                },
+                "comments": {
+                  "type": "boolean"
+                },
+                "headerFooters": {
+                  "type": "boolean"
+                },
+                "numbering": {
+                  "type": "boolean"
+                },
+                "styles": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "body",
+                "comments",
+                "styles",
+                "numbering",
+                "headerFooters"
+              ],
+              "type": "object"
+            },
+            "display": {
+              "additionalProperties": false,
+              "properties": {
+                "changes": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "after": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "target": {
+                                "$ref": "#/$defs/TextAddress"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "text",
+                              "target"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "before": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "target": {
+                                "$ref": "#/$defs/TextAddress"
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "text",
+                              "target"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "insert",
+                          "delete",
+                          "replace",
+                          "format",
+                          "move"
+                        ]
+                      },
+                      "ordinal": {
+                        "type": "number"
+                      },
+                      "targetAnchor": {
+                        "oneOf": [
+                          {
+                            "$ref": "#/$defs/TextAddress"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "before",
+                      "after",
+                      "targetAnchor",
+                      "ordinal"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "unrenderedFamilies": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "changes",
+                "unrenderedFamilies"
+              ],
+              "type": "object"
+            },
+            "engine": {
+              "enum": [
+                "superdoc-v2"
+              ],
+              "type": "string"
+            },
+            "partChanges": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "afterFingerprint": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "beforeFingerprint": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "enum": [
+                      "added",
+                      "removed",
+                      "modified"
+                    ],
+                    "type": "string"
+                  },
+                  "partUri": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "partUri",
+                  "kind",
+                  "beforeFingerprint",
+                  "afterFingerprint"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "payload": {
+              "description": "Opaque engine-owned diff data.",
+              "type": "object"
+            },
+            "summary": {
+              "additionalProperties": false,
+              "properties": {
+                "body": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hasChanges": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "hasChanges"
+                  ],
+                  "type": "object"
+                },
+                "changedComponents": {
+                  "items": {
+                    "enum": [
+                      "body",
+                      "comments",
+                      "styles",
+                      "numbering",
+                      "headerFooters",
+                      "parts"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "comments": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hasChanges": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "hasChanges"
+                  ],
+                  "type": "object"
+                },
+                "hasChanges": {
+                  "type": "boolean"
+                },
+                "headerFooters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hasChanges": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "hasChanges"
+                  ],
+                  "type": "object"
+                },
+                "numbering": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hasChanges": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "hasChanges"
+                  ],
+                  "type": "object"
+                },
+                "parts": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hasChanges": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "hasChanges"
+                  ],
+                  "type": "object"
+                },
+                "styles": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hasChanges": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "hasChanges"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "hasChanges",
+                "changedComponents",
+                "body",
+                "comments",
+                "styles",
+                "numbering",
+                "headerFooters",
+                "parts"
+              ],
+              "type": "object"
+            },
+            "targetFingerprint": {
+              "type": "string"
+            },
+            "version": {
+              "enum": [
+                "sd-diff-payload/v1",
+                "sd-diff-payload/v2"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "version",
+            "engine",
+            "baseFingerprint",
+            "targetFingerprint",
+            "coverage",
+            "summary",
+            "payload"
+          ],
+          "type": "object"
+        },
+        "numberingChangeMode": {
+          "enum": [
+            "direct"
+          ]
+        },
+        "settingsChangeMode": {
+          "enum": [
+            "direct"
+          ]
+        },
+        "styleChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        }
+      },
+      "required": [
+        "diff"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedOperations": {
+          "type": "integer"
+        },
+        "baseFingerprint": {
+          "type": "string"
+        },
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "const": true,
+              "type": "boolean"
+            },
+            "comments": {
+              "type": "boolean"
+            },
+            "headerFooters": {
+              "type": "boolean"
+            },
+            "numbering": {
+              "type": "boolean"
+            },
+            "styles": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "body",
+            "comments",
+            "styles",
+            "numbering",
+            "headerFooters"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "numberingChanges": {
+          "additionalProperties": false,
+          "properties": {
+            "changeMode": {
+              "const": "direct"
+            },
+            "partUris": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "changeMode",
+            "partUris"
+          ],
+          "type": "object"
+        },
+        "operationReceipts": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "disposition": {
+                    "const": "review-created"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "reviewItems": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "address": {
+                          "$ref": "#/$defs/TrackedChangeAddress"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "navigationTarget": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "blockId": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "block"
+                            },
+                            "role": {
+                              "enum": [
+                                "primary",
+                                "move-source",
+                                "move-destination",
+                                "formatting-carrier",
+                                "structural-carrier"
+                              ]
+                            },
+                            "story": {
+                              "$ref": "#/$defs/StoryLocator"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "story",
+                            "blockId",
+                            "role"
+                          ],
+                          "type": "object"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "story",
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "disposition",
+                  "reviewItems"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "disposition": {
+                    "const": "applied-directly"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "reviewItems": {
+                    "maxItems": 0,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "disposition",
+                  "reviewItems"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "settingsChanges": {
+          "additionalProperties": false,
+          "properties": {
+            "changeMode": {
+              "const": "direct"
+            },
+            "partUris": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "changeMode",
+            "partUris"
+          ],
+          "type": "object"
+        },
+        "styleChanges": {
+          "additionalProperties": false,
+          "properties": {
+            "changeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "partUris": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "changeMode",
+            "partUris"
+          ],
+          "type": "object"
+        },
+        "summary": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "changedComponents": {
+              "items": {
+                "enum": [
+                  "body",
+                  "comments",
+                  "styles",
+                  "numbering",
+                  "headerFooters",
+                  "parts"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "comments": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "hasChanges": {
+              "type": "boolean"
+            },
+            "headerFooters": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "numbering": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "parts": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "styles": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "hasChanges",
+            "changedComponents",
+            "body",
+            "comments",
+            "styles",
+            "numbering",
+            "headerFooters",
+            "parts"
+          ],
+          "type": "object"
+        },
+        "targetFingerprint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "appliedOperations",
+        "operationReceipts",
+        "baseFingerprint",
+        "targetFingerprint",
+        "coverage",
+        "summary",
+        "diagnostics"
+      ],
+      "type": "object"
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedOperations": {
+          "type": "integer"
+        },
+        "baseFingerprint": {
+          "type": "string"
+        },
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "const": true,
+              "type": "boolean"
+            },
+            "comments": {
+              "type": "boolean"
+            },
+            "headerFooters": {
+              "type": "boolean"
+            },
+            "numbering": {
+              "type": "boolean"
+            },
+            "styles": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "body",
+            "comments",
+            "styles",
+            "numbering",
+            "headerFooters"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "numberingChanges": {
+          "additionalProperties": false,
+          "properties": {
+            "changeMode": {
+              "const": "direct"
+            },
+            "partUris": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "changeMode",
+            "partUris"
+          ],
+          "type": "object"
+        },
+        "operationReceipts": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "disposition": {
+                    "const": "review-created"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "reviewItems": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "address": {
+                          "$ref": "#/$defs/TrackedChangeAddress"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "navigationTarget": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "blockId": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "block"
+                            },
+                            "role": {
+                              "enum": [
+                                "primary",
+                                "move-source",
+                                "move-destination",
+                                "formatting-carrier",
+                                "structural-carrier"
+                              ]
+                            },
+                            "story": {
+                              "$ref": "#/$defs/StoryLocator"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "story",
+                            "blockId",
+                            "role"
+                          ],
+                          "type": "object"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "story",
+                        "address"
+                      ],
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "disposition",
+                  "reviewItems"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "disposition": {
+                    "const": "applied-directly"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "reviewItems": {
+                    "maxItems": 0,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "disposition",
+                  "reviewItems"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "settingsChanges": {
+          "additionalProperties": false,
+          "properties": {
+            "changeMode": {
+              "const": "direct"
+            },
+            "partUris": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "changeMode",
+            "partUris"
+          ],
+          "type": "object"
+        },
+        "styleChanges": {
+          "additionalProperties": false,
+          "properties": {
+            "changeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "partUris": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "changeMode",
+            "partUris"
+          ],
+          "type": "object"
+        },
+        "summary": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "changedComponents": {
+              "items": {
+                "enum": [
+                  "body",
+                  "comments",
+                  "styles",
+                  "numbering",
+                  "headerFooters",
+                  "parts"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "comments": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "hasChanges": {
+              "type": "boolean"
+            },
+            "headerFooters": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "numbering": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "parts": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "styles": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "hasChanges",
+            "changedComponents",
+            "body",
+            "comments",
+            "styles",
+            "numbering",
+            "headerFooters",
+            "parts"
+          ],
+          "type": "object"
+        },
+        "targetFingerprint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "appliedOperations",
+        "operationReceipts",
+        "baseFingerprint",
+        "targetFingerprint",
+        "coverage",
+        "summary",
+        "diagnostics"
+      ],
+      "type": "object"
+    }
+  }
+}

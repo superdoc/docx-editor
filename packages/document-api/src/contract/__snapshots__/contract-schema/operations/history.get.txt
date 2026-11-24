@@ -1,0 +1,63 @@
+{
+  "definition": {
+    "description": "Query the current undo/redo history state of the document.",
+    "expectedResult": "Returns a HistoryState object with undoDepth, redoDepth, canUndo, canRedo, and a list of history-unsafe operations.",
+    "memberPath": "history.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "history/get.mdx",
+    "referenceGroup": "history",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "canRedo": {
+          "type": "boolean"
+        },
+        "canUndo": {
+          "type": "boolean"
+        },
+        "historyUnsafeOperations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "redoDepth": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "undoDepth": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "undoDepth",
+        "redoDepth",
+        "canUndo",
+        "canRedo",
+        "historyUnsafeOperations"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -1,6 +1,10 @@
 import type {
   Config,
   ContentControlActiveChangePayload,
+  ContentControlBlockBoxOptions,
+  ContentControlInlineBoxOptions,
+  ContentControlPresentation,
+  ContentControlsConfig,
   ContentControlClickPayload,
   ContentControlRef,
   SdtRef,
@@ -17,6 +21,47 @@ const canonicalEnabled: Pick<Config, 'ui'> = {
 const compatibleObject: Pick<Config, 'ui'> = {
   ui: { contentControls: { chrome: 'none' } },
 };
+
+const chip: ContentControlInlineBoxOptions = {
+  layout: { paddingInline: 6, paddingBlock: { start: 2, end: 4 }, borderWidth: 1 },
+  appearance: { borderColor: '#1355ff', borderStyle: 'solid', borderRadius: 4 },
+  className: 'binding-chip',
+  data: { kind: 'binding' },
+};
+
+const iconChip: ContentControlInlineBoxOptions = {
+  ...chip,
+  icon: { src: '/icons/link.svg', size: 12, gap: 4 },
+};
+const iconSize: number | undefined = iconChip.icon?.size;
+
+const frame: ContentControlBlockBoxOptions = {
+  layout: { paddingInline: 6, paddingBlock: { start: 2, end: 4 }, borderWidth: 1 },
+  appearance: { borderColor: '#1355ff', borderStyle: 'dashed', borderRadius: 4, backgroundColor: '#eef3ff' },
+  className: 'binding-frame',
+};
+const framePadding: ContentControlBlockBoxOptions['layout'] = frame.layout;
+
+const presentation: ContentControlPresentation = {
+  match: { tagPrefix: 'fgBindingV1:' },
+  inlineBox: chip,
+  blockBox: frame,
+};
+
+const presentationConfig: ContentControlsConfig = {
+  enabled: false,
+  presentations: [presentation],
+};
+
+const presentationUi: Pick<Config, 'ui'> = {
+  ui: { contentControls: presentationConfig },
+};
+
+const enabledFlag: boolean | undefined = presentationConfig.enabled;
+const presentationList: ContentControlPresentation[] | undefined = presentationConfig.presentations;
+
+type MatchIsRequired = {} extends Pick<ContentControlPresentation, 'match'> ? false : true;
+const matchIsRequired: MatchIsRequired = true;
 
 const compatibleModule: Pick<Config, 'modules'> = {
   modules: { contentControls: { chrome: 'default' } },
@@ -52,6 +97,12 @@ void [
   canonical,
   canonicalEnabled,
   compatibleObject,
+  presentationUi,
+  iconSize,
+  framePadding,
+  enabledFlag,
+  presentationList,
+  matchIsRequired,
   compatibleModule,
   callbacks,
   compatibleRef,

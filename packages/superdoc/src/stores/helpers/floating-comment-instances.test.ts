@@ -2,138 +2,6 @@ import { describe, expect, it } from 'vite-plus/test';
 import { buildFloatingCommentInstances } from './floating-comment-instances.js';
 
 describe('buildFloatingCommentInstances', () => {
-  it('returns no instances when neither position key nor fallback id is available', () => {
-    expect(
-      buildFloatingCommentInstances({
-        comment: { commentId: null },
-        positionKey: null,
-        positionEntry: null,
-        fallbackId: null,
-      }),
-    ).toEqual([]);
-  });
-
-  it('builds a single primary instance for non-repeated threads', () => {
-    expect(
-      buildFloatingCommentInstances({
-        comment: { commentId: 'thread-1', trackedChange: false },
-        positionKey: 'comment-position-1',
-        positionEntry: {
-          pageIndex: 4,
-          bounds: { top: 80, left: 12, right: 64, bottom: 100, width: 52, height: 20 },
-        },
-        fallbackId: 'fallback-thread-1',
-      }),
-    ).toEqual([
-      {
-        id: 'comment-position-1',
-        threadId: 'thread-1',
-        comment: { commentId: 'thread-1', trackedChange: false },
-        positionKey: 'comment-position-1',
-        positionEntry: {
-          pageIndex: 4,
-          bounds: { top: 80, left: 12, right: 64, bottom: 100, width: 52, height: 20 },
-        },
-        pageIndex: 4,
-        isPrimary: true,
-      },
-    ]);
-  });
-
-  it('uses the fallback id when building a single instance without a position key', () => {
-    expect(
-      buildFloatingCommentInstances({
-        comment: { commentId: null, trackedChange: false },
-        positionKey: null,
-        positionEntry: null,
-        fallbackId: 'fallback-thread-id',
-      }),
-    ).toEqual([
-      {
-        id: 'fallback-thread-id',
-        threadId: 'fallback-thread-id',
-        comment: { commentId: null, trackedChange: false },
-        positionKey: null,
-        positionEntry: null,
-        pageIndex: null,
-        isPrimary: true,
-      },
-    ]);
-  });
-
-  it('fans repeated header/footer tracked changes into one instance per page', () => {
-    const comment = {
-      commentId: 'tracked-change-repeat',
-      trackedChange: true,
-      trackedChangeStory: { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-footer' },
-    };
-    const positionEntry = {
-      pageIndex: 2,
-      rects: [
-        { pageIndex: 0, top: 20, left: 12, right: 50, bottom: 40 },
-        { pageIndex: 1, top: 120, left: 8, right: 32, bottom: 136 },
-        { pageIndex: 1, top: 122, left: 32, right: 72, bottom: 142 },
-        { pageIndex: 2, top: 240, left: 16, right: 80, bottom: 266 },
-      ],
-      bounds: { top: 240, left: 16, right: 80, bottom: 266, width: 64, height: 26 },
-    };
-
-    expect(
-      buildFloatingCommentInstances({
-        comment,
-        positionKey: 'tc::hf:part:rId-footer::tracked-change-repeat',
-        positionEntry,
-        fallbackId: 'fallback-thread-id',
-      }),
-    ).toEqual([
-      {
-        id: 'tc::hf:part:rId-footer::tracked-change-repeat::page:0',
-        threadId: 'tracked-change-repeat',
-        comment,
-        positionKey: 'tc::hf:part:rId-footer::tracked-change-repeat',
-        pageIndex: 0,
-        isPrimary: false,
-        positionEntry: {
-          ...positionEntry,
-          pageIndex: 0,
-          rects: [{ pageIndex: 0, top: 20, left: 12, right: 50, bottom: 40 }],
-          bounds: { top: 20, left: 12, right: 50, bottom: 40, width: 38, height: 20 },
-        },
-      },
-      {
-        id: 'tc::hf:part:rId-footer::tracked-change-repeat::page:1',
-        threadId: 'tracked-change-repeat',
-        comment,
-        positionKey: 'tc::hf:part:rId-footer::tracked-change-repeat',
-        pageIndex: 1,
-        isPrimary: false,
-        positionEntry: {
-          ...positionEntry,
-          pageIndex: 1,
-          rects: [
-            { pageIndex: 1, top: 120, left: 8, right: 32, bottom: 136 },
-            { pageIndex: 1, top: 122, left: 32, right: 72, bottom: 142 },
-          ],
-          bounds: { top: 120, left: 8, right: 72, bottom: 142, width: 64, height: 22 },
-        },
-      },
-      {
-        id: 'tc::hf:part:rId-footer::tracked-change-repeat',
-        threadId: 'tracked-change-repeat',
-        comment,
-        positionKey: 'tc::hf:part:rId-footer::tracked-change-repeat',
-        pageIndex: 2,
-        isPrimary: true,
-        positionEntry: {
-          ...positionEntry,
-          pageIndex: 2,
-          rects: [{ pageIndex: 2, top: 240, left: 16, right: 80, bottom: 266 }],
-          bounds: { top: 240, left: 16, right: 80, bottom: 266, width: 64, height: 26 },
-        },
-      },
-    ]);
-  });
-
   it('skips missing rect entries when grouping repeated header/footer pages', () => {
     const comment = {
       commentId: 'tracked-change-holes',
@@ -185,39 +53,6 @@ describe('buildFloatingCommentInstances', () => {
 
     expect(instances).toHaveLength(1);
     expect(instances[0]).toMatchObject({ id: 'tc::string-story', isPrimary: true });
-  });
-
-  it('retains a geometry-free tracked header/footer move row with its logical identity', () => {
-    const canonicalId = 'tc|move|1%7C101';
-    const rowId = `${canonicalId}::move-to`;
-    const positionKey = `tc::hf:part:rId-footer::${canonicalId}`;
-    const comment = {
-      commentId: rowId,
-      trackedChange: true,
-      trackedChangeCanonicalId: canonicalId,
-      trackedChangeSubtype: 'move-to',
-      trackedChangeStory: { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-footer' },
-      selection: { page: 1 },
-    };
-
-    expect(
-      buildFloatingCommentInstances({
-        comment,
-        positionKey,
-        positionEntry: { rects: undefined },
-        fallbackId: rowId,
-      }),
-    ).toEqual([
-      {
-        id: rowId,
-        threadId: rowId,
-        comment,
-        positionKey,
-        positionEntry: { rects: undefined },
-        pageIndex: null,
-        isPrimary: true,
-      },
-    ]);
   });
 
   it.each([
@@ -363,47 +198,6 @@ describe('buildFloatingCommentInstances', () => {
       pageIndex: null,
       isPrimary: true,
     });
-  });
-
-  it('falls back to a single instance when repeated-page geometry cannot be aggregated', () => {
-    const comment = {
-      commentId: 'tracked-change-invalid-repeat',
-      trackedChange: true,
-      trackedChangeStory: { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-footer' },
-    };
-
-    expect(
-      buildFloatingCommentInstances({
-        comment,
-        positionKey: 'tc::hf:part:rId-footer::tracked-change-invalid-repeat',
-        positionEntry: {
-          pageIndex: 1,
-          rects: [
-            { pageIndex: 0, top: 20, left: null, right: 60, bottom: 40 },
-            { pageIndex: 1, top: 120, left: undefined, right: 72, bottom: 142 },
-          ],
-          bounds: { top: 120, left: 16, right: 80, bottom: 146, width: 64, height: 26 },
-        },
-        fallbackId: 'fallback-thread-id',
-      }),
-    ).toEqual([
-      {
-        id: 'tc::hf:part:rId-footer::tracked-change-invalid-repeat',
-        threadId: 'tracked-change-invalid-repeat',
-        comment,
-        positionKey: 'tc::hf:part:rId-footer::tracked-change-invalid-repeat',
-        positionEntry: {
-          pageIndex: 1,
-          rects: [
-            { pageIndex: 0, top: 20, left: null, right: 60, bottom: 40 },
-            { pageIndex: 1, top: 120, left: undefined, right: 72, bottom: 142 },
-          ],
-          bounds: { top: 120, left: 16, right: 80, bottom: 146, width: 64, height: 26 },
-        },
-        pageIndex: 1,
-        isPrimary: true,
-      },
-    ]);
   });
 
   it('keeps the logical primary when fewer than two repeated pages have usable bounds', () => {
@@ -569,5 +363,101 @@ describe('buildFloatingCommentInstances', () => {
       positionEntry,
     });
     expect(new Set([firstInstance.id, secondInstance.id]).size).toBe(2);
+  });
+});
+
+function record(value: unknown): string {
+  return JSON.stringify(value, (_key, field: unknown) => (field === undefined ? '<undefined>' : field), 2);
+}
+
+const headerFooterStory = { kind: 'story', storyType: 'headerFooterPart', refId: 'rId-footer' };
+const moveRowId = 'tc|move|1%7C101::move-to';
+
+const recordedScenarios = [
+  {
+    name: 'no-position-key-or-fallback',
+    input: { comment: { commentId: null }, positionKey: null, positionEntry: null, fallbackId: null },
+  },
+  {
+    name: 'single-primary-thread',
+    input: {
+      comment: { commentId: 'thread-1', trackedChange: false },
+      positionKey: 'comment-position-1',
+      positionEntry: {
+        pageIndex: 4,
+        bounds: { top: 80, left: 12, right: 64, bottom: 100, width: 52, height: 20 },
+      },
+      fallbackId: 'fallback-thread-1',
+    },
+  },
+  {
+    name: 'fallback-id-without-position-key',
+    input: {
+      comment: { commentId: null, trackedChange: false },
+      positionKey: null,
+      positionEntry: null,
+      fallbackId: 'fallback-thread-id',
+    },
+  },
+  {
+    name: 'repeated-header-footer-tracked-change',
+    input: {
+      comment: { commentId: 'tracked-change-repeat', trackedChange: true, trackedChangeStory: headerFooterStory },
+      positionKey: 'tc::hf:part:rId-footer::tracked-change-repeat',
+      positionEntry: {
+        pageIndex: 2,
+        rects: [
+          { pageIndex: 0, top: 20, left: 12, right: 50, bottom: 40 },
+          { pageIndex: 1, top: 120, left: 8, right: 32, bottom: 136 },
+          { pageIndex: 1, top: 122, left: 32, right: 72, bottom: 142 },
+          { pageIndex: 2, top: 240, left: 16, right: 80, bottom: 266 },
+        ],
+        bounds: { top: 240, left: 16, right: 80, bottom: 266, width: 64, height: 26 },
+      },
+      fallbackId: 'fallback-thread-id',
+    },
+  },
+  {
+    name: 'geometry-free-header-footer-move-row',
+    input: {
+      comment: {
+        commentId: moveRowId,
+        trackedChange: true,
+        trackedChangeCanonicalId: 'tc|move|1%7C101',
+        trackedChangeSubtype: 'move-to',
+        trackedChangeStory: headerFooterStory,
+        selection: { page: 1 },
+      },
+      positionKey: 'tc::hf:part:rId-footer::tc|move|1%7C101',
+      positionEntry: { rects: undefined },
+      fallbackId: moveRowId,
+    },
+  },
+  {
+    name: 'repeated-pages-without-usable-bounds',
+    input: {
+      comment: {
+        commentId: 'tracked-change-invalid-repeat',
+        trackedChange: true,
+        trackedChangeStory: headerFooterStory,
+      },
+      positionKey: 'tc::hf:part:rId-footer::tracked-change-invalid-repeat',
+      positionEntry: {
+        pageIndex: 1,
+        rects: [
+          { pageIndex: 0, top: 20, left: null, right: 60, bottom: 40 },
+          { pageIndex: 1, top: 120, left: undefined, right: 72, bottom: 142 },
+        ],
+        bounds: { top: 120, left: 16, right: 80, bottom: 146, width: 64, height: 26 },
+      },
+      fallbackId: 'fallback-thread-id',
+    },
+  },
+];
+
+describe('buildFloatingCommentInstances recordings', () => {
+  it.each(recordedScenarios)('$name', async ({ name, input }) => {
+    const recording = `input:\n${record(input)}\n\ninstances:\n${record(buildFloatingCommentInstances(input))}\n`;
+    await expect(recording).toMatchFileSnapshot(`./__snapshots__/floating-comment-instances/${name}.txt`);
   });
 });

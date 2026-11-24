@@ -241,39 +241,14 @@ describe('font offerings', () => {
     });
   });
 
-  it('getDefaultFontFamilyOptions returns the baseline by default (logical label + logical stack)', () => {
-    expect(getDefaultFontFamilyOptions()).toEqual([
-      { label: 'Arial', value: 'Arial, sans-serif' },
-      { label: 'Courier New', value: 'Courier New, monospace' },
-      { label: 'Times New Roman', value: 'Times New Roman, serif' },
-    ]);
-  });
-
-  it('getDefaultFontFamilyOptions returns the full set when the pack is configured', () => {
-    expect(getDefaultFontFamilyOptions(FULLY_ACTIVE_BUNDLED)).toEqual([
-      { label: 'Arial', value: 'Arial, sans-serif' },
-      { label: 'Arial Black', value: 'Arial Black, sans-serif' },
-      { label: 'Arial Narrow', value: 'Arial Narrow, sans-serif' },
-      { label: 'Baskerville Old Face', value: 'Baskerville Old Face, serif' },
-      { label: 'Bookman Old Style', value: 'Bookman Old Style, serif' },
-      { label: 'Brush Script MT', value: 'Brush Script MT, serif' },
-      { label: 'Calibri', value: 'Calibri, sans-serif' },
-      { label: 'Century', value: 'Century, serif' },
-      { label: 'Century Gothic', value: 'Century Gothic, sans-serif' },
-      { label: 'Comic Sans MS', value: 'Comic Sans MS, sans-serif' },
-      { label: 'Cooper Black', value: 'Cooper Black, serif' },
-      { label: 'Courier New', value: 'Courier New, monospace' },
-      { label: 'Garamond', value: 'Garamond, serif' },
-      { label: 'Georgia', value: 'Georgia, serif' },
-      { label: 'Gill Sans MT Condensed', value: 'Gill Sans MT Condensed, sans-serif' },
-      { label: 'Helvetica', value: 'Helvetica, sans-serif' },
-      { label: 'Lucida Console', value: 'Lucida Console, monospace' },
-      { label: 'Segoe UI', value: 'Segoe UI, sans-serif' },
-      { label: 'Tahoma', value: 'Tahoma, sans-serif' },
-      { label: 'Times New Roman', value: 'Times New Roman, serif' },
-      { label: 'Trebuchet MS', value: 'Trebuchet MS, sans-serif' },
-      { label: 'Verdana', value: 'Verdana, sans-serif' },
-    ]);
+  it('getDefaultFontFamilyOptions lists the baseline without a pack and the full set with one', async () => {
+    const section = (title: string, options: readonly { label: string; value: string }[]): string =>
+      [title, ...options.map((o) => `  ${o.label} -> ${o.value}`)].join('\n');
+    const recording = [
+      section('no pack configured', getDefaultFontFamilyOptions()),
+      section('pack configured', getDefaultFontFamilyOptions(FULLY_ACTIVE_BUNDLED)),
+    ].join('\n\n');
+    await expect(`${recording}\n`).toMatchFileSnapshot('./__snapshots__/font-offerings/toolbar-font-options.txt');
   });
 
   it('render stack uses the bundled physical clone for an accurate preview', () => {

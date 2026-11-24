@@ -1,0 +1,226 @@
+{
+  "definition": {
+    "description": "Read the editor's current selection as a portable SelectionInfo with text targets or V2 browser table/cell metadata. Primitive for building custom comments UIs, floating toolbars, and other selection-driven components without reaching into ProseMirror internals.",
+    "expectedResult": "Returns a SelectionInfo with `empty`, `target` (TextTarget or null), optional `selectionTarget` and `tableSelection`, `activeMarks`, and optionally `text` when `includeText: true`.",
+    "memberPath": "selection.current",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_CONTEXT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "selection/current.mdx",
+    "referenceGroup": "selection",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "includeLogicalChanges": {
+          "description": "Include logicalChangeIds for all overlapping inline, structural and property revisions. Omitted by default.",
+          "type": "boolean"
+        },
+        "includeText": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "activeChangeIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "activeCommentIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "activeMarks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "empty": {
+          "type": "boolean"
+        },
+        "logicalChangeIds": {
+          "description": "Canonical logical tracked-change IDs intersecting the current selection, with aliases deduplicated. Present only when includeLogicalChanges is true.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "selectionTarget": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SelectionTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tableSelection": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cells": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "colspan": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "columnIndex": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "nodeId": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "rowIndex": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "rowspan": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "nodeId",
+                      "rowIndex",
+                      "columnIndex",
+                      "rowspan",
+                      "colspan"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "end": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "columnIndex": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "rowIndex": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "rowIndex",
+                    "columnIndex"
+                  ],
+                  "type": "object"
+                },
+                "isRectangular": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "const": "tableCells"
+                },
+                "selectionMode": {
+                  "enum": [
+                    "text",
+                    "cells"
+                  ]
+                },
+                "start": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "columnIndex": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "rowIndex": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "rowIndex",
+                    "columnIndex"
+                  ],
+                  "type": "object"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "tableId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "table",
+                    "cell",
+                    "cells"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "type",
+                "selectionMode",
+                "isRectangular",
+                "tableId",
+                "start",
+                "end",
+                "cells"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TextTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "empty",
+        "target",
+        "activeMarks",
+        "activeCommentIds",
+        "activeChangeIds"
+      ],
+      "type": "object"
+    }
+  }
+}

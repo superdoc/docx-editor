@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "blockId": {
+      "type": "string"
+    },
+    "captureState": {
+      "description": "Opaque browser selection capture state. Preserve it when passing a selection target to comments.create. Changed or unverifiable state is refused before writing.",
+      "type": "string"
+    },
+    "kind": {
+      "const": "text"
+    },
+    "range": {
+      "$ref": "#/$defs/Range"
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "kind",
+    "blockId",
+    "range"
+  ],
+  "type": "object"
+}

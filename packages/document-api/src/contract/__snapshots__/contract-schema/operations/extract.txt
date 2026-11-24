@@ -1,0 +1,283 @@
+{
+  "definition": {
+    "description": "Extract all document content with stable IDs for RAG pipelines. Returns blocks with full text, comments, and tracked changes: each with an ID compatible with scrollToElement().",
+    "expectedResult": "Returns an ExtractResult with blocks (nodeId, type, text, headingLevel), comments (entityId, text, anchoredText, blockId, status, author), tracked changes (entityId, type, excerpt, author, date), and revision.",
+    "intentAction": "extract",
+    "intentGroup": "get_content",
+    "memberPath": "extract",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "extract.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "headingLevel": {
+                "description": "Heading level (1-9). Only present for headings.",
+                "maximum": 9,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "nodeId": {
+                "description": "Stable block ID: pass to scrollToElement() for navigation.",
+                "type": "string"
+              },
+              "tableContext": {
+                "additionalProperties": false,
+                "properties": {
+                  "colspan": {
+                    "description": "Number of columns the cell spans.",
+                    "type": "integer"
+                  },
+                  "columnIndex": {
+                    "description": "0-based logical grid column, not the row child order.",
+                    "type": "integer"
+                  },
+                  "parentColumnIndex": {
+                    "description": "Column index in the parent table. Set with parentTableOrdinal.",
+                    "type": "integer"
+                  },
+                  "parentRowIndex": {
+                    "description": "Row index in the parent table. Set with parentTableOrdinal.",
+                    "type": "integer"
+                  },
+                  "parentTableOrdinal": {
+                    "description": "Ordinal of the parent table when the containing table is nested.",
+                    "type": "integer"
+                  },
+                  "rowIndex": {
+                    "description": "0-based row index of the containing cell.",
+                    "type": "integer"
+                  },
+                  "rowspan": {
+                    "description": "Number of rows the cell spans.",
+                    "type": "integer"
+                  },
+                  "tableOrdinal": {
+                    "description": "0-based table ordinal, unique within one extract() result.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "tableOrdinal",
+                  "rowIndex",
+                  "columnIndex",
+                  "rowspan",
+                  "colspan"
+                ],
+                "type": "object"
+              },
+              "text": {
+                "description": "Full plain text content of the block.",
+                "type": "string"
+              },
+              "textSpans": {
+                "description": "Block text broken into runs with tracked-change marks preserved per run. Present only when the block contains at least one tracked change. Concatenating span text yields `text`.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "text": {
+                      "description": "Raw text of the run.",
+                      "type": "string"
+                    },
+                    "trackedChanges": {
+                      "description": "Tracked-change marks applied to this run.",
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "entityId": {
+                            "description": "Tracked change entity ID matching an entry in trackedChanges[].",
+                            "type": "string"
+                          },
+                          "type": {
+                            "enum": [
+                              "insertion",
+                              "deletion",
+                              "replacement",
+                              "formatting",
+                              "move",
+                              "structural",
+                              "insert",
+                              "delete",
+                              "format"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "entityId",
+                          "type"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "type": {
+                "description": "Block type: paragraph, heading, listItem, image, tableOfContents.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeId",
+              "type",
+              "text"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "comments": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "anchoredText": {
+                "description": "The document text the comment is anchored to.",
+                "type": "string"
+              },
+              "author": {
+                "description": "Comment author name.",
+                "type": "string"
+              },
+              "blockId": {
+                "description": "Block ID the comment is anchored to.",
+                "type": "string"
+              },
+              "entityId": {
+                "description": "Comment entity ID: pass to scrollToElement() for navigation.",
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "open",
+                  "resolved"
+                ],
+                "type": "string"
+              },
+              "text": {
+                "description": "Comment body text.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "entityId",
+              "status"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "description": "Document revision at the time of extraction.",
+          "type": "string"
+        },
+        "trackedChanges": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "author": {
+                "description": "Change author name.",
+                "type": "string"
+              },
+              "blockIds": {
+                "description": "Block IDs whose textSpans carry this change.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "date": {
+                "description": "Change date (ISO string).",
+                "type": "string"
+              },
+              "entityId": {
+                "description": "Tracked change entity ID. Pass to scrollToElement() for navigation.",
+                "type": "string"
+              },
+              "excerpt": {
+                "description": "Short text excerpt of the changed content. Omitted for grouped replacements; read block.textSpans for the per-half text.",
+                "type": "string"
+              },
+              "type": {
+                "description": "Aggregate type at the entity level. In grouped replacement mode, a delete+insert pair shares one entity and this surfaces as 'replacement'; per-half type lives on block.textSpans[].trackedChanges[].",
+                "enum": [
+                  "insertion",
+                  "deletion",
+                  "replacement",
+                  "formatting",
+                  "move",
+                  "structural",
+                  "insert",
+                  "delete",
+                  "format"
+                ],
+                "type": "string"
+              },
+              "wordRevisionIds": {
+                "additionalProperties": false,
+                "properties": {
+                  "delete": {
+                    "description": "Original OOXML w:id from a w:del mark.",
+                    "type": "string"
+                  },
+                  "format": {
+                    "description": "Original OOXML w:id from a w:rPrChange mark.",
+                    "type": "string"
+                  },
+                  "insert": {
+                    "description": "Original OOXML w:id from a w:ins mark.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "entityId",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "blocks",
+        "comments",
+        "trackedChanges",
+        "revision"
+      ],
+      "type": "object"
+    }
+  }
+}

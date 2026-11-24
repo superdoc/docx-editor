@@ -1,0 +1,19 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "y-websocket",
+    "documentId": "room-1",
+    "url": "wss://collab.example.com"
+  }
+}
+
+result:
+{
+  "ok": true,
+  "target": {
+    "providerFamily": "y-websocket",
+    "documentId": "room-1",
+    "roomMode": "join",
+    "serverUrl": "wss://collab.example.com"
+  }
+}

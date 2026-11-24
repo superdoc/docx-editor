@@ -28,8 +28,11 @@ Start with the [Quickstart](/editor/quickstart). Comments are enabled by default
 and export button. Provide the current user's name and email using the
 [user configuration](/editor/configuration#set-the-startup-configuration) before creating comments.
 
-Select a passage and add a comment from the context menu. Its author should match the configured user. You do not
-need a collaboration server for one person to comment on a document and export it.
+Select a passage and add a comment from the context menu. Its author should match the configured user. Without a
+`user`, SuperDoc credits comments, replies, and resolved threads to `Default SuperDoc user` and saves that name as the
+comment author in the DOCX. See [Set the user](/editor/configuration#set-the-user).
+
+You do not need a collaboration server for one person to comment on a document and export it.
 
 ## Follow the thread lifecycle
 
@@ -47,9 +50,9 @@ Resolving a thread is not deleting it. Hiding the comments panel does not remove
 
 ## Save the discussion
 
-Comments, replies, authors, and resolved status are stored in the DOCX. Export using the Quickstart's **Export DOCX**
-button, then open the exported file in Word or load it back into SuperDoc. Confirm that the thread and its reply remain,
-including the resolved status you chose.
+Comments, replies, authors, and resolved status are stored in the DOCX. Who resolved a thread is not. Export using the
+Quickstart's **Export DOCX** button, then open the exported file in Word or load it back into SuperDoc. Confirm that the
+thread and its reply remain, including the resolved status you chose.
 
 The embedded demo only changes its in-browser document. Your application uses [Load and save](/editor/load-and-save-documents)
 to persist the exported bytes. Reloading the original sample is not reopening your saved discussion.

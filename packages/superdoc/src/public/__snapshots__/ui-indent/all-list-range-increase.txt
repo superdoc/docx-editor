@@ -1,0 +1,2 @@
+indent-increase -> {"success":true,"txId":"indent-range-1"}
+  lists.indentRange {"paraIds":["P1","P2"],"story":{"kind":"story","storyType":"body"}}

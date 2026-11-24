@@ -65,3 +65,28 @@ This single-process example uses synchronous writes and a temporary-file rename.
 `onCollaborationReady` means the editor has synchronized and is ready. It is not a storage acknowledgment. Show “Saved” only when your storage flow confirms the changes it committed.
 
 Next, [control access to a room](/editor/collaboration/control-room-access) so only authorized users can connect to the saved document.
+
+## Resolve a persisted room name
+
+Use the supported resolver in browser or server code instead of copying a room prefix:
+
+```ts
+import { resolveCollaborationRoomName } from 'superdoc/collaboration';
+
+const roomName = resolveCollaborationRoomName('doc-42');
+```
+
+The result is `sd2/v2.1/doc-42`, exactly the key used by the V2 client with
+Hocuspocus, y-websocket, and Liveblocks. Use it when authorizing access, listing,
+or cleaning up persisted provider rooms. The `superdoc/collaboration` entry
+does not load the editor or require DOM globals.
+
+Pass the document ID, without a provider prefix. The resolver preserves supported
+IDs unchanged and applies the same validation as a V2 connection. Empty IDs,
+IDs longer than 200 characters, paths, URLs, legacy room names, and IDs containing
+`::` throw a diagnostic error with code `COLLAB_V2_ROOM_NAME_INVALID`.
+
+The `v2.1` marker is a customer persistence key. Compatible releases keep it
+stable. An intentional namespace change requires an approved breaking major
+release and a customer migration and rollout plan. The resolver does not migrate
+existing rooms or change their ownership.

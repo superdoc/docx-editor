@@ -163,7 +163,12 @@ export type {
   WritingAssistanceConfig,
 } from '../core/types/index.js';
 export type { TrackChangeHighlightColors } from '../core/types/index.js';
-export type { ContentControlsConfig } from '../core/types/index.js';
+export type {
+  ContentControlBlockBoxOptions,
+  ContentControlInlineBoxOptions,
+  ContentControlPresentation,
+  ContentControlsConfig,
+} from '../core/types/index.js';
 export type { RulerConfig } from '../core/types/index.js';
 export type { FontFamilyOption } from './ui/types.js';
 export type { ToolbarConfig } from '../core/types/index.js';
@@ -351,3 +356,5 @@ export type { PageMetricsHandle, PageMetricsSnapshot, PageMetricsPage, PageBodyT
 
 export { DocumentLoadError } from '../core/helpers/document-load.js';
 export type { DocumentLoadOptions } from '../core/helpers/document-load.js';
+
+export type { EditorRendering, RenderHealthSnapshot, RenderHealthStatus } from './rendering.js';

@@ -4,10 +4,6 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { FlowBlock, Layout, Measure } from '@superdoc/contracts';
 
-vi.mock('../src/dom-mapping.ts', () => ({
-  clickToPositionDom: vi.fn(() => 10),
-}));
-
 import { clickToPosition } from '../src/index.ts';
 
 describe('clickToPosition layout epoch resolution', () => {
@@ -35,17 +31,32 @@ describe('clickToPosition layout epoch resolution', () => {
   it('uses the newest layout epoch from the DOM hit chain', () => {
     const container = document.createElement('div');
     const page = document.createElement('div');
-    const line = document.createElement('div');
+    page.className = 'superdoc-page';
+    page.dataset.pageIndex = '0';
     page.dataset.layoutEpoch = '8';
+    const fragment = document.createElement('div');
+    fragment.className = 'superdoc-fragment';
+    fragment.dataset.pmStart = '10';
+    fragment.dataset.pmEnd = '15';
+    const line = document.createElement('div');
+    line.className = 'superdoc-line';
+    line.dataset.pmStart = '10';
+    line.dataset.pmEnd = '15';
     line.dataset.layoutEpoch = '0';
+    const run = document.createElement('span');
+    run.dataset.pmStart = '10';
+    run.dataset.pmEnd = '15';
+    run.textContent = 'Hello';
+    line.appendChild(run);
+    fragment.appendChild(line);
+    page.appendChild(fragment);
     container.appendChild(page);
-    page.appendChild(line);
     document.body.appendChild(container);
 
     originalElementsFromPoint = document.elementsFromPoint;
     Object.defineProperty(document, 'elementsFromPoint', {
       configurable: true,
-      value: vi.fn(() => [line, page]),
+      value: vi.fn(() => [run, line, fragment, page]),
     });
 
     const result = clickToPosition(layout, blocks, measures, { x: 1, y: 1 }, container, 1, 1);

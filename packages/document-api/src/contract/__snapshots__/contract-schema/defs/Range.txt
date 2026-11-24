@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "end": {
+      "type": "integer"
+    },
+    "start": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "start",
+    "end"
+  ],
+  "type": "object"
+}

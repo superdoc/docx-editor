@@ -30,6 +30,36 @@ const detailedHtml = projection.content;
 In the browser facade, await both forms because browser reads may cross the worker boundary. The headless `DocumentApi`
 keeps the compact getters synchronous for compatibility; the detailed methods are asynchronous in every host.
 
+## Request inline styling
+
+HTML reads accept `styling: 'inline'` to preserve effective run typography, table presentation and supported inline images:
+
+```ts
+const doc = superdoc.activeEditor.doc;
+const html = await doc.getHtml({ styling: 'inline' });
+const projection = await doc.projectHtml({ styling: 'inline', includeSourceMap: true });
+```
+
+Run these reads after the document has opened and its source is ready. Await compact browser reads because they may cross
+the worker boundary. Headless compact reads remain synchronous. Compact and detailed reads with equivalent options
+produce the same HTML content; detailed reads also expose remaining fidelity diagnostics.
+
+Inline styling uses effective document defaults, paragraph and character styles, and direct overrides. It includes font
+family and size, color, highlighting, letter spacing, capitalization, baseline positioning and supported underline
+presentation. CSS font-family names do not deliver font files. Tables retain supported dimensions, placement, borders,
+spacing, row heights and cell presentation. This is HTML presentation, not Word pagination or exact page layout. Mixed border
+segments between adjacent vertically merged cells produce a fidelity diagnostic. Default divider segments may be
+omitted when they would overlap an authored border.
+
+The styled path embeds package-authorized PNG, JPEG and GIF resources as data URLs, up to 2 MiB per image, after checking
+content type and file signature. It never fetches external resources. Safe HTTP(S) image references remain URLs; displaying
+them may cause the browser to request that URL. SVG, missing or mismatched resources and unsupported image transformations
+retain placeholders and diagnostics. Applications displaying packaged images must allow the relevant `data:` images in
+their content security policy. Treat exported document HTML as untrusted content and apply your application's display policy.
+
+Omitting `styling` preserves the semantic HTML contract. Markdown retains its existing semantic projection; it does not
+accept this HTML-only option. Styling reads do not change document formatting, revision or peer state.
+
 ## Choose the review view
 
 `reviewMode` controls which side of open tracked changes becomes content:

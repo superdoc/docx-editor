@@ -1,0 +1,246 @@
+{
+  "definition": {
+    "description": "Insert a new footnote or endnote at a target location or the current selection.",
+    "expectedResult": "Returns a FootnoteMutationResult indicating success with the footnote address or a failure. An anchor before, after, or between pending insertions and deletions is accepted and leaves those revisions pending. CAPABILITY_UNAVAILABLE is returned for an anchor inside a pending insertion or deletion, and for any anchor in a paragraph that contains a tracked move. A dry run reports the same result without changing the document.",
+    "memberPath": "footnotes.insert",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_FRAGMENT",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "footnotes/insert.mdx",
+    "referenceGroup": "footnotes",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/TextTarget"
+            },
+            "content": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "footnote",
+                "endnote"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "content"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/TextTarget"
+            },
+            "body": {
+              "description": "Structured SDM/1 note body.",
+              "oneOf": [
+                {
+                  "type": "object"
+                },
+                {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "type": {
+              "enum": [
+                "footnote",
+                "endnote"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "body"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "footnote": {
+              "additionalProperties": false,
+              "properties": {
+                "entityType": {
+                  "const": "footnote"
+                },
+                "kind": {
+                  "const": "entity"
+                },
+                "noteId": {
+                  "type": "string"
+                },
+                "noteType": {
+                  "enum": [
+                    "footnote",
+                    "endnote"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "entityType",
+                "noteId"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "footnote"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "footnote": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "footnote"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "noteId": {
+              "type": "string"
+            },
+            "noteType": {
+              "enum": [
+                "footnote",
+                "endnote"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "noteId"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "footnote"
+      ],
+      "type": "object"
+    }
+  }
+}

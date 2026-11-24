@@ -89,6 +89,32 @@ describe('active-editor-change releases per-editor viewport bindings', () => {
 
     expect(second.observeGeometry).not.toHaveBeenCalled();
   });
+  it('does not subscribe to host or document geometry after destroy', () => {
+    const host = createGeometryHost();
+    const element = document.createElement('div');
+    document.body.append(element);
+    const superdoc = { ...createHostEmitter(), element, activeEditor: { editorVersion: 2, host } };
+    const ui = createSuperDocUI({ superdoc });
+    const addListener = vi.spyOn(element.ownerDocument, 'addEventListener');
+    try {
+      const stop = ui.viewport.observe(vi.fn());
+      expect(host.observeGeometry).toHaveBeenCalledTimes(1);
+      expect(addListener.mock.calls.some(([type]) => type === 'scroll')).toBe(true);
+      stop();
+      ui.destroy();
+
+      addListener.mockClear();
+      const stopLate = ui.viewport.observe(vi.fn());
+      const lateScroll = addListener.mock.calls.some(([type]) => type === 'scroll');
+      stopLate();
+      expect.soft(host.observeGeometry).toHaveBeenCalledTimes(1);
+      expect(lateScroll).toBe(false);
+    } finally {
+      addListener.mockRestore();
+      ui.destroy();
+      element.remove();
+    }
+  });
 });
 
 describe('active-editor-change invalidates the search session', () => {

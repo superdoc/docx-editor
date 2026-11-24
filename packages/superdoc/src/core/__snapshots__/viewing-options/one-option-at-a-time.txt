@@ -1,0 +1,20 @@
+setDocumentMode('viewing')
+  documentMode: viewing
+  viewing: {"comments":false,"trackedChanges":"final"}
+  doc-1 conversations: []
+  visible threads: []
+  review geometry rendered: false
+
+setViewingOptions({ comments: true })
+  documentMode: viewing
+  viewing: {"comments":true,"trackedChanges":"final"}
+  doc-1 conversations: ["comment-1"]
+  visible threads: ["comment-1"]
+  review geometry rendered: true
+
+setViewingOptions({ trackedChanges: 'markup' })
+  documentMode: viewing
+  viewing: {"comments":true,"trackedChanges":"markup"}
+  doc-1 conversations: ["comment-1"]
+  visible threads: ["comment-1","change-1"]
+  review geometry rendered: true

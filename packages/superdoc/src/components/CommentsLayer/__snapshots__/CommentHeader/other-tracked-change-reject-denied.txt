@@ -1,0 +1,47 @@
+role: editor, isInternal: false, allowed permissions: RESOLVE_OTHER
+current user: {
+  "id": "bob-id",
+  "email": "bob@mikelegal.test",
+  "name": "Bob"
+}
+comment: {
+  "creatorId": "alice-id",
+  "creatorEmail": "alice@mikelegal.test",
+  "creatorName": "Alice",
+  "createdTime": 1767225600000,
+  "resolvedTime": null,
+  "trackedChange": true,
+  "parentCommentId": null,
+  "trackedChangeParentId": null,
+  "origin": null,
+  "importedAuthor": null,
+  "getCommentUser": "[Function getCommentUser]",
+  "trackedChangeType": "trackInsert"
+}
+
+resolver calls:
+{
+  "permission": "RESOLVE_OTHER",
+  "role": "editor",
+  "isInternal": false,
+  "defaultDecision": true,
+  "comment": "the comment prop",
+  "currentUser": "the configured user",
+  "superdoc": "the SuperDoc instance",
+  "trackedChange": null,
+  "returned": true
+}
+{
+  "permission": "REJECT_OTHER",
+  "role": "editor",
+  "isInternal": false,
+  "defaultDecision": true,
+  "comment": "the comment prop",
+  "currentUser": "the configured user",
+  "superdoc": "the SuperDoc instance",
+  "trackedChange": null,
+  "returned": false
+}
+
+actions: resolve
+overflow options: (none)

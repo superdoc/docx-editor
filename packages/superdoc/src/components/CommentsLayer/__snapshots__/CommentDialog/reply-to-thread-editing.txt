@@ -1,0 +1,78 @@
+before:
+
+store:
+{
+  "activeComment": "comment-owner",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-owner: comment: Original owner comment
+reply pill
+
+action: open the reply composer, type "<p>Owner reply</p>", click Reply
+
+document calls:
+comments.reply {"parentCommentId":"comment-owner","text":"Owner reply"}
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "owner-reply",
+      "parentCommentId": "comment-owner",
+      "fileId": "doc-1",
+      "creatorId": "user-1",
+      "creatorEmail": "user@example.com",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Owner reply",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+superdoc.focus calls: []
+
+after:
+
+store:
+{
+  "activeComment": "comment-owner",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    },
+    {
+      "commentId": "owner-reply",
+      "parentCommentId": "comment-owner",
+      "commentText": "Owner reply"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-owner: comment: Original owner comment
+owner-reply: comment: Owner reply
+reply pill

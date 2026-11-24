@@ -1,0 +1,23 @@
+{
+  "anyOf": [
+    {
+      "enum": [
+        "text",
+        "node",
+        "list",
+        "comment",
+        "trackedChange",
+        "table",
+        "tableCell",
+        "tableOfContents",
+        "section",
+        "sdt",
+        "field"
+      ]
+    },
+    {
+      "pattern": "^ext:.+$",
+      "type": "string"
+    }
+  ]
+}

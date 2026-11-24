@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "alignment": {
+      "enum": [
+        "left",
+        "center",
+        "right",
+        "justify"
+      ]
+    },
+    "indent": {
+      "$ref": "#/$defs/SDInboundParagraphIndent"
+    },
+    "spacing": {
+      "$ref": "#/$defs/SDInboundParagraphSpacing"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,77 @@
+{
+  "definition": {
+    "description": "Create a permission range exception region in the document. Inserts matched permStart/permEnd markers at the target.",
+    "expectedResult": "Returns a PermissionRangeMutationResult with the created range info on success.",
+    "memberPath": "permissionRanges.create",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "permission-ranges/create.mdx",
+    "referenceGroup": "permissionRanges",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "failure": {
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "principal": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "everyone",
+                "editor"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "target": {
+          "$ref": "#/$defs/SelectionTarget"
+        }
+      },
+      "required": [
+        "target",
+        "principal"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    },
+    "success": {
+      "type": "object"
+    }
+  }
+}

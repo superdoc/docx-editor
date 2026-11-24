@@ -1,0 +1,10 @@
+get(): mount -> no reads; call -> no reads
+getSnapshot(): mount -> no reads; call -> no reads
+observeActivePath(listener): mount -> no reads; call -> no reads
+get({ id: 'cc-1' }): mount -> no reads; call -> doc.contentControls.list()
+get({ id: '' }): mount -> no reads; call -> doc.contentControls.list()
+getById('cc-1'): mount -> no reads; call -> doc.contentControls.list()
+list(): mount -> no reads; call -> doc.contentControls.list()
+getRect({ id: '' }): mount -> no reads; call -> no reads
+getRect({ id: 'cc-1' }): mount -> no reads; call -> doc.contentControls.list()
+observe(listener): mount -> no reads; call -> doc.contentControls.list()

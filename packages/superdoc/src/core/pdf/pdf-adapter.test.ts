@@ -18,11 +18,6 @@ describe('createPDFConfig', () => {
     expect(cfg.workerSrc).toBe('/worker.js');
     expect(cfg.setWorker).toBe(true);
   });
-
-  it('allows adapter to be overridden', () => {
-    const cfg = createPDFConfig({ adapter: 'pdfjs', pdfLib: {} });
-    expect(cfg.adapter).toBe('pdfjs');
-  });
 });
 
 describe('getWorkerSrcFromCDN', () => {

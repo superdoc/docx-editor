@@ -1,0 +1,13 @@
+<div>
+  data-superdoc-table-row-role="body"
+  style border-bottom-color: #111111
+  style border-bottom-style: solid
+  style border-bottom-width: 1px
+  style height: 20px
+  style left: 6px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px

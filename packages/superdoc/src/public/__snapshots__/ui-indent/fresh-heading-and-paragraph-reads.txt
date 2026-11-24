@@ -1,0 +1,7 @@
+indent-increase -> {"success":true}
+  format.paragraph.setIndentation {"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"left":1440}
+  format.paragraph.setIndentation {"target":{"kind":"block","nodeType":"paragraph","nodeId":"P2"},"left":840}
+
+indent-decrease -> {"success":true}
+  format.paragraph.setIndentation {"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"left":720}
+  format.paragraph.setIndentation {"target":{"kind":"block","nodeType":"paragraph","nodeId":"P2"},"left":120}

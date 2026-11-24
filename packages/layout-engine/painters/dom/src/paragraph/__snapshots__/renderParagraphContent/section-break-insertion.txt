@@ -1,0 +1,42 @@
+<div>
+  data-story-key="body"
+  data-track-change-anchor="paragraph-mark"
+  data-track-change-author="Test Reviewer"
+  data-track-change-date="2026-07-08T14:42:00Z"
+  data-track-change-id="tc-section-12"
+  data-track-change-ids="tc-section-12"
+  data-track-change-kind="insert"
+  data-track-change-marker="paragraph"
+  data-track-change-semantic-color="#1f6feb"
+  data-track-change-semantic-color-key="insertion"
+  data-track-change-structural="paragraph-mark"
+  data-track-change-subtype="section-break-insertion"
+  data-track-change-target-kind="section-break"
+  data-track-change-type="structural"
+  style height: 20px
+  style text-align: left
+  <span class="highlighted insertion superdoc-section-break-review-marker track-insert-dec">
+    aria-label="Section Break tracked change"
+    data-story-key="body"
+    data-track-change-anchor="section-break"
+    data-track-change-author="Test Reviewer"
+    data-track-change-date="2026-07-08T14:42:00Z"
+    data-track-change-id="tc-section-12"
+    data-track-change-ids="tc-section-12"
+    data-track-change-kind="insert"
+    data-track-change-marker="section-break"
+    data-track-change-semantic-color="#1f6feb"
+    data-track-change-semantic-color-key="insertion"
+    data-track-change-structural="section-break"
+    data-track-change-subtype="section-break-insertion"
+    data-track-change-target-kind="section-break"
+    data-track-change-type="structural"
+    style --sd-tracked-changes-insert-background-focused: #1f6feb44
+    style --sd-tracked-changes-insert-background: #1f6feb22
+    style --sd-tracked-changes-insert-border: #1f6feb
+    style --sd-tracked-changes-insert-text: #1f6feb
+    style --sd-tracked-changes-semantic-background-focused: #1f6feb44
+    style --sd-tracked-changes-semantic-background: #1f6feb22
+    style --sd-tracked-changes-semantic-color: #1f6feb
+    "Section Break"
+  <div>

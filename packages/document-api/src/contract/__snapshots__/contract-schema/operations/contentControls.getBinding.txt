@@ -1,0 +1,90 @@
+{
+  "definition": {
+    "description": "Get the data binding metadata (w:dataBinding) of a content control.",
+    "expectedResult": "Returns the ContentControlBinding or null if no binding is set.",
+    "memberPath": "contentControls.getBinding",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "content-controls/get-binding.mdx",
+    "referenceGroup": "contentControls",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "block",
+                "inline"
+              ]
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "sdt"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "prefixMappings": {
+              "type": "string"
+            },
+            "storeItemId": {
+              "type": "string"
+            },
+            "xpath": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "storeItemId",
+            "xpath"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

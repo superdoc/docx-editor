@@ -144,10 +144,7 @@ describe('useCompactCommentPopover', () => {
     dispatchPointerDown(anchor, { clientX: 260, clientY: 305, pointerType: 'mouse' });
     await nextTick();
 
-    const style = api.compactCommentPopoverStyle.value;
-    expect(style.top).toBeDefined();
-    expect(style.left).toBeDefined();
-    expect(style.right).toBe('auto');
+    expect(api.compactCommentPopoverStyle.value).toStrictEqual({ top: '336px', left: '272px', right: 'auto' });
 
     document.elementsFromPoint = originalElementsFromPoint;
     refs.activeCompactComment.value = null;
@@ -166,10 +163,7 @@ describe('useCompactCommentPopover', () => {
       resolveCommentPositionEntry: vi.fn(() => ({ entry: { bounds: {} } })),
     });
 
-    const style = api.compactCommentPopoverStyle.value;
-    expect(style.top).toBeDefined();
-    expect(style.left).toBeDefined();
-    expect(style.right).toBe('auto');
+    expect(api.compactCommentPopoverStyle.value).toStrictEqual({ top: '300px', left: '192px', right: 'auto' });
 
     wrapper.unmount();
   });
@@ -194,9 +188,7 @@ describe('useCompactCommentPopover', () => {
       resolveCommentPositionEntry: vi.fn(() => ({ entry: { bounds: {} } })),
     });
 
-    const style = api.compactCommentPopoverStyle.value;
-    expect(style.top).toBeDefined();
-    expect(style.left).toBeDefined();
+    expect(api.compactCommentPopoverStyle.value).toStrictEqual({ top: '314px', left: '212px', right: 'auto' });
 
     wrapper.unmount();
   });
@@ -210,9 +202,7 @@ describe('useCompactCommentPopover', () => {
       resolveCommentPositionEntry: vi.fn(() => ({ entry: { bounds: {} } })),
     });
 
-    const style = api.compactCommentPopoverStyle.value;
-    expect(style.top).toBeDefined();
-    expect(style.left).toBeDefined();
+    expect(api.compactCommentPopoverStyle.value).toStrictEqual({ top: '246px', left: '584px', right: 'auto' });
 
     wrapper.unmount();
   });

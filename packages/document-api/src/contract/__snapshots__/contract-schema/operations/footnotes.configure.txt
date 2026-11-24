@@ -1,0 +1,214 @@
+{
+  "definition": {
+    "description": "Configure numbering and placement for footnotes or endnotes.",
+    "expectedResult": "Returns a FootnoteConfigResult indicating success or a failure.",
+    "memberPath": "footnotes.configure",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "footnotes/configure.mdx",
+    "referenceGroup": "footnotes",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "numbering": {
+          "additionalProperties": false,
+          "properties": {
+            "format": {
+              "enum": [
+                "decimal",
+                "lowerRoman",
+                "upperRoman",
+                "lowerLetter",
+                "upperLetter",
+                "symbol"
+              ]
+            },
+            "position": {
+              "enum": [
+                "pageBottom",
+                "beneathText",
+                "sectionEnd",
+                "documentEnd"
+              ]
+            },
+            "restartPolicy": {
+              "enum": [
+                "continuous",
+                "eachSection",
+                "eachPage"
+              ]
+            },
+            "start": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "scope": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "section"
+                },
+                "sectionId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "sectionId"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "type": {
+          "enum": [
+            "footnote",
+            "endnote"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "scope"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

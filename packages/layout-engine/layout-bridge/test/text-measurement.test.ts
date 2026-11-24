@@ -8,40 +8,7 @@ import {
   getRunFontString,
   measureInlineImageCaretTextBox,
 } from '../src/text-measurement.ts';
-
-// Helper to count spaces (tests functionality indirectly through justify calculations)
-const countSpaces = (text: string): number => {
-  let spaces = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    if (text[i] === ' ' || text[i] === '\u00A0') {
-      spaces += 1;
-    }
-  }
-  return spaces;
-};
-
-// Helper to test justify adjustment by measuring with different available widths
-const testJustifyAdjustment = (
-  block: FlowBlock,
-  line: Line,
-  availableWidth: number,
-): { extraPerSpace: number; totalSpaces: number } => {
-  // Measure a position with normal width
-  const normalWidth = measureCharacterX(block, line, 1, line.width);
-  // Measure with increased available width (which should add justify spacing)
-  const wideWidth = measureCharacterX(block, line, 1, availableWidth);
-
-  // If justified, the difference reveals the extra spacing
-  const diff = wideWidth - normalWidth;
-  const spaceCount = countSpaces(
-    line.segments ? '' : block.kind === 'paragraph' ? block.runs.map((r) => ('text' in r ? r.text : '')).join('') : '',
-  );
-
-  return {
-    extraPerSpace: spaceCount > 0 ? diff / spaceCount : 0,
-    totalSpaces: spaceCount,
-  };
-};
+import { countSpaces } from '../src/line-justify-adjustment.ts';
 
 const CHAR_WIDTH = 10;
 
@@ -789,8 +756,7 @@ describe('text measurement utility', () => {
     });
   });
 
-  describe('countSpaces helper', () => {
-    // These tests verify the countSpaces helper used above
+  describe('countSpaces', () => {
     it('counts regular spaces correctly', () => {
       expect(countSpaces('Hello World')).toBe(1);
       expect(countSpaces('A B C D')).toBe(3);

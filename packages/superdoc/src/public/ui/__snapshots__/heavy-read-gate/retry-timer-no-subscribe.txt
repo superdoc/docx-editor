@@ -1,0 +1,22 @@
+step: mount while the source is loading
+  no reads
+  comments: pending []
+  trackChanges: pending []
+
+step: the first retry fires 6500ms later, still loading
+  no reads
+  comments: pending []
+  trackChanges: pending []
+
+step: the source completes silently, 6499ms later
+  no reads
+  comments: pending []
+  trackChanges: pending []
+
+step: 251ms later
+  read doc.comments.list() -> [c-1]
+  read doc.trackChanges.list({"in":"all"}) -> [tc-a]
+  read doc.trackChanges.list({"in":"all"}) -> [tc-a]
+  read doc.contentControls.list() -> []
+  comments: ready [c-1]
+  trackChanges: ready [tc-a]

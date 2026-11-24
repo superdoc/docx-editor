@@ -57,6 +57,9 @@ export const BUILT_IN_COMMAND_IDS = {
   strikethrough: 'strikethrough',
   fontFamily: 'font-family',
   fontSize: 'font-size',
+  growFont: 'grow-font',
+  shrinkFont: 'shrink-font',
+  applyFormat: 'apply-format',
   setFontFamily: 'setFontFamily',
   setFontSize: 'setFontSize',
   undo: 'undo',
@@ -286,6 +289,7 @@ export interface CommandDescriptor {
    * forwarding the raw payload, and requires a non-empty range selection.
    */
   inline?: InlineFormatSpec;
+  fontStep?: 'grow' | 'shrink';
   /**
    * Block-level paragraph routing spec. When present, the command resolves the
    * current paragraph block(s) from the selection and routes a
@@ -603,6 +607,24 @@ export const COMMAND_CATALOG = [
     docRoute: 'format.fontFamily',
     aliasOf: 'font-family',
     inline: { key: 'fontFamily', kind: 'value-string' },
+  },
+  {
+    id: 'grow-font',
+    family: 'fonts',
+    disposition: 'routed',
+    mutates: true,
+    docRoute: 'format.fontSize',
+    inline: { key: 'fontSize', kind: 'value-number' },
+    fontStep: 'grow',
+  },
+  {
+    id: 'shrink-font',
+    family: 'fonts',
+    disposition: 'routed',
+    mutates: true,
+    docRoute: 'format.fontSize',
+    inline: { key: 'fontSize', kind: 'value-number' },
+    fontStep: 'shrink',
   },
   {
     id: 'setFontSize',
@@ -1018,6 +1040,7 @@ export const COMMAND_CATALOG = [
   // functional-parity surface and therefore fails closed with the stable
   // `command-unsupported` reason.
   { id: 'copy-format', family: 'formatting', disposition: 'routed', mutates: false },
+  { id: 'apply-format', family: 'formatting', disposition: 'routed', mutates: true },
   { id: 'table-fix', family: 'tables', disposition: 'unsupported', mutates: true, reason: UNSUPPORTED },
 ] as const satisfies readonly CommandDescriptor[];
 

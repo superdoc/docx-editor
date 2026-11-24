@@ -20,7 +20,6 @@ import type {
   WordLayoutMarker,
 } from '@superdoc/contracts';
 import { resolveLayout } from '@superdoc/layout-resolved';
-import { persistentPageVersionKey } from './page-content.js';
 import { createDomPainter } from './index.js';
 import { DomPainter } from './renderer.js';
 import type { DerivedRunTextPlane } from './derived-run-text-plane.js';
@@ -1521,9 +1520,6 @@ describe('SD-5988 persistent numbered marker', () => {
     if (previousItem.kind !== 'fragment' || nextItem.kind !== 'fragment')
       throw new Error('Requires resolved paragraph fragments');
     expect.soft(nextItem.paintCacheVersion).not.toBe(previousItem.paintCacheVersion);
-    expect
-      .soft(persistentPageVersionKey(after.pages[0]!, 1, 1))
-      .not.toBe(persistentPageVersionKey(before.pages[0]!, 1, 1));
     const painter = createDomPainter({ flowMode: 'paginated' });
     const mount = document.createElement('div');
     const scaffold = realScaffold(before, 7);

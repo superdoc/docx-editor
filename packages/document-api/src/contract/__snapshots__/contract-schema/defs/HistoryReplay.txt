@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "direction": {
+      "enum": [
+        "undo",
+        "redo"
+      ]
+    },
+    "txId": {
+      "type": "string"
+    },
+    "txIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "txId",
+    "direction"
+  ],
+  "type": "object"
+}

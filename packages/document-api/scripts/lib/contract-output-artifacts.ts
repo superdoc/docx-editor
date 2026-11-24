@@ -44,6 +44,7 @@ export function buildStableSchemaArtifacts(): GeneratedFile[] {
     generatedAt: null,
     sourceCommit: null,
     sourceHash: contractMap.sourceHash,
+    ...(contractMap.$defs ? { $defs: contractMap.$defs } : {}),
     operations: contractMap.operations,
   };
 

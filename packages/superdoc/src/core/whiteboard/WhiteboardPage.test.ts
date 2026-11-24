@@ -268,10 +268,19 @@ describe('WhiteboardPage', () => {
     });
 
     it('mount creates a stage and two layers and renders', () => {
-      const page = makePage();
-      const container = mountWithSize(page);
-      expect(page._renderer?.Stage ?? page._Renderer ?? true).toBeTruthy();
-      expect(container).toBeInstanceOf(HTMLElement);
+      const Renderer = makeRenderer();
+      const page = makePage({ Renderer });
+      const container = mountWithSize(page, { width: 240, height: 360 });
+      expect(Renderer.Stage).toHaveBeenCalledTimes(1);
+      expect(Renderer.Stage).toHaveBeenCalledWith({ container, width: 240, height: 360 });
+      const stage = Renderer.Stage.mock.results[0].value;
+      const layers = Renderer.Layer.mock.results.map((result) => result.value);
+      expect(layers).toHaveLength(2);
+      expect(stage._layers).toHaveLength(2);
+      layers.forEach((layer, index) => {
+        expect(stage._layers[index]).toBe(layer);
+        expect(layer.batchDraw).toHaveBeenCalled();
+      });
     });
 
     it('mount re-mounts when container changes', () => {

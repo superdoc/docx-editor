@@ -1,0 +1,63 @@
+<div class="superdoc-line">
+  data-layout-epoch="0"
+  style color: inherit
+  style display: block
+  style font-size: 0px
+  style height: 21.313333px
+  style line-height: 21.313333px
+  style overflow: visible
+  style position: relative
+  style text-align: left
+  style white-space: pre
+  <span class="superdoc-text-run">
+    data-layout-epoch="0"
+    style font-family: "Liberation Sans"
+    style font-kerning: none
+    style font-size: 16px
+    style font-synthesis: weight style
+    style font-variant-caps: normal
+    style text-decoration-line: none
+    style z-index: 1
+    "This is some text followed by some tab stops "
+  <span class="superdoc-tab">
+    data-layout-epoch="0"
+    style display: inline-block
+    style height: 21.313333px
+    style vertical-align: bottom
+    style width: 14.085938px
+  <span class="superdoc-tab">
+    data-layout-epoch="0"
+    style display: inline-block
+    style height: 21.313333px
+    style vertical-align: bottom
+    style width: 48px
+  <span class="superdoc-tab">
+    data-layout-epoch="0"
+    style display: inline-block
+    style height: 21.313333px
+    style vertical-align: bottom
+    style width: 48px
+  <span class="superdoc-tab">
+    data-layout-epoch="0"
+    style display: inline-block
+    style height: 21.313333px
+    style vertical-align: bottom
+    style width: 48px
+  <span class="superdoc-tab">
+    data-layout-epoch="0"
+    style display: inline-block
+    style height: 21.313333px
+    style vertical-align: bottom
+    style width: 48px
+  <div class="superdoc-underline-overlay">
+    aria-hidden="true"
+    style border-top-color: #000000
+    style border-top-style: solid
+    style border-top-width: 1px
+    style height: 0px
+    style left: 0px
+    style pointer-events: none
+    style position: absolute
+    style top: 17.912515px
+    style width: 528px
+    style z-index: 2

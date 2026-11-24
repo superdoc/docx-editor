@@ -1,0 +1,126 @@
+{
+  "definition": {
+    "description": "List header/footer slot entries across sections.",
+    "expectedResult": "Returns a paginated DiscoveryOutput of HeaderFooterSlotEntry items.",
+    "memberPath": "headerFooters.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "header-footers/list.mdx",
+    "referenceGroup": "headerFooters",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "header",
+            "footer"
+          ]
+        },
+        "limit": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "handle": {
+                "$ref": "#/$defs/ResolvedHandle"
+              },
+              "id": {
+                "type": "string"
+              },
+              "isExplicit": {
+                "type": "boolean"
+              },
+              "kind": {
+                "enum": [
+                  "header",
+                  "footer"
+                ]
+              },
+              "refId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "section": {
+                "$ref": "#/$defs/SectionAddress"
+              },
+              "sectionIndex": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "variant": {
+                "enum": [
+                  "default",
+                  "first",
+                  "even"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "handle",
+              "section",
+              "sectionIndex",
+              "kind",
+              "variant",
+              "isExplicit"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "$ref": "#/$defs/PageInfo"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "total",
+        "items",
+        "page"
+      ],
+      "type": "object"
+    }
+  }
+}

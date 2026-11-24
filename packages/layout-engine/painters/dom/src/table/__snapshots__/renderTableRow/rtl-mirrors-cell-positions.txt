@@ -1,0 +1,60 @@
+<div>
+  data-superdoc-table-row-role="body"
+  style border-bottom-color: #000000
+  style border-bottom-style: solid
+  style border-bottom-width: 1px
+  style border-right-color: #000000
+  style border-right-style: solid
+  style border-right-width: 1px
+  style border-top-color: #000000
+  style border-top-style: solid
+  style border-top-width: 1px
+  style height: 20px
+  style left: 350px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px
+<div>
+  data-superdoc-table-row-role="body"
+  style border-bottom-color: #000000
+  style border-bottom-style: solid
+  style border-bottom-width: 1px
+  style border-right-color: #222222
+  style border-right-style: solid
+  style border-right-width: 1px
+  style border-top-color: #000000
+  style border-top-style: solid
+  style border-top-width: 1px
+  style height: 20px
+  style left: 200px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 150px
+<div>
+  data-superdoc-table-row-role="body"
+  style border-bottom-color: #000000
+  style border-bottom-style: solid
+  style border-bottom-width: 1px
+  style border-left-color: #000000
+  style border-left-style: solid
+  style border-left-width: 1px
+  style border-right-color: #222222
+  style border-right-style: solid
+  style border-right-width: 1px
+  style border-top-color: #000000
+  style border-top-style: solid
+  style border-top-width: 1px
+  style height: 20px
+  style left: 0px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 200px

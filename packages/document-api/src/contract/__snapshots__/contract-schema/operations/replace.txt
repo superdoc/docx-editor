@@ -1,0 +1,2320 @@
+{
+  "definition": {
+    "description": "Optional replaceMode:contents retains one paragraph, heading, or listItem container while applying text, HTML, Markdown, SDFragment, or native OOXML inlines. A retained snapshotId source restores exact same-session original markup with an expectedSnapshotId local precondition. These writes require direct mode; existing selection and structural behavior is unchanged. Replace content at a contiguous document selection. Text path accepts a SelectionTarget or ref plus replacement text. For explicit single-paragraph text selections, expectedText rejects mismatches with PRECONDITION_FAILED before mutation. Tracked text replacements accept replacementGranularity: word (default), phrase (join neighboring edits separated only by spaces), or range (replace the complete selection). This requires an explicit single-paragraph text selection. Rich string path accepts HTML or Markdown plus a BlockNodeAddress, SelectionTarget, or ref. Structural path accepts the same locator forms plus SDFragment content. A single-paragraph rich replacement may overlap pending insertions: tracked mode drops the covered part of your own insertion, nests a deletion inside another author's insertion, and adds the content as a new insertion; direct mode removes the covered part and leaves the rest pending. A tracked rich replacement spanning paragraphs that crosses a pending insertion, or a range that mixes pending insertions with comment, bookmark, field, or content-control markup, rejects without changes; capabilities.check reports the same result. An explicit {kind:'story', storyType:'body'} target replaces the complete main body in direct mode while preserving the destination DOCX package.",
+    "expectedResult": "Returns an SDMutationReceipt with applied status; receipt reports NO_OP if the target range already contains identical content.",
+    "intentAction": "replace",
+    "intentGroup": "edit",
+    "memberPath": "replace",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "NO_OP",
+        "LOCK_VIOLATION",
+        "INVALID_NESTING",
+        "INVALID_PLACEMENT",
+        "INVALID_PAYLOAD",
+        "CAPABILITY_UNSUPPORTED",
+        "ADDRESS_STALE",
+        "DUPLICATE_ID",
+        "INVALID_CONTEXT",
+        "RAW_MODE_REQUIRED",
+        "PRESERVE_ONLY_VIOLATION",
+        "INVALID_INPUT",
+        "TARGET_NOT_FOUND",
+        "PRECONDITION_FAILED",
+        "REVISION_MISMATCH",
+        "CHECK_MISMATCH",
+        "INTERNAL_ERROR",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "returnsReceipt": true,
+      "supportsConditionalTrackedMode": true,
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "ADDRESS_STALE",
+          "DUPLICATE_ID",
+          "RAW_MODE_REQUIRED",
+          "PRESERVE_ONLY_VIOLATION",
+          "CAPABILITY_UNSUPPORTED",
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "conditional"
+    },
+    "referenceDocPath": "replace.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "conversion": {
+          "additionalProperties": false,
+          "properties": {
+            "diagnostics": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "conversion-normalized-construct",
+                      "conversion-unsupported-construct",
+                      "conversion-dropped-style",
+                      "conversion-unsafe-content",
+                      "conversion-unsafe-url",
+                      "conversion-source-limit-exceeded",
+                      "conversion-depth-limit-exceeded",
+                      "conversion-malformed-input",
+                      "conversion-empty-result"
+                    ]
+                  },
+                  "construct": {
+                    "enum": [
+                      "document",
+                      "source",
+                      "text",
+                      "paragraph",
+                      "emptyParagraph",
+                      "softBreak",
+                      "lineBreak",
+                      "heading",
+                      "bold",
+                      "italic",
+                      "underline",
+                      "strike",
+                      "hyperlink",
+                      "list",
+                      "table",
+                      "tableHeader",
+                      "colSpan",
+                      "rowSpan",
+                      "horizontalRule",
+                      "inlineCode",
+                      "codeBlock",
+                      "blockquote",
+                      "taskList",
+                      "image",
+                      "footnote",
+                      "rawHtml",
+                      "unknownWrapper",
+                      "script",
+                      "style",
+                      "eventHandler"
+                    ]
+                  },
+                  "disposition": {
+                    "enum": [
+                      "preserved",
+                      "normalized",
+                      "downgraded",
+                      "dropped",
+                      "rejected"
+                    ]
+                  },
+                  "lossy": {
+                    "type": "boolean"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "severity": {
+                    "enum": [
+                      "error",
+                      "warning",
+                      "info"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "format": {
+                        "enum": [
+                          "html",
+                          "markdown"
+                        ]
+                      },
+                      "range": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "endColumn": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "endLine": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "endOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "startColumn": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "startLine": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "startOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "startOffset",
+                          "endOffset"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "format"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "code",
+                  "severity",
+                  "message",
+                  "construct",
+                  "disposition",
+                  "lossy",
+                  "source"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "format": {
+              "enum": [
+                "html",
+                "markdown"
+              ]
+            },
+            "lossy": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "format",
+            "lossy",
+            "diagnostics"
+          ],
+          "type": "object"
+        },
+        "evaluatedRevision": {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "before",
+            "after"
+          ],
+          "type": "object"
+        },
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_TARGET",
+                "NO_OP",
+                "LOCK_VIOLATION",
+                "INVALID_NESTING",
+                "INVALID_PLACEMENT",
+                "INVALID_PAYLOAD",
+                "CAPABILITY_UNSUPPORTED",
+                "ADDRESS_STALE",
+                "DUPLICATE_ID",
+                "INVALID_CONTEXT",
+                "RAW_MODE_REQUIRED",
+                "PRESERVE_ONLY_VIOLATION",
+                "INVALID_INPUT",
+                "TARGET_NOT_FOUND",
+                "PRECONDITION_FAILED",
+                "REVISION_MISMATCH",
+                "CHECK_MISMATCH",
+                "INTERNAL_ERROR",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            },
+            "path": {
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                },
+                {
+                  "$ref": "#/$defs/TextAddress"
+                },
+                {
+                  "$ref": "#/$defs/SelectionTarget"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "story"
+                    },
+                    "storyType": {
+                      "const": "body"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storyType"
+                  ],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "outcome": {
+          "enum": [
+            "preserved",
+            "preserved-with-warnings",
+            "simplified",
+            "rejected",
+            "no-op",
+            "invalid-target",
+            "outdated"
+          ]
+        },
+        "resolution": {
+          "additionalProperties": false,
+          "properties": {
+            "range": {
+              "$ref": "#/$defs/TextMutationRange"
+            },
+            "selectionTarget": {
+              "$ref": "#/$defs/SelectionTarget"
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/TextAddress"
+                },
+                {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "story"
+                    },
+                    "storyType": {
+                      "const": "body"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storyType"
+                  ],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": [
+            "target",
+            "range"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/BlockNodeAddress"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "snapshotId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "target": {
+              "$ref": "#/$defs/BlockNodeAddress"
+            }
+          },
+          "required": [
+            "target",
+            "snapshotId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "dependencies": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "contentType": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dataBase64": {
+                    "type": "string"
+                  },
+                  "relationshipId": {
+                    "type": "string"
+                  },
+                  "relationshipType": {
+                    "type": "string"
+                  },
+                  "sourcePartUri": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "targetMode": {
+                    "enum": [
+                      "Internal",
+                      "External"
+                    ]
+                  }
+                },
+                "required": [
+                  "sourcePartUri",
+                  "relationshipId",
+                  "relationshipType",
+                  "target",
+                  "targetMode",
+                  "contentType"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "in": {
+              "$ref": "#/$defs/StoryLocator"
+            },
+            "namespaces": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "nestingPolicy": {
+              "additionalProperties": false,
+              "description": "Controls nesting behavior. tables: 'allow' permits inserting tables inside other tables.",
+              "properties": {
+                "tables": {
+                  "enum": [
+                    "forbid",
+                    "allow"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "sourcePartUri": {
+              "type": "string"
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                },
+                {
+                  "$ref": "#/$defs/SelectionTarget"
+                }
+              ]
+            },
+            "type": {
+              "const": "ooxml"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "value",
+            "type",
+            "namespaces"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "capture": {
+              "additionalProperties": false,
+              "properties": {
+                "at": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/SelectionTarget"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "end": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "columnIndex": {
+                              "type": "integer"
+                            },
+                            "rowIndex": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "rowIndex",
+                            "columnIndex"
+                          ],
+                          "type": "object"
+                        },
+                        "isRectangular": {
+                          "const": true
+                        },
+                        "kind": {
+                          "const": "tableCells"
+                        },
+                        "selectionMode": {
+                          "const": "cells"
+                        },
+                        "start": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "columnIndex": {
+                              "type": "integer"
+                            },
+                            "rowIndex": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "rowIndex",
+                            "columnIndex"
+                          ],
+                          "type": "object"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        },
+                        "tableId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "tableId",
+                        "start",
+                        "end"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "context": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "tableMerges": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "columnIndex": {
+                            "type": "integer"
+                          },
+                          "restartCellPropertiesXml": {
+                            "type": "string"
+                          },
+                          "restartRowIndex": {
+                            "type": "integer"
+                          },
+                          "selectedRowIndex": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "selectedRowIndex",
+                          "columnIndex",
+                          "restartRowIndex",
+                          "restartCellPropertiesXml"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "xml": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "xml"
+                  ],
+                  "type": "object"
+                },
+                "dependencies": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "contentType": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "dataBase64": {
+                        "type": "string"
+                      },
+                      "relationshipId": {
+                        "type": "string"
+                      },
+                      "relationshipType": {
+                        "type": "string"
+                      },
+                      "sourcePartUri": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "targetMode": {
+                        "enum": [
+                          "Internal",
+                          "External"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "sourcePartUri",
+                      "relationshipId",
+                      "relationshipType",
+                      "target",
+                      "targetMode",
+                      "contentType"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "diagnostics": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "message"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "evaluatedRevision": {
+                  "type": "string"
+                },
+                "formatVersion": {
+                  "const": 1
+                },
+                "fragment": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "namespaces": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "placement": {
+                      "enum": [
+                        "inline",
+                        "blocks",
+                        "table"
+                      ]
+                    },
+                    "table": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "cells": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "columnIndex": {
+                                "type": "integer"
+                              },
+                              "gridSpan": {
+                                "type": "integer"
+                              },
+                              "rowIndex": {
+                                "type": "integer"
+                              },
+                              "vMerge": {
+                                "enum": [
+                                  "none",
+                                  "restart",
+                                  "continue"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "rowIndex",
+                              "columnIndex",
+                              "gridSpan",
+                              "vMerge"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "gridColumnCount": {
+                          "type": "integer"
+                        },
+                        "tableId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "tableId",
+                        "gridColumnCount",
+                        "cells"
+                      ],
+                      "type": "object"
+                    },
+                    "xml": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "placement",
+                    "xml",
+                    "namespaces"
+                  ],
+                  "type": "object"
+                },
+                "snapshotId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "source": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "packageRevision": {
+                      "type": "string"
+                    },
+                    "paragraphStyleId": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "partUri": {
+                      "type": "string"
+                    },
+                    "story": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/$defs/StoryLocator"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "story",
+                    "partUri",
+                    "paragraphStyleId"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "formatVersion",
+                "at",
+                "evaluatedRevision",
+                "fragment",
+                "source",
+                "context",
+                "dependencies",
+                "diagnostics"
+              ],
+              "type": "object"
+            },
+            "in": {
+              "$ref": "#/$defs/StoryLocator"
+            },
+            "nestingPolicy": {
+              "additionalProperties": false,
+              "description": "Controls nesting behavior. tables: 'allow' permits inserting tables inside other tables.",
+              "properties": {
+                "tables": {
+                  "enum": [
+                    "forbid",
+                    "allow"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                },
+                {
+                  "$ref": "#/$defs/SelectionTarget"
+                }
+              ]
+            }
+          },
+          "required": [
+            "target",
+            "capture"
+          ],
+          "type": "object"
+        },
+        {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "expectedText": {
+                  "description": "Require exact selected text before mutation. Only explicit single-paragraph text selections support this guard.",
+                  "type": "string"
+                },
+                "in": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "replacementGranularity": {
+                  "description": "Tracked revision boundaries for an explicit single-paragraph text selection. word (default) preserves matching tokens; phrase joins edits separated only by spaces; range replaces the complete selection. Requires changeMode: tracked.",
+                  "enum": [
+                    "word",
+                    "phrase",
+                    "range"
+                  ]
+                },
+                "target": {
+                  "$ref": "#/$defs/SelectionTarget"
+                },
+                "text": {
+                  "description": "Replacement text content.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target",
+                "text"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "ref": {
+                  "description": "Search result handle.",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "Replacement text content.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref",
+                "text"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "story"
+                },
+                "storyType": {
+                  "const": "body"
+                }
+              },
+              "required": [
+                "kind",
+                "storyType"
+              ],
+              "type": "object"
+            },
+            "text": {
+              "description": "Complete replacement text for the main body.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "description": "Document fragment to replace with (structured content).",
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "in": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "nestingPolicy": {
+                  "additionalProperties": false,
+                  "description": "Controls nesting behavior. tables: 'allow' permits inserting tables inside other tables.",
+                  "properties": {
+                    "tables": {
+                      "enum": [
+                        "forbid",
+                        "allow"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "target": {
+                  "description": "Target block or selection to replace.",
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/BlockNodeAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/SelectionTarget"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "target",
+                "content"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "description": "Document fragment to replace with (structured content).",
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "in": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "nestingPolicy": {
+                  "additionalProperties": false,
+                  "description": "Controls nesting behavior. tables: 'allow' permits inserting tables inside other tables.",
+                  "properties": {
+                    "tables": {
+                      "enum": [
+                        "forbid",
+                        "allow"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ref": {
+                  "description": "Reference handle from a previous search result.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref",
+                "content"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "description": "Document fragment that replaces the complete main body.",
+                  "oneOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "target": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "story"
+                    },
+                    "storyType": {
+                      "const": "body"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storyType"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "target",
+                "content"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "nestingPolicy": {
+                  "additionalProperties": false,
+                  "description": "Controls nesting behavior. tables: 'allow' permits inserting tables inside other tables.",
+                  "properties": {
+                    "tables": {
+                      "enum": [
+                        "forbid",
+                        "allow"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/BlockNodeAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/SelectionTarget"
+                    }
+                  ]
+                },
+                "type": {
+                  "enum": [
+                    "html",
+                    "markdown"
+                  ]
+                },
+                "value": {
+                  "description": "HTML or Markdown replacement content.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target",
+                "value",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "nestingPolicy": {
+                  "additionalProperties": false,
+                  "description": "Controls nesting behavior. tables: 'allow' permits inserting tables inside other tables.",
+                  "properties": {
+                    "tables": {
+                      "enum": [
+                        "forbid",
+                        "allow"
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                "ref": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "html",
+                    "markdown"
+                  ]
+                },
+                "value": {
+                  "description": "HTML or Markdown replacement content.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref",
+                "value",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "target": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "story"
+                    },
+                    "storyType": {
+                      "const": "body"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storyType"
+                  ],
+                  "type": "object"
+                },
+                "type": {
+                  "enum": [
+                    "html",
+                    "markdown"
+                  ]
+                },
+                "value": {
+                  "description": "HTML or Markdown that replaces the complete main body.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target",
+                "value",
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "affectedStories": {
+              "items": {
+                "$ref": "#/$defs/StoryLocator"
+              },
+              "type": "array"
+            },
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "changeTag": {
+              "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+              "type": "string"
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "conversion": {
+              "additionalProperties": false,
+              "properties": {
+                "diagnostics": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "conversion-normalized-construct",
+                          "conversion-unsupported-construct",
+                          "conversion-dropped-style",
+                          "conversion-unsafe-content",
+                          "conversion-unsafe-url",
+                          "conversion-source-limit-exceeded",
+                          "conversion-depth-limit-exceeded",
+                          "conversion-malformed-input",
+                          "conversion-empty-result"
+                        ]
+                      },
+                      "construct": {
+                        "enum": [
+                          "document",
+                          "source",
+                          "text",
+                          "paragraph",
+                          "emptyParagraph",
+                          "softBreak",
+                          "lineBreak",
+                          "heading",
+                          "bold",
+                          "italic",
+                          "underline",
+                          "strike",
+                          "hyperlink",
+                          "list",
+                          "table",
+                          "tableHeader",
+                          "colSpan",
+                          "rowSpan",
+                          "horizontalRule",
+                          "inlineCode",
+                          "codeBlock",
+                          "blockquote",
+                          "taskList",
+                          "image",
+                          "footnote",
+                          "rawHtml",
+                          "unknownWrapper",
+                          "script",
+                          "style",
+                          "eventHandler"
+                        ]
+                      },
+                      "disposition": {
+                        "enum": [
+                          "preserved",
+                          "normalized",
+                          "downgraded",
+                          "dropped",
+                          "rejected"
+                        ]
+                      },
+                      "lossy": {
+                        "type": "boolean"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "type": "array"
+                      },
+                      "severity": {
+                        "enum": [
+                          "error",
+                          "warning",
+                          "info"
+                        ]
+                      },
+                      "source": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "format": {
+                            "enum": [
+                              "html",
+                              "markdown"
+                            ]
+                          },
+                          "range": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "endColumn": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "endLine": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "endOffset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "startColumn": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "startLine": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "startOffset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "startOffset",
+                              "endOffset"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "format"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message",
+                      "construct",
+                      "disposition",
+                      "lossy",
+                      "source"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "format": {
+                  "enum": [
+                    "html",
+                    "markdown"
+                  ]
+                },
+                "lossy": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "format",
+                "lossy",
+                "diagnostics"
+              ],
+              "type": "object"
+            },
+            "effects": {
+              "$ref": "#/$defs/ReceiptEffects"
+            },
+            "evaluatedRevision": {
+              "additionalProperties": false,
+              "properties": {
+                "after": {
+                  "type": "string"
+                },
+                "before": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "before",
+                "after"
+              ],
+              "type": "object"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inserted": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "invalidatedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRef"
+              },
+              "type": "array"
+            },
+            "outcome": {
+              "enum": [
+                "preserved",
+                "preserved-with-warnings",
+                "simplified",
+                "rejected",
+                "no-op",
+                "invalid-target",
+                "outdated"
+              ]
+            },
+            "remappedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRefRemapping"
+              },
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "resolution": {
+              "additionalProperties": false,
+              "properties": {
+                "range": {
+                  "$ref": "#/$defs/TextMutationRange"
+                },
+                "selectionTarget": {
+                  "$ref": "#/$defs/SelectionTarget"
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/TextAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/BlockNodeAddress"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "story"
+                        },
+                        "storyType": {
+                          "const": "body"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "storyType"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "target",
+                "range"
+              ],
+              "type": "object"
+            },
+            "status": {
+              "const": "NO_OP"
+            },
+            "success": {
+              "const": true
+            },
+            "temporary": {
+              "additionalProperties": false,
+              "properties": {
+                "cancelledBy": {
+                  "const": "native-edit",
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "onNativeEdit": {
+                  "enum": [
+                    "cancel",
+                    "preserve"
+                  ],
+                  "type": "string"
+                },
+                "phase": {
+                  "enum": [
+                    "begin",
+                    "replace",
+                    "rollback",
+                    "commit"
+                  ]
+                },
+                "tag": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "phase",
+                "tag"
+              ],
+              "type": "object"
+            },
+            "textRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TextRangeShift"
+              },
+              "type": "array"
+            },
+            "trackedChangeCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "type": "array"
+            },
+            "trackedTextRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TrackedTextRangeShift"
+              },
+              "type": "array"
+            },
+            "txId": {
+              "type": "string"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "warnings": {
+              "items": {
+                "$ref": "#/$defs/ReviewWarning"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "conversion": {
+              "additionalProperties": false,
+              "properties": {
+                "diagnostics": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "conversion-normalized-construct",
+                          "conversion-unsupported-construct",
+                          "conversion-dropped-style",
+                          "conversion-unsafe-content",
+                          "conversion-unsafe-url",
+                          "conversion-source-limit-exceeded",
+                          "conversion-depth-limit-exceeded",
+                          "conversion-malformed-input",
+                          "conversion-empty-result"
+                        ]
+                      },
+                      "construct": {
+                        "enum": [
+                          "document",
+                          "source",
+                          "text",
+                          "paragraph",
+                          "emptyParagraph",
+                          "softBreak",
+                          "lineBreak",
+                          "heading",
+                          "bold",
+                          "italic",
+                          "underline",
+                          "strike",
+                          "hyperlink",
+                          "list",
+                          "table",
+                          "tableHeader",
+                          "colSpan",
+                          "rowSpan",
+                          "horizontalRule",
+                          "inlineCode",
+                          "codeBlock",
+                          "blockquote",
+                          "taskList",
+                          "image",
+                          "footnote",
+                          "rawHtml",
+                          "unknownWrapper",
+                          "script",
+                          "style",
+                          "eventHandler"
+                        ]
+                      },
+                      "disposition": {
+                        "enum": [
+                          "preserved",
+                          "normalized",
+                          "downgraded",
+                          "dropped",
+                          "rejected"
+                        ]
+                      },
+                      "lossy": {
+                        "type": "boolean"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "type": "array"
+                      },
+                      "severity": {
+                        "enum": [
+                          "error",
+                          "warning",
+                          "info"
+                        ]
+                      },
+                      "source": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "format": {
+                            "enum": [
+                              "html",
+                              "markdown"
+                            ]
+                          },
+                          "range": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "endColumn": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "endLine": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "endOffset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "startColumn": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "startLine": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "startOffset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "startOffset",
+                              "endOffset"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "format"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message",
+                      "construct",
+                      "disposition",
+                      "lossy",
+                      "source"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "format": {
+                  "enum": [
+                    "html",
+                    "markdown"
+                  ]
+                },
+                "lossy": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "format",
+                "lossy",
+                "diagnostics"
+              ],
+              "type": "object"
+            },
+            "evaluatedRevision": {
+              "additionalProperties": false,
+              "properties": {
+                "after": {
+                  "type": "string"
+                },
+                "before": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "before",
+                "after"
+              ],
+              "type": "object"
+            },
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "INVALID_TARGET",
+                    "NO_OP",
+                    "LOCK_VIOLATION",
+                    "INVALID_NESTING",
+                    "INVALID_PLACEMENT",
+                    "INVALID_PAYLOAD",
+                    "CAPABILITY_UNSUPPORTED",
+                    "ADDRESS_STALE",
+                    "DUPLICATE_ID",
+                    "INVALID_CONTEXT",
+                    "RAW_MODE_REQUIRED",
+                    "PRESERVE_ONLY_VIOLATION",
+                    "INVALID_INPUT",
+                    "TARGET_NOT_FOUND",
+                    "PRECONDITION_FAILED",
+                    "REVISION_MISMATCH",
+                    "CHECK_MISMATCH",
+                    "INTERNAL_ERROR",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                },
+                "path": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/BlockNodeAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/TextAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/SelectionTarget"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "story"
+                        },
+                        "storyType": {
+                          "const": "body"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "storyType"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "outcome": {
+              "enum": [
+                "preserved",
+                "preserved-with-warnings",
+                "simplified",
+                "rejected",
+                "no-op",
+                "invalid-target",
+                "outdated"
+              ]
+            },
+            "resolution": {
+              "additionalProperties": false,
+              "properties": {
+                "range": {
+                  "$ref": "#/$defs/TextMutationRange"
+                },
+                "selectionTarget": {
+                  "$ref": "#/$defs/SelectionTarget"
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/TextAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/BlockNodeAddress"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "story"
+                        },
+                        "storyType": {
+                          "const": "body"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "storyType"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "target",
+                "range"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "changeTag": {
+          "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "conversion": {
+          "additionalProperties": false,
+          "properties": {
+            "diagnostics": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "conversion-normalized-construct",
+                      "conversion-unsupported-construct",
+                      "conversion-dropped-style",
+                      "conversion-unsafe-content",
+                      "conversion-unsafe-url",
+                      "conversion-source-limit-exceeded",
+                      "conversion-depth-limit-exceeded",
+                      "conversion-malformed-input",
+                      "conversion-empty-result"
+                    ]
+                  },
+                  "construct": {
+                    "enum": [
+                      "document",
+                      "source",
+                      "text",
+                      "paragraph",
+                      "emptyParagraph",
+                      "softBreak",
+                      "lineBreak",
+                      "heading",
+                      "bold",
+                      "italic",
+                      "underline",
+                      "strike",
+                      "hyperlink",
+                      "list",
+                      "table",
+                      "tableHeader",
+                      "colSpan",
+                      "rowSpan",
+                      "horizontalRule",
+                      "inlineCode",
+                      "codeBlock",
+                      "blockquote",
+                      "taskList",
+                      "image",
+                      "footnote",
+                      "rawHtml",
+                      "unknownWrapper",
+                      "script",
+                      "style",
+                      "eventHandler"
+                    ]
+                  },
+                  "disposition": {
+                    "enum": [
+                      "preserved",
+                      "normalized",
+                      "downgraded",
+                      "dropped",
+                      "rejected"
+                    ]
+                  },
+                  "lossy": {
+                    "type": "boolean"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "severity": {
+                    "enum": [
+                      "error",
+                      "warning",
+                      "info"
+                    ]
+                  },
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "format": {
+                        "enum": [
+                          "html",
+                          "markdown"
+                        ]
+                      },
+                      "range": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "endColumn": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "endLine": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "endOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "startColumn": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "startLine": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "startOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "startOffset",
+                          "endOffset"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "format"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "code",
+                  "severity",
+                  "message",
+                  "construct",
+                  "disposition",
+                  "lossy",
+                  "source"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "format": {
+              "enum": [
+                "html",
+                "markdown"
+              ]
+            },
+            "lossy": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "format",
+            "lossy",
+            "diagnostics"
+          ],
+          "type": "object"
+        },
+        "effects": {
+          "$ref": "#/$defs/ReceiptEffects"
+        },
+        "evaluatedRevision": {
+          "additionalProperties": false,
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "before": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "before",
+            "after"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "outcome": {
+          "enum": [
+            "preserved",
+            "preserved-with-warnings",
+            "simplified",
+            "rejected",
+            "no-op",
+            "invalid-target",
+            "outdated"
+          ]
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "resolution": {
+          "additionalProperties": false,
+          "properties": {
+            "range": {
+              "$ref": "#/$defs/TextMutationRange"
+            },
+            "selectionTarget": {
+              "$ref": "#/$defs/SelectionTarget"
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/TextAddress"
+                },
+                {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "story"
+                    },
+                    "storyType": {
+                      "const": "body"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "storyType"
+                  ],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": [
+            "target",
+            "range"
+          ],
+          "type": "object"
+        },
+        "status": {
+          "const": "NO_OP"
+        },
+        "success": {
+          "const": true
+        },
+        "temporary": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelledBy": {
+              "const": "native-edit",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "onNativeEdit": {
+              "enum": [
+                "cancel",
+                "preserve"
+              ],
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "begin",
+                "replace",
+                "rollback",
+                "commit"
+              ]
+            },
+            "tag": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "phase",
+            "tag"
+          ],
+          "type": "object"
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/ReviewWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

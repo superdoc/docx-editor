@@ -1,0 +1,77 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "table"
+    },
+    "table": {
+      "additionalProperties": false,
+      "properties": {
+        "rows": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "cells": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "colSpan": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "content": {
+                      "items": {
+                        "$ref": "#/$defs/SDInboundContentNode"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "header": {
+                      "type": "boolean"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "props": {
+                      "$ref": "#/$defs/SDInboundCellProps"
+                    },
+                    "rowSpan": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "content"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cells"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "table"
+  ],
+  "type": "object"
+}

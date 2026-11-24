@@ -1,0 +1,111 @@
+---
+title: Full preset
+navTitle: Full preset
+description: Give the model the whole Document API through search and call tools, and keep tracked-only agents enforced on every call.
+---
+
+{/* Media decision: none. The page is two tool tables, one batch contract, and one policy, which tables and code show directly. */}
+
+The `full` preset keeps everything in `core` and adds a path to the rest of the Document API. Use it when a workflow needs operations the core actions do not cover, such as [Word table styles](/document-api/table-styles), page setup, headers and footers, footnotes, or images. Choose `core` when you want the model limited to named actions.
+
+## What it adds
+
+`preset: 'full'` advertises the two core tools and two more:
+
+| Tool                      | Purpose                                                            |
+| ------------------------- | ------------------------------------------------------------------ |
+| `superdoc_inspect`        | Read-only snapshots of current document state                      |
+| `superdoc_perform_action` | One named, statically validated edit verb from the action registry |
+| `superdoc_api_search`     | Search the Document API and read an operation's parameters         |
+| `superdoc_api_call`       | Run one Document API operation, or several in order as one batch   |
+
+It also adds four helper actions to `superdoc_perform_action`, beside the [core actions](/agents/build/actions):
+
+| Action              | Effect                                                                                 | Tracked |
+| ------------------- | -------------------------------------------------------------------------------------- | ------- |
+| `insert_image`      | Inserts a picture from a file path, URL, or data URI, with an optional caption         | Yes     |
+| `insert_footnote`   | Inserts a footnote or endnote right after a phrase                                     | Yes     |
+| `shade_cells`       | Shades a whole table, one row, one column, or one cell                                 | No      |
+| `compare_with_file` | Compares with another `.docx` and records the text differences here as tracked changes | Partly  |
+
+`compare_with_file` applies differences in comments, styles, numbering, and other document parts directly, even in tracked mode.
+
+Helper actions return their own result shapes, not action receipts. `insert_image`, `insert_footnote`, and `shade_cells` report `success`. `compare_with_file` reports `applied`, with `blockers` when the differences cannot be applied. When an image's caption fails, `insert_image` returns `success: false` with `imageInserted: true`: the picture is already in the document, so do not insert it again. Relative image and comparison paths resolve from the open document's folder. Pass an absolute path when the document was not opened from a file.
+
+The system prompt teaches the model an order: use a named action, including the helper actions, when one fits. Call an operation listed in the prompt's quick reference directly. Search the API only for anything else.
+
+## Enable it
+
+Pass `preset: 'full'` and use the returned `tools`, `systemPrompt`, and `dispatch` together. If you configure them separately, select `full` for each.
+
+```ts
+import { createAgentToolkit } from '@superdoc/sdk';
+
+const { tools, systemPrompt, dispatch } = await createAgentToolkit({ provider: 'openai', preset: 'full' });
+```
+
+The Python SDK takes `'preset': 'full'` in the same input, the Rust SDK offers `Document::full_toolkit`, and the CLI `preset` commands take `--preset full`. `excludeActions`, `enforceChangeMode`, and `allowDirectActions` work as they do on `core`.
+
+`excludeActions` removes named actions only. The same edit stays reachable through `superdoc_api_call`: excluding `accept_tracked_changes` does not block `doc.trackChanges.decide`. When the goal is reviewable edits, use [tracked-only mode](#tracked-only-mode), which governs every operation.
+
+A custom loop must accept `superdoc_api_search` and `superdoc_api_call` and handle their results, which are not shaped like action receipts. The [Build an agent](/agents/build/build-an-agent#the-loop) example is written for `core`, so adding the two names to its tool list is not enough. Pass `enforceChangeMode: 'tracked'` to the toolkit rather than relying on the example's own tracked-mode check, treat `superdoc_api_search` as a read, and before saving, treat a single call that returns `success: false` or a batch whose `completed` is below `total` as a failure. `dryRun` sits on each call, not on the batch, so do not count a call or batch entry with `dryRun: true` as an edit.
+
+<Callout variant='warning' title='Pin the SDK version'>
+  The tools, system prompt, and helper actions can change between SDK releases without the preset id changing. Pin the
+  SDK version when your integration depends on them, and read the advertised schema after upgrading.
+</Callout>
+
+`getToolCatalog` returns the advertised schema:
+
+```ts
+import { getToolCatalog } from '@superdoc/sdk';
+
+const catalog = await getToolCatalog('full');
+console.log(catalog.tools.map((tool) => tool.toolName));
+```
+
+## superdoc_api_call
+
+`superdoc_api_call` takes one call as `{ operationId, args }`, or up to 40 as `{ calls: [{ operationId, args }, ...] }`.
+
+Before anything runs, every entry is checked for an unknown operation, an unknown or missing argument, unsupported `changeMode` or `dryRun`, and a policy refusal. Any of these rejects the whole batch with nothing applied. Argument values are checked only when each call runs. Once it starts, the batch runs in order and stops at the first failure. It is not a transaction: calls before the failure stay applied. The result reports `completed`, `total`, and a receipt per attempted call, plus `stoppedAt` and `reason` when it stopped early. A receipt is `{ index, operationId, ok, result }`, or `{ index, operationId, ok: false, error }` for a call that threw. `index` is zero-based. A `doc.format.apply` call whose text target has several segments runs as one call per segment, so a single call can return a batch result, and receipt indexes and `calls[i]` positions count those expanded calls.
+
+`changeMode` and `dryRun` go on each call, and only on operations that accept them. A call that passes either to an operation without support is refused before it runs. `superdoc_api_search` with `{ operationId }` reports `supportsTrackedMode` and `supportsDryRun` for that operation. Summary search hits can leave them out.
+
+A result whose JSON is longer than 8,000 characters comes back as `{ truncated: true, chars, preview }` with the first 8,000 characters of that JSON. A few operations that return document content or a diff, such as `doc.getMarkdown`, `doc.getHtml`, and `doc.extract`, are returned in full.
+
+## Tracked-only mode
+
+`enforceChangeMode: 'tracked'` applies to every dispatch under `full`, including each call in a `superdoc_api_call` batch:
+
+- Operations that only read run as requested.
+- Operations that support tracked mode run tracked, whatever the call said. The result carries `changeMode: 'tracked'`, and `changeModeForced: true` when the call omitted `changeMode` or asked for a direct edit. In a batch, the receipt of each such call that returned a result carries both fields. Receipts for reads, and for a call that threw, do not.
+- Some operations support tracked mode only for certain arguments or targets. They are forced tracked too, and the engine rejects the call when it cannot track that change.
+- Operations that can only edit directly are refused. Examples are comment edits, style definitions, header and footer parts, watermarks, and document protection. Only `allowDirectActions: ['*']` reopens them. Naming an operation in `allowDirectActions` does not.
+
+For the helper actions, `shade_cells` leaves the advertised action enum and is refused at dispatch unless `allowDirectActions` names it or contains `'*'`. `compare_with_file` is refused when the other file differs in comments, styles, numbering, or other document parts, unless `allowDirectActions` names it or is `['*']`.
+
+A policy refusal of a `superdoc_api_call` throws before anything runs. The error code is `INVALID_ARGUMENT`, `details.reason` is `enforce-change-mode`, and the message tells the model that nothing was changed. In a batch, the message starts with the entry that was refused, such as `calls[2]:`, and `details.index` holds its position. Other refusals, such as `changeMode: 'tracked'` on an operation without tracked support or an argument the operation does not accept, also throw `INVALID_ARGUMENT` before anything runs, but without that `details.reason`. Pass a policy refusal's message back to the model so it can choose an operation that supports tracked mode:
+
+```ts
+import { SuperDocCliError } from '@superdoc/sdk';
+
+function isTrackedPolicyRefusal(error: unknown): error is SuperDocCliError {
+  if (!(error instanceof SuperDocCliError)) return false;
+  const details = error.details as { reason?: string } | undefined;
+  return details?.reason === 'enforce-change-mode';
+}
+
+try {
+  result = await dispatch(doc, toolName, args);
+} catch (error) {
+  if (!isTrackedPolicyRefusal(error)) throw error;
+  result = { refused: true, message: error.message };
+}
+```
+
+[Build an agent](/agents/build/build-an-agent#do-not-rely-on-the-prompt-for-tracked-mode) explains the policy and how to choose `allowDirectActions`.
+
+## Next
+
+[Tools and presets](/agents/build/tools) compares the presets. The [Document API reference](/document-api/reference) lists the operations `superdoc_api_search` returns. [Safety](/agents/operate/safety) covers the boundary around an agent that can reach every operation.

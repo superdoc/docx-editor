@@ -1,0 +1,2 @@
+indent-decrease -> {"success":true,"txId":"outdent-range-1"}
+  lists.outdentRange {"paraIds":["P1","P2"],"story":{"kind":"story","storyType":"headerFooterPart","refId":"rId8"}}

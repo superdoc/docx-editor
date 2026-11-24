@@ -58,8 +58,10 @@ Capture the selection when the composer opens. The pointer path captures on `mou
 button. Keyboard activation captures in the click handler. Submitting the saved capture keeps the draft anchored to the
 text that started it, even if the selection changes while someone writes.
 
-Use `ui.comments.createFromSelection()` only for an immediate action that does not move focus into a composer. Do not
-reconstruct a comment target from DOM ranges. See [Selection and viewport](/editor/custom-ui/selection-and-viewport)
+Use `ui.comments.createFromSelection()` only for an immediate action that does not move focus into a composer. If you
+keep SuperDoc's comments panel and only need an **Add comment** button, call
+[`ui.comments.openComposer()`](/editor/built-in-ui/comments#open-the-composer-from-your-toolbar) to open its built-in
+composer instead. Do not reconstruct a comment target from DOM ranges. See [Selection and viewport](/editor/custom-ui/selection-and-viewport)
 when you also need to position an application-owned popover.
 
 ## Paint comment highlights yourself

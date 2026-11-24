@@ -1,0 +1,49 @@
+role: editor, isInternal: false, allowed permissions: RESOLVE_OTHER, REJECT_OTHER
+current user: {
+  "id": null,
+  "email": null,
+  "name": "Alice Owner"
+}
+comment: {
+  "creatorId": null,
+  "creatorEmail": null,
+  "creatorName": "Alice Owner",
+  "createdTime": 1767225600000,
+  "resolvedTime": null,
+  "trackedChange": true,
+  "parentCommentId": null,
+  "trackedChangeParentId": null,
+  "origin": "word",
+  "importedAuthor": {
+    "name": "Alice Owner"
+  },
+  "getCommentUser": "[Function getCommentUser]",
+  "trackedChangeType": "trackInsert"
+}
+
+resolver calls:
+{
+  "permission": "RESOLVE_OWN",
+  "role": "editor",
+  "isInternal": false,
+  "defaultDecision": true,
+  "comment": "the comment prop",
+  "currentUser": "the configured user",
+  "superdoc": "the SuperDoc instance",
+  "trackedChange": null,
+  "returned": false
+}
+{
+  "permission": "REJECT_OWN",
+  "role": "editor",
+  "isInternal": false,
+  "defaultDecision": true,
+  "comment": "the comment prop",
+  "currentUser": "the configured user",
+  "superdoc": "the SuperDoc instance",
+  "trackedChange": null,
+  "returned": false
+}
+
+actions: (none)
+overflow options: (none)

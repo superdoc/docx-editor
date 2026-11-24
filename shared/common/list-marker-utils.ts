@@ -87,6 +87,7 @@ export type MinimalMarker = {
   suffix?: 'tab' | 'space' | 'nothing';
   /** The text content of the marker (for measurement if glyphWidthPx not available) */
   markerText?: string;
+  originalMarkerLength?: number;
   /** Formatting information for the marker (for measurement if needed) */
   run?: MinimalMarkerRun;
   /**

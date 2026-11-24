@@ -1,0 +1,339 @@
+{
+  "definition": {
+    "description": "Apply a named table style preset to a table. Word presets (IDs starting with \"word.\", such as \"word.grid-table-4-accent-1\") install the built-in Word table style definition into the document when needed and reference it from the table, so the result opens in Word as that named style and follows the document theme. Call tables.listPresets first to get valid preset IDs. Use the \"-accent-N\" variants for theme accent colors; accentColor is rejected for Word presets. Optional styleOptions set the header row, last row, first column, last column, banded rows, and banded columns flags; omitted flags keep the table's current settings. Word presets remove table-level borders and shading so the style governs them; direct cell or run formatting is preserved and can override the style. In real-time collaboration every client receives the style definition and the table change together. Word presets are direct edits only: tracked mode returns CAPABILITY_UNAVAILABLE. SuperDoc convenience presets \"grid\", \"minimal\", \"striped\", and \"accent\" keep their existing behavior: they write direct borders, banding, and header shading (accentColor overrides the \"accent\" color). Use tables.applyStyle instead to reference a style ID that already exists in the document (see tables.getStyles).",
+    "expectedResult": "Returns a TableMutationResult receipt. Read tables.getProperties to see the installed Word style ID, which can differ from the Word default when the document already customizes that style.",
+    "memberPath": "tables.applyPreset",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "INVALID_INPUT",
+        "CAPABILITY_UNAVAILABLE",
+        "PRECONDITION_FAILED"
+      ],
+      "remediationHints": [
+        "Call tables.listPresets to find a valid preset ID before applying one."
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "tables/apply-preset.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "target"
+          ]
+        },
+        {
+          "required": [
+            "nodeId"
+          ]
+        }
+      ],
+      "properties": {
+        "accentColor": {
+          "pattern": "^(#?([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})|auto)$",
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "preset": {
+          "description": "Preset ID from tables.listPresets, for example \"word.grid-table-4-accent-1\" or \"striped\".",
+          "enum": [
+            "word.table-grid",
+            "word.grid-table-light",
+            "word.plain-table-1",
+            "word.plain-table-2",
+            "word.plain-table-3",
+            "word.plain-table-4",
+            "word.plain-table-5",
+            "word.grid-table-1-light",
+            "word.grid-table-1-light-accent-1",
+            "word.grid-table-1-light-accent-2",
+            "word.grid-table-1-light-accent-3",
+            "word.grid-table-1-light-accent-4",
+            "word.grid-table-1-light-accent-5",
+            "word.grid-table-1-light-accent-6",
+            "word.grid-table-2",
+            "word.grid-table-2-accent-1",
+            "word.grid-table-2-accent-2",
+            "word.grid-table-2-accent-3",
+            "word.grid-table-2-accent-4",
+            "word.grid-table-2-accent-5",
+            "word.grid-table-2-accent-6",
+            "word.grid-table-3",
+            "word.grid-table-3-accent-1",
+            "word.grid-table-3-accent-2",
+            "word.grid-table-3-accent-3",
+            "word.grid-table-3-accent-4",
+            "word.grid-table-3-accent-5",
+            "word.grid-table-3-accent-6",
+            "word.grid-table-4",
+            "word.grid-table-4-accent-1",
+            "word.grid-table-4-accent-2",
+            "word.grid-table-4-accent-3",
+            "word.grid-table-4-accent-4",
+            "word.grid-table-4-accent-5",
+            "word.grid-table-4-accent-6",
+            "word.grid-table-5-dark",
+            "word.grid-table-5-dark-accent-1",
+            "word.grid-table-5-dark-accent-2",
+            "word.grid-table-5-dark-accent-3",
+            "word.grid-table-5-dark-accent-4",
+            "word.grid-table-5-dark-accent-5",
+            "word.grid-table-5-dark-accent-6",
+            "word.grid-table-6-colorful",
+            "word.grid-table-6-colorful-accent-1",
+            "word.grid-table-6-colorful-accent-2",
+            "word.grid-table-6-colorful-accent-3",
+            "word.grid-table-6-colorful-accent-4",
+            "word.grid-table-6-colorful-accent-5",
+            "word.grid-table-6-colorful-accent-6",
+            "word.grid-table-7-colorful",
+            "word.grid-table-7-colorful-accent-1",
+            "word.grid-table-7-colorful-accent-2",
+            "word.grid-table-7-colorful-accent-3",
+            "word.grid-table-7-colorful-accent-4",
+            "word.grid-table-7-colorful-accent-5",
+            "word.grid-table-7-colorful-accent-6",
+            "word.list-table-1-light",
+            "word.list-table-1-light-accent-1",
+            "word.list-table-1-light-accent-2",
+            "word.list-table-1-light-accent-3",
+            "word.list-table-1-light-accent-4",
+            "word.list-table-1-light-accent-5",
+            "word.list-table-1-light-accent-6",
+            "word.list-table-2",
+            "word.list-table-2-accent-1",
+            "word.list-table-2-accent-2",
+            "word.list-table-2-accent-3",
+            "word.list-table-2-accent-4",
+            "word.list-table-2-accent-5",
+            "word.list-table-2-accent-6",
+            "word.list-table-3",
+            "word.list-table-3-accent-1",
+            "word.list-table-3-accent-2",
+            "word.list-table-3-accent-3",
+            "word.list-table-3-accent-4",
+            "word.list-table-3-accent-5",
+            "word.list-table-3-accent-6",
+            "word.list-table-4",
+            "word.list-table-4-accent-1",
+            "word.list-table-4-accent-2",
+            "word.list-table-4-accent-3",
+            "word.list-table-4-accent-4",
+            "word.list-table-4-accent-5",
+            "word.list-table-4-accent-6",
+            "word.list-table-5-dark",
+            "word.list-table-5-dark-accent-1",
+            "word.list-table-5-dark-accent-2",
+            "word.list-table-5-dark-accent-3",
+            "word.list-table-5-dark-accent-4",
+            "word.list-table-5-dark-accent-5",
+            "word.list-table-5-dark-accent-6",
+            "word.list-table-6-colorful",
+            "word.list-table-6-colorful-accent-1",
+            "word.list-table-6-colorful-accent-2",
+            "word.list-table-6-colorful-accent-3",
+            "word.list-table-6-colorful-accent-4",
+            "word.list-table-6-colorful-accent-5",
+            "word.list-table-6-colorful-accent-6",
+            "word.list-table-7-colorful",
+            "word.list-table-7-colorful-accent-1",
+            "word.list-table-7-colorful-accent-2",
+            "word.list-table-7-colorful-accent-3",
+            "word.list-table-7-colorful-accent-4",
+            "word.list-table-7-colorful-accent-5",
+            "word.list-table-7-colorful-accent-6",
+            "grid",
+            "minimal",
+            "striped",
+            "accent"
+          ],
+          "type": "string"
+        },
+        "styleOptions": {
+          "additionalProperties": false,
+          "properties": {
+            "bandedColumns": {
+              "type": "boolean"
+            },
+            "bandedRows": {
+              "type": "boolean"
+            },
+            "firstColumn": {
+              "type": "boolean"
+            },
+            "headerRow": {
+              "type": "boolean"
+            },
+            "lastColumn": {
+              "type": "boolean"
+            },
+            "lastRow": {
+              "type": "boolean"
+            },
+            "totalRow": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "target": {
+          "$ref": "#/$defs/TableAddress"
+        }
+      },
+      "required": [
+        "preset"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "success": {
+              "const": true
+            },
+            "table": {
+              "$ref": "#/$defs/TableAddress"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "success": {
+          "const": true
+        },
+        "table": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

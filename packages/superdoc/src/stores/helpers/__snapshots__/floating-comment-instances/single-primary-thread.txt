@@ -1,0 +1,46 @@
+input:
+{
+  "comment": {
+    "commentId": "thread-1",
+    "trackedChange": false
+  },
+  "positionKey": "comment-position-1",
+  "positionEntry": {
+    "pageIndex": 4,
+    "bounds": {
+      "top": 80,
+      "left": 12,
+      "right": 64,
+      "bottom": 100,
+      "width": 52,
+      "height": 20
+    }
+  },
+  "fallbackId": "fallback-thread-1"
+}
+
+instances:
+[
+  {
+    "id": "comment-position-1",
+    "threadId": "thread-1",
+    "comment": {
+      "commentId": "thread-1",
+      "trackedChange": false
+    },
+    "positionKey": "comment-position-1",
+    "positionEntry": {
+      "pageIndex": 4,
+      "bounds": {
+        "top": 80,
+        "left": 12,
+        "right": 64,
+        "bottom": 100,
+        "width": 52,
+        "height": 20
+      }
+    },
+    "pageIndex": 4,
+    "isPrimary": true
+  }
+]

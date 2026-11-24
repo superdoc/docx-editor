@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ref": {
+      "type": "string"
+    },
+    "refStability": {
+      "enum": [
+        "stable",
+        "ephemeral"
+      ]
+    },
+    "targetKind": {
+      "$ref": "#/$defs/TargetKind"
+    }
+  },
+  "required": [
+    "ref",
+    "refStability",
+    "targetKind"
+  ],
+  "type": "object"
+}

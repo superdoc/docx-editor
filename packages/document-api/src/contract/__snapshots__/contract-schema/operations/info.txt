@@ -1,0 +1,204 @@
+{
+  "definition": {
+    "description": "Return document summary info including word, character, paragraph, heading, table, image, comment, tracked-change, SDT-field, list, and page counts, plus outline and capabilities.",
+    "expectedResult": "Returns a DocumentInfo object with counts (words, characters, paragraphs, headings, tables, images, comments, trackedChanges, sdtFields, lists, and optionally pages when pagination is active), document outline, capability flags, and revision.",
+    "intentAction": "info",
+    "intentGroup": "get_content",
+    "memberPath": "info",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "info.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "additionalProperties": false,
+          "properties": {
+            "canComment": {
+              "type": "boolean"
+            },
+            "canFind": {
+              "type": "boolean"
+            },
+            "canGetNode": {
+              "type": "boolean"
+            },
+            "canReplace": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "canFind",
+            "canGetNode",
+            "canComment",
+            "canReplace"
+          ],
+          "type": "object"
+        },
+        "counts": {
+          "additionalProperties": false,
+          "properties": {
+            "characters": {
+              "type": "integer"
+            },
+            "comments": {
+              "type": "integer"
+            },
+            "headings": {
+              "type": "integer"
+            },
+            "images": {
+              "type": "integer"
+            },
+            "lists": {
+              "type": "integer"
+            },
+            "pages": {
+              "type": "integer"
+            },
+            "paragraphs": {
+              "type": "integer"
+            },
+            "sdtFields": {
+              "type": "integer"
+            },
+            "tables": {
+              "type": "integer"
+            },
+            "trackedChanges": {
+              "type": "integer"
+            },
+            "words": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "words",
+            "characters",
+            "paragraphs",
+            "headings",
+            "tables",
+            "images",
+            "comments",
+            "trackedChanges",
+            "sdtFields",
+            "lists"
+          ],
+          "type": "object"
+        },
+        "defaults": {
+          "additionalProperties": false,
+          "description": "Document's default body text formatting. Use these values when creating new content to match existing style.",
+          "properties": {
+            "fontFamily": {
+              "description": "Most common body text font family.",
+              "type": "string"
+            },
+            "fontSize": {
+              "description": "Most common body text font size in half-points.",
+              "type": "number"
+            },
+            "styleId": {
+              "description": "Most common body paragraph style ID.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "outline": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "level": {
+                "type": "integer"
+              },
+              "nodeId": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "level",
+              "text",
+              "nodeId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "styles": {
+          "additionalProperties": false,
+          "description": "Styles currently in use in the document.",
+          "properties": {
+            "paragraphStyles": {
+              "description": "Paragraph styles in use, sorted by frequency (most common first).",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "description": "Number of paragraphs using this style.",
+                    "type": "integer"
+                  },
+                  "fontFamily": {
+                    "description": "Font family used by text in this style.",
+                    "type": "string"
+                  },
+                  "fontSize": {
+                    "description": "Font size in half-points used by text in this style.",
+                    "type": "number"
+                  },
+                  "styleId": {
+                    "description": "Style identifier (e.g. 'Normal', 'Heading1', 'BodyText').",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "styleId",
+                  "count"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "paragraphStyles"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "counts",
+        "outline",
+        "capabilities",
+        "revision"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+page 1 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=0 sectionRefs={-}
+  "Three 1" x=48 y=48
+  "Three 2" x=48 y=68
+  "Three 3" x=48 y=88
+  "Three 4" x=48 y=108
+  "Three 5" x=48 y=128
+  "Three 6" x=48 y=148
+  "Three 7" x=48 y=168
+  "Three 8" x=48 y=188
+  "Three 9" x=48 y=208
+  "Three 10" x=184 y=48
+  "Three 11" x=184 y=68
+  "Three 12" x=184 y=88
+  "Three 13" x=184 y=108
+  "Three 14" x=184 y=128
+  "Three 15" x=184 y=148
+  "Three 16" x=184 y=168
+  "Three 17" x=184 y=188
+  "Three 18" x=184 y=208
+  "Three 19" x=320 y=48
+  "Three 20" x=320 y=68
+  "Three 21" x=320 y=88
+  "Three 22" x=320 y=108
+  "Three 23" x=320 y=128
+  "Three 24" x=320 y=148
+  "Three 25" x=320 y=168
+  "Three 26" x=320 y=188
+  "Three 27" x=320 y=208
+page 2 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=0 sectionRefs={-}
+  "Three 28" x=48 y=48
+  "Three 29" x=184 y=48
+  "Three 30" x=320 y=48
+  "Two 1" x=48 y=68
+  "Two 2" x=48 y=88

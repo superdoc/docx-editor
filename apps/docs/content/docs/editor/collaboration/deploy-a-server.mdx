@@ -330,8 +330,10 @@ const docxStore: DocxStore = {
 
 What happens to the file next is up to you: overwrite, keep versions, or pass it to another system.
 
-- **Memory.** Each save runs a full SuperDoc engine: roughly 200 MB for a short contract and up to 2 GB for a very
-  large document. Saves run one at a time. Size the server for your largest document.
+- **Memory.** Each save opens a SuperDoc engine and synchronizes the room. Saves run one at a time, but their memory
+  overlaps the server and any other open SDK sessions. Measure your largest representative documents and leave
+  headroom; compressed DOCX size is not a memory budget. Follow the [SDK memory
+  guidance](/agents/automation/node-sdk#plan-memory-for-collaborative-work) when choosing concurrency and limits.
 - **Versions.** Keep `@superdoc/sdk` on the server close to the `superdoc` version in your browsers. Both derive the
   room name from `documentId`, and they must agree.
 - **Extra saves.** Opening a room makes a small write, so an editor who opens and leaves without editing still causes

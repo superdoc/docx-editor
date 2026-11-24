@@ -1,0 +1,74 @@
+applied frame: bullet list at P1 in body
+document read of P1 in body: numbered list
+host applied list state: not a list
+
+current applied frame:
+  bullet-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  list reads: none
+
+unavailable presentation:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+missing list facts:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+older presentation without list facts:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+missing bound story:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+invalid bound story:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+different block:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+different story:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+different selection block:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+different selection offset:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+unsuccessful list facts:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})
+
+array-shaped list facts:
+  bullet-list: {"enabled":true,"disabled":false,"active":false,"supported":true,"source":"builtin"}
+  numbered-list: {"enabled":true,"disabled":false,"active":true,"supported":true,"source":"builtin"}
+  list reads:
+    doc.lists.getStateInStory({"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"story":{"kind":"story","storyType":"body"}})

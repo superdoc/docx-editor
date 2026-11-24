@@ -1,0 +1,187 @@
+step: choose Edit on the root comment and type "Same submitted text"
+
+document calls:
+comments.setActiveComment "edit-root"
+
+store:
+{
+  "activeComment": "edit-root",
+  "editingCommentId": "edit-root",
+  "draft": "Same submitted text",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "edit-root",
+      "commentText": "Root"
+    },
+    {
+      "commentId": "edit-reply",
+      "parentCommentId": "edit-root",
+      "commentText": "Reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+edit-root: editing
+edit-reply: comment: Reply
+buttons: Update enabled
+
+---
+
+step: click Update twice
+
+document calls:
+comments.edit {"commentId":"edit-root","text":"Same submitted text"}
+comments.edit {"commentId":"edit-root","text":"Same submitted text"}
+
+store:
+{
+  "activeComment": "edit-root",
+  "editingCommentId": "edit-root",
+  "draft": "Same submitted text",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "edit-root",
+      "commentText": "Root"
+    },
+    {
+      "commentId": "edit-reply",
+      "parentCommentId": "edit-root",
+      "commentText": "Reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+edit-root: editing
+edit-reply: comment: Reply
+buttons: Update enabled
+
+---
+
+step: the document commits the first write
+
+document calls:
+(none)
+
+comments-update events:
+[
+  {
+    "type": "update",
+    "comment": {
+      "commentId": "edit-root",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Same submitted text",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    },
+    "changes": [
+      {
+        "key": "text",
+        "value": "Same submitted text"
+      }
+    ]
+  }
+]
+
+store:
+{
+  "activeComment": "edit-root",
+  "editingCommentId": "edit-root",
+  "draft": "Same submitted text",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "edit-root",
+      "commentText": "Same submitted text"
+    },
+    {
+      "commentId": "edit-reply",
+      "parentCommentId": "edit-root",
+      "commentText": "Reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+edit-root: editing
+edit-reply: comment: Reply
+buttons: Update enabled
+
+---
+
+step: the document commits the second write
+
+document calls:
+(none)
+
+comments-update events:
+[
+  {
+    "type": "update",
+    "comment": {
+      "commentId": "edit-root",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Same submitted text",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    },
+    "changes": [
+      {
+        "key": "text",
+        "value": "Same submitted text"
+      }
+    ]
+  }
+]
+
+store:
+{
+  "activeComment": "edit-root",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "edit-root",
+      "commentText": "Same submitted text"
+    },
+    {
+      "commentId": "edit-reply",
+      "parentCommentId": "edit-root",
+      "commentText": "Reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+edit-root: comment: Same submitted text
+edit-reply: comment: Reply
+reply pill
+buttons: (none)
+
+---

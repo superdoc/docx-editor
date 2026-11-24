@@ -1,0 +1,16 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "liveblocks",
+    "documentId": "room-1",
+    "authEndpoint": "/api/liveblocks-auth"
+  },
+  "authEndpointBaseUrl": "file:///tmp/index.html"
+}
+
+result:
+{
+  "ok": false,
+  "reason": "invalid-auth-endpoint",
+  "message": "SuperDoc v2 Liveblocks collaboration requires a valid http(s) authEndpoint URL (received: <redacted>)."
+}

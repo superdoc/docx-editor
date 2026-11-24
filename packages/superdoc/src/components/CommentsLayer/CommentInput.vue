@@ -9,6 +9,7 @@ import { storeToRefs } from 'pinia';
 import { useCommentsStore } from '../../stores/comments-store';
 import type { User } from '../../core/types/index.js';
 import CommentHeader from './CommentHeader.vue';
+import { commentTextToHtml } from './comment-text-html.js';
 import type { CommentModel } from './use-comment';
 
 type InputConfig = { readOnly?: boolean; allowResolve?: boolean };
@@ -80,14 +81,6 @@ const scheduleInputHeightSync = () => {
   nextTick(syncInputHeight);
 };
 
-const escapeHtml = (value: unknown) =>
-  String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-
 const htmlToText = (html: unknown) => {
   const value = String(html ?? '');
   if (!value || value === '<p></p>') return '';
@@ -97,8 +90,9 @@ const htmlToText = (html: unknown) => {
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]+>/g, '');
   }
-  const element = document.createElement('div');
-  element.innerHTML = value;
+  const template = document.createElement('template');
+  template.innerHTML = value;
+  const element = template.content;
   element.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
   element.querySelectorAll('p').forEach((paragraph, index) => {
     if (index > 0) paragraph.before('\n');
@@ -106,16 +100,10 @@ const htmlToText = (html: unknown) => {
   return element.textContent || '';
 };
 
-const textToHtml = (value: unknown) => {
-  const normalized = String(value ?? '').replace(/\r\n/g, '\n');
-  if (!normalized) return '<p></p>';
-  return `<p>${escapeHtml(normalized).replace(/\n/g, '<br>')}</p>`;
-};
-
 const commentDraft = computed({
   get: () => htmlToText(currentCommentText.value),
   set: (value: string) => {
-    currentCommentText.value = textToHtml(value);
+    currentCommentText.value = commentTextToHtml(value);
   },
 });
 

@@ -89,6 +89,10 @@ export function buildSourceModeAliases({ v2Root, layoutEngineRoot }) {
       replacement: path.resolve(v2Root, 'src/collaboration-upgrade-engine.ts'),
     },
     {
+      find: /^@superdoc\/docx-engine\/collaboration$/,
+      replacement: path.resolve(v2Root, 'src/collaboration.ts'),
+    },
+    {
       find: '@superdoc/docx-engine/collaboration-worker',
       replacement: path.resolve(v2Root, 'src/collaboration-worker.ts'),
     },
@@ -189,6 +193,10 @@ export function buildPackageModeDistAliases(v2Dist) {
     {
       find: /^@superdoc\/docx-engine\/collaboration-upgrade-engine$/,
       replacement: path.join(v2Dist, 'collaboration-upgrade-engine.js'),
+    },
+    {
+      find: /^@superdoc\/docx-engine\/collaboration$/,
+      replacement: path.join(v2Dist, 'collaboration.js'),
     },
     {
       find: /^@superdoc\/docx-engine\/collaboration-worker$/,

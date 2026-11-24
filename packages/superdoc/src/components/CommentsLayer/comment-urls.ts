@@ -43,12 +43,109 @@ function configureLink(link: Element, href: string): void {
   link.setAttribute('rel', 'noopener noreferrer');
 }
 
-/** Render links without rewriting stored comment HTML or its rich-text structure. */
+const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
+
+const NO_ATTRIBUTES: ReadonlySet<string> = new Set();
+
+const ALLOWED_COMMENT_ELEMENTS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['p', NO_ATTRIBUTES],
+  ['br', NO_ATTRIBUTES],
+  ['b', NO_ATTRIBUTES],
+  ['strong', NO_ATTRIBUTES],
+  ['i', NO_ATTRIBUTES],
+  ['em', NO_ATTRIBUTES],
+  ['u', NO_ATTRIBUTES],
+  ['s', NO_ATTRIBUTES],
+  ['code', NO_ATTRIBUTES],
+  ['pre', NO_ATTRIBUTES],
+  ['strike', NO_ATTRIBUTES],
+  ['del', NO_ATTRIBUTES],
+  ['ins', NO_ATTRIBUTES],
+  ['sub', NO_ATTRIBUTES],
+  ['sup', NO_ATTRIBUTES],
+  ['mark', NO_ATTRIBUTES],
+  ['div', NO_ATTRIBUTES],
+  ['blockquote', NO_ATTRIBUTES],
+  ['h1', NO_ATTRIBUTES],
+  ['h2', NO_ATTRIBUTES],
+  ['h3', NO_ATTRIBUTES],
+  ['h4', NO_ATTRIBUTES],
+  ['h5', NO_ATTRIBUTES],
+  ['h6', NO_ATTRIBUTES],
+  ['ul', NO_ATTRIBUTES],
+  ['ol', NO_ATTRIBUTES],
+  ['li', NO_ATTRIBUTES],
+  ['table', NO_ATTRIBUTES],
+  ['thead', NO_ATTRIBUTES],
+  ['tbody', NO_ATTRIBUTES],
+  ['tfoot', NO_ATTRIBUTES],
+  ['tr', NO_ATTRIBUTES],
+  ['td', NO_ATTRIBUTES],
+  ['th', NO_ATTRIBUTES],
+  ['a', new Set(['href'])],
+]);
+
+const MENTION_ATTRIBUTES: ReadonlySet<string> = new Set(['data-type', 'name', 'email']);
+
+const ELEMENTS_DROPPED_WITH_CONTENT: ReadonlySet<string> = new Set([
+  'script',
+  'style',
+  'template',
+  'iframe',
+  'frame',
+  'frameset',
+  'object',
+  'embed',
+  'svg',
+  'math',
+  'noscript',
+  'noembed',
+  'noframes',
+  'textarea',
+  'select',
+  'title',
+  'xmp',
+  'plaintext',
+]);
+
+function isMentionSpan(element: Element): boolean {
+  return element.localName === 'span' && element.getAttribute('data-type') === 'mention';
+}
+
+function allowedAttributesFor(element: Element): ReadonlySet<string> | null {
+  if (isMentionSpan(element)) return MENTION_ATTRIBUTES;
+  return ALLOWED_COMMENT_ELEMENTS.get(element.localName) ?? null;
+}
+
+function sanitizeCommentChildren(parent: ParentNode): void {
+  for (const child of Array.from(parent.childNodes)) {
+    if (child instanceof Text) continue;
+    if (!(child instanceof Element)) {
+      child.remove();
+      continue;
+    }
+    if (child.namespaceURI !== HTML_NAMESPACE || ELEMENTS_DROPPED_WITH_CONTENT.has(child.localName)) {
+      child.remove();
+      continue;
+    }
+    sanitizeCommentChildren(child);
+    const allowedAttributes = allowedAttributesFor(child);
+    if (!allowedAttributes) {
+      child.replaceWith(...Array.from(child.childNodes));
+      continue;
+    }
+    for (const attribute of Array.from(child.attributes)) {
+      if (!allowedAttributes.has(attribute.name)) child.removeAttribute(attribute.name);
+    }
+  }
+}
+
 export function renderCommentHtml(value: unknown): string {
   if (typeof value !== 'string') return '';
-  if (typeof document === 'undefined') return value;
+  if (typeof document === 'undefined') return '';
   const template = document.createElement('template');
   template.innerHTML = value;
+  sanitizeCommentChildren(template.content);
 
   for (const link of Array.from(template.content.querySelectorAll('a'))) {
     const rawHref = link.getAttribute('href');

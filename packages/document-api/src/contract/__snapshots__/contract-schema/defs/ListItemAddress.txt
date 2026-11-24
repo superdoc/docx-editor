@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "block"
+    },
+    "nodeId": {
+      "type": "string"
+    },
+    "nodeType": {
+      "const": "listItem"
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "kind",
+    "nodeType",
+    "nodeId"
+  ],
+  "type": "object"
+}

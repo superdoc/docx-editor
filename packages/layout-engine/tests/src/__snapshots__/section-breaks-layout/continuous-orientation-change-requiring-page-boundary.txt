@@ -1,0 +1,4 @@
+page 1 size=- orientation=portrait margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=0 sectionRefs={-}
+  "Portrait 1" x=96 y=96
+page 2 size=1056x816 orientation=landscape margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=1 sectionRefs={-}
+  "Landscape 1" x=96 y=96

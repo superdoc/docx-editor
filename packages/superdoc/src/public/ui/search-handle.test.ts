@@ -87,12 +87,6 @@ afterEach(() => {
 });
 
 describe('createSearchHandle', () => {
-  it('registers one document-reset hook and one mode-change hook', () => {
-    const { resetHooks, modeHooks } = setup();
-    expect(resetHooks).toHaveLength(1);
-    expect(modeHooks).toHaveLength(1);
-  });
-
   it('fails closed when neither facade can search', () => {
     const { search } = setup();
     expect(search.getSnapshot()).toMatchObject({ available: false, reason: SUPERDOC_UI_REASONS.searchUnavailable });

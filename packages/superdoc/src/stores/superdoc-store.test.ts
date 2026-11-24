@@ -216,16 +216,16 @@ describe('SuperDoc Store - Blob Support', () => {
       }
     });
 
-    it('should preserve blob type during conversion', async () => {
-      const blobType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      const blob = new Blob(['test content'], { type: blobType });
+    it('should retype a blob to the declared document type during conversion', async () => {
+      const blob = new Blob(['test content'], { type: 'application/zip' });
 
       const config = createTestConfig([{ data: blob, name: 'test.docx', type: DOCX }]);
 
       await store.init(config);
 
       const document = store.documents[0];
-      expect(document.data!.type).toBe(blobType);
+      expect(document.data).toBeInstanceOf(File);
+      expect(document.data!.type).toBe(DOCX);
     });
 
     it('should use document type if blob type is not available', async () => {
@@ -259,19 +259,6 @@ describe('SuperDoc Store - Blob Support', () => {
       expect(store.documents[1].data).toBeInstanceOf(File);
       if (!(store.documents[1].data instanceof File)) throw new Error('expected a File');
       expect(store.documents[1].data.name).toBe('blob.docx');
-    });
-
-    it('should handle blob instanceof checks correctly', () => {
-      const file = new File(['file content'], 'test.docx');
-      const blob = new Blob(['blob content']);
-
-      expect(file instanceof File).toBe(true);
-      expect(file instanceof Blob).toBe(true);
-      expect(blob instanceof File).toBe(false);
-      expect(blob instanceof Blob).toBe(true);
-
-      expect(blob instanceof Blob && !(blob instanceof File)).toBe(true);
-      expect(file instanceof Blob && !(file instanceof File)).toBe(false);
     });
   });
 

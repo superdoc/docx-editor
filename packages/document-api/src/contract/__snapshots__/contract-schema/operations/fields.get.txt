@@ -1,0 +1,69 @@
+{
+  "definition": {
+    "description": "Get detailed information about a specific field.",
+    "expectedResult": "Returns a FieldInfo object with the field's instruction, result text, and nesting data.",
+    "memberPath": "fields.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "fields/get.mdx",
+    "referenceGroup": "fields",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "blockId": {
+              "type": "string"
+            },
+            "fieldId": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "field"
+            },
+            "nestingDepth": {
+              "type": "integer"
+            },
+            "occurrenceIndex": {
+              "type": "integer"
+            },
+            "storyId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "blockId",
+            "occurrenceIndex"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

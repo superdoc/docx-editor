@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
-import { defineComponent, h } from 'vue';
+import { createApp, defineComponent, h, inject } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { useCommentsStore } from '../../../stores/comments-store.js';
 import { useSuperdocStore } from '../../../stores/superdoc-store.js';
@@ -9,7 +9,8 @@ vi.mock('./commentsList.vue', () => ({
   default: defineComponent({
     name: 'CommentsListStub',
     setup() {
-      return () => h('div', { class: 'comments-list-stub' });
+      const theme = inject('theme', 'no-theme');
+      return () => h('div', { class: 'comments-list-stub' }, theme);
     },
   }),
 }));
@@ -56,20 +57,10 @@ describe('SuperComments', () => {
   });
 
   it('inherits parent app provides when mounting inside an existing SuperDoc app', () => {
-    const parentProvides = { theme: 'shared-theme' };
-    const instance = new SuperComments(
-      { element },
-      {
-        ...superdocStub,
-        app: {
-          _context: {
-            provides: parentProvides,
-          },
-        },
-      },
-    );
+    const parentApp = createApp({}).provide('theme', 'shared-theme');
+    new SuperComments({ element }, { ...superdocStub, app: parentApp });
 
-    expect(Object.getPrototypeOf(instance.app._context.provides)).toBe(parentProvides);
+    expect(element.querySelector('.comments-list-stub')?.textContent).toBe('shared-theme');
   });
 
   it('resolves element via selector when no element is provided', () => {
@@ -88,67 +79,18 @@ describe('SuperComments', () => {
     expect(instance.element).toBeNull();
   });
 
-  it('holds both document-directory observers until close and publishes only ready snapshots', async () => {
-    const listeners = {};
-    const stops = { comments: vi.fn(), trackChanges: vi.fn() };
-    const handle = (family) => ({
-      observe: vi.fn((listener) => {
-        listeners[family] = listener;
-        listener({ listStatus: 'ready', items: [{ id: `${family}-window` }] });
-        return stops[family];
-      }),
-      getSnapshot: vi.fn(() => ({ listStatus: 'pending', items: [] })),
-    });
-    const commentsStore = {
-      isReviewDirectoryActive: false,
-      isReviewDirectoryLoading: false,
-      setReviewDirectoryFromV2: vi.fn(),
-      clearReviewDirectory: vi.fn(),
-    };
-    const instance = new SuperComments(
-      { element },
-      {
-        ...superdocStub,
-        commentsStore,
-        ui: {
-          comments: handle('comments'),
-          trackChanges: handle('trackChanges'),
-        },
-      },
-    );
-
-    listeners.comments({ listStatus: 'ready', items: [{ id: 'comment-directory' }] });
-    listeners.trackChanges({ listStatus: 'ready', items: [{ id: 'change-directory' }] });
-    expect(commentsStore.setReviewDirectoryFromV2).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        commentItems: [{ id: 'comment-directory' }],
-        trackedChangeItems: [{ id: 'change-directory' }],
-      }),
-    );
-    const stableItems = [{ id: 'stable-directory' }];
-    listeners.comments({ listStatus: 'ready', items: stableItems });
-    listeners.comments({ listStatus: 'ready', items: stableItems });
-    expect(commentsStore.setReviewDirectoryFromV2).toHaveBeenCalledTimes(5);
-    expect(commentsStore.isReviewDirectoryActive).toBe(true);
-
-    instance.close();
-    expect(stops.comments).toHaveBeenCalledTimes(1);
-    expect(stops.trackChanges).toHaveBeenCalledTimes(1);
-    expect(commentsStore.clearReviewDirectory).toHaveBeenCalledTimes(1);
-    expect(commentsStore.isReviewDirectoryActive).toBe(false);
-    await Promise.resolve();
-    expect(commentsStore.setReviewDirectoryFromV2).toHaveBeenCalledTimes(5);
-  });
-
-  it('drives the real Pinia comments store through open, ready snapshots and close', () => {
+  it('drives the real Pinia comments store through ready snapshots, then releases both observers on close', async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     useSuperdocStore().documents = [{ id: 'doc-1', type: 'docx' }];
     const commentsStore = useCommentsStore();
-    const readyHandle = (items) => ({
+    const listeners = {};
+    const stops = { comments: vi.fn(), trackChanges: vi.fn() };
+    const readyHandle = (family, items) => ({
       observe: vi.fn((listener) => {
+        listeners[family] = listener;
         listener({ listStatus: 'ready', items });
-        return vi.fn();
+        return stops[family];
       }),
       getSnapshot: vi.fn(() => ({ listStatus: 'pending', items: [] })),
     });
@@ -166,24 +108,42 @@ describe('SuperComments', () => {
         }),
       },
       ui: {
-        comments: readyHandle([{ id: 'directory-comment' }]),
-        trackChanges: readyHandle([{ id: 'directory-change' }]),
+        comments: readyHandle('comments', [{ id: 'directory-comment' }]),
+        trackChanges: readyHandle('trackChanges', [{ id: 'directory-change' }]),
       },
     };
+    const directoryIds = () => commentsStore.reviewDirectoryList.map((row) => row.commentId);
 
     const instance = new SuperComments({ element }, superdoc);
 
     expect(commentsStore.isReviewDirectoryActive).toBe(true);
     expect(commentsStore.isReviewDirectoryLoading).toBe(false);
-    expect(commentsStore.reviewDirectoryList.map((row) => row.commentId)).toEqual([
-      'directory-comment',
-      'directory-change',
-    ]);
+    expect(directoryIds()).toEqual(['directory-comment', 'directory-change']);
+
+    listeners.comments({ listStatus: 'ready', items: [{ id: 'comment-directory' }] });
+    listeners.trackChanges({ listStatus: 'ready', items: [{ id: 'change-directory' }] });
+    expect(directoryIds()).toEqual(['comment-directory', 'change-directory']);
+
+    listeners.comments({ listStatus: 'pending', items: [] });
+    expect(directoryIds()).toEqual(['comment-directory', 'change-directory']);
+    expect(commentsStore.isReviewDirectoryLoading).toBe(true);
+
+    const stableItems = [{ id: 'stable-directory' }];
+    listeners.comments({ listStatus: 'ready', items: stableItems });
+    const publishedRows = commentsStore.reviewDirectoryList;
+    expect(directoryIds()).toEqual(['stable-directory', 'change-directory']);
+    listeners.comments({ listStatus: 'ready', items: stableItems });
+    expect(commentsStore.reviewDirectoryList).toBe(publishedRows);
 
     instance.close();
 
+    expect(stops.comments).toHaveBeenCalledTimes(1);
+    expect(stops.trackChanges).toHaveBeenCalledTimes(1);
     expect(commentsStore.reviewDirectoryList).toEqual([]);
     expect(commentsStore.isReviewDirectoryActive).toBe(false);
+    expect(commentsStore.isReviewDirectoryLoading).toBe(false);
+    await Promise.resolve();
+    expect(commentsStore.reviewDirectoryList).toEqual([]);
     expect(commentsStore.isReviewDirectoryLoading).toBe(false);
   });
 

@@ -109,30 +109,11 @@ describe('content-control:click', () => {
     inline.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
     block.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-    await vi.waitFor(() => {
-      expect(payloads).toEqual([
-        {
-          source: 'pointer',
-          target: {
-            alias: 'Inline control',
-            controlType: 'checkbox',
-            id: 'inline-1',
-            scope: 'inline',
-            tag: 'inline-tag',
-          },
-        },
-        {
-          source: 'pointer',
-          target: {
-            alias: 'Block control',
-            controlType: 'richText',
-            id: 'block-1',
-            scope: 'block',
-            tag: 'block-tag',
-          },
-        },
-      ]);
-    });
+    await vi.waitFor(() => expect(payloads).toHaveLength(2));
+    const recorded = payloads.map((payload, index) => `click ${index + 1}: ${JSON.stringify(payload, null, 2)}`);
+    await expect(`${recorded.join('\n')}\n`).toMatchFileSnapshot(
+      './__snapshots__/content-control-click/innermost-control-payloads.txt',
+    );
   });
 
   it('does not report programmatic focus as a content-control click', async () => {

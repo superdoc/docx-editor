@@ -516,6 +516,7 @@ export type ResolvedListMarkerItem = {
   textStartPx?: number;
   /** Marker text content (e.g., "1.", "a)", bullet). */
   text: string;
+  originalMarkerLength?: number;
   /** Horizontal justification. */
   justification: 'left' | 'right' | 'center';
   /** Suffix type after marker. */

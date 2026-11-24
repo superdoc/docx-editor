@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "lineBreak"
+    },
+    "lineBreak": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "lineBreak"
+  ],
+  "type": "object"
+}

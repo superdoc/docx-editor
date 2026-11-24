@@ -233,11 +233,14 @@ describe('usePasswordPrompt', () => {
 
     expect(manager.open).toHaveBeenCalledTimes(1);
 
-    // Settle as closed
     manager.settle({ status: 'closed', reason: 'user-cancelled' });
-
-    // Should not throw, and activePrompt should clear
     await new Promise((r) => setTimeout(r, 0));
+
+    prompt.handleEncryptionError(makeDoc('doc-2'), 'DOCX_PASSWORD_REQUIRED');
+    await vi.dynamicImportSettled();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(manager.open).toHaveBeenCalledTimes(2);
   });
 
   // ---- destroy cleanup -----------------------------------------------------

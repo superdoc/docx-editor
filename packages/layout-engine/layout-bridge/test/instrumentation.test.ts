@@ -5,7 +5,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vite-plus/test';
-import { PageTokenLogger, HeaderFooterCacheLogger, MetricsCollector } from '../src/instrumentation';
+import { MetricsCollector } from '../src/instrumentation';
+
+const loadWithDebugFlagsOff = async () => {
+  vi.stubEnv('SD_DEBUG_PAGE_TOKENS', '0');
+  vi.stubEnv('SD_DEBUG_HF_CACHE', '0');
+  vi.resetModules();
+  return import('../src/instrumentation');
+};
 
 describe('Instrumentation', () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -17,31 +24,32 @@ describe('Instrumentation', () => {
   });
 
   afterEach(() => {
-    consoleLogSpy.mockRestore();
-    consoleWarnSpy.mockRestore();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 
   describe('PageTokenLogger', () => {
-    it('should have log methods that can be called', () => {
-      // Just verify the logger has the expected methods
+    it('prints nothing while SD_DEBUG_PAGE_TOKENS is off', async () => {
+      const { PageTokenLogger } = await loadWithDebugFlagsOff();
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
       PageTokenLogger.logIterationStart(0, 10);
       PageTokenLogger.logAffectedBlocks(0, new Set(['block1', 'block2']));
       PageTokenLogger.logConvergence(1, true, 100);
       PageTokenLogger.logRemeasure(5, 20);
-
-      // Methods should not throw errors
-      expect(true).toBe(true);
-    });
-
-    it('should have logError method', () => {
       PageTokenLogger.logError('block1', new Error('test'));
-      // Should not throw
-      expect(true).toBe(true);
+
+      expect(consoleLogSpy).not.toHaveBeenCalled();
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
   });
 
   describe('HeaderFooterCacheLogger', () => {
-    it('should have log methods that can be called', () => {
+    it('prints nothing while SD_DEBUG_HF_CACHE is off', async () => {
+      const { HeaderFooterCacheLogger } = await loadWithDebugFlagsOff();
+
       HeaderFooterCacheLogger.logCacheHit('default', 5, 'd1');
       HeaderFooterCacheLogger.logCacheMiss('default', 50, 'd2');
       HeaderFooterCacheLogger.logInvalidation('test', ['block1']);
@@ -57,8 +65,8 @@ describe('Instrumentation', () => {
       });
       HeaderFooterCacheLogger.logBucketingDecision(150, true, ['d1', 'd2']);
 
-      // Should not throw
-      expect(true).toBe(true);
+      expect(consoleLogSpy).not.toHaveBeenCalled();
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
     });
   });
 

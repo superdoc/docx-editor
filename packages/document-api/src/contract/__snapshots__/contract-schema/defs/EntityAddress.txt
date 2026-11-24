@@ -1,0 +1,10 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/CommentAddress"
+    },
+    {
+      "$ref": "#/$defs/TrackedChangeAddress"
+    }
+  ]
+}

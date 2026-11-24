@@ -14,34 +14,110 @@ const publicEntries = [
   'collaboration-validation',
   'collaboration-worker',
 ];
+const countsFromRepositorySources = [
+  /(Emitted )\d+( shared\/common declarations)/g,
+  /(Fixed )\d+( import paths in )\d+( \.d\.ts files)/g,
+  /(Scanned: )\d+( declaration files)/g,
+];
+const relocatedSharedCommonDeclarations = [
+  'shared/common/event-types.d.ts',
+  'shared/common/comments-types.d.ts',
+  'shared/common/Telemetry.d.ts',
+  'shared/common/helpers/v-click-outside.d.ts',
+];
 const distRoots: string[] = [];
 
-function seedDist(files: Record<string, string>, { withEntries = true } = {}) {
+interface SeededDist {
+  distRoot: string;
+  input: Record<string, string>;
+}
+
+interface ScriptRun {
+  script: string;
+  status: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+function seedDist(files: Record<string, string>, { withEntries = true } = {}): SeededDist {
   const distRoot = mkdtempSync(path.join(tmpdir(), 'superdoc-ensure-types-test-'));
   distRoots.push(distRoot);
   const entries: Record<string, string> = withEntries
     ? {
         'superdoc/src/public/index.d.ts': 'declare class SuperDoc {}\nexport { SuperDoc };\n',
         ...Object.fromEntries(publicEntries.map((entry) => [`superdoc/src/public/${entry}.d.ts`, 'export {};\n'])),
+        'superdoc/src/public/collaboration.d.ts':
+          'export declare function resolveCollaborationRoomName(documentId: string): string;\n',
       }
     : {};
-  for (const [file, content] of Object.entries({ ...entries, ...files })) {
+  const input = { ...entries, ...files };
+  for (const [file, content] of Object.entries(input)) {
     mkdirSync(path.dirname(path.join(distRoot, file)), { recursive: true });
     writeFileSync(path.join(distRoot, file), content);
   }
-  return distRoot;
+  return { distRoot, input };
 }
 
-function run(script: string, distRoot: string) {
+function normalize(text: string, distRoot: string) {
+  const withoutPaths = text.split(path.relative(process.cwd(), distRoot)).join('<dist>').split(distRoot).join('<dist>');
+  return countsFromRepositorySources.reduce(
+    (current, pattern) => current.replace(pattern, (_match, ...parts: unknown[]) => parts.slice(0, -2).join('<n>')),
+    withoutPaths,
+  );
+}
+
+function run(script: string, distRoot: string): ScriptRun {
   const result = spawnSync(process.execPath, [path.join(scriptsDir, script)], {
     encoding: 'utf8',
     env: { ...process.env, SUPERDOC_PUBLIC_NPM_OUT_DIR: distRoot, SUPERDOC_AUDIT_INFORMATIONAL: '' },
   });
-  return { status: result.status, output: `${result.stdout}${result.stderr}` };
+  return {
+    script,
+    status: result.status,
+    stdout: normalize(result.stdout, distRoot),
+    stderr: normalize(result.stderr, distRoot),
+  };
 }
 
-function read(distRoot: string, file: string) {
-  return readFileSync(path.join(distRoot, file), 'utf8');
+function fileSections(heading: string, files: Record<string, string>) {
+  return [heading, ...Object.entries(files).map(([file, content]) => `--- ${file}\n${content}`)].join('\n');
+}
+
+function record(
+  seeded: SeededDist,
+  runs: ScriptRun[],
+  { outputFiles = [], expectedFiles = [] }: { outputFiles?: string[]; expectedFiles?: string[] } = {},
+) {
+  const sections = [
+    fileSections('== input files', seeded.input),
+    ...runs.map((step) =>
+      [
+        `== $ node ${step.script}`,
+        `exit code: ${step.status}`,
+        `-- stdout\n${step.stdout}`,
+        `-- stderr\n${step.stderr}`,
+      ].join('\n'),
+    ),
+  ];
+  if (outputFiles.length > 0) {
+    sections.push(
+      fileSections(
+        '== output files',
+        Object.fromEntries(outputFiles.map((file) => [file, readFileSync(path.join(seeded.distRoot, file), 'utf8')])),
+      ),
+    );
+  }
+  if (expectedFiles.length > 0) {
+    sections.push(
+      [
+        '== emitted declarations',
+        ...expectedFiles.map(
+          (file) => `${file}: ${existsSync(path.join(seeded.distRoot, file)) ? 'present' : 'missing'}`,
+        ),
+      ].join('\n'),
+    );
+  }
+  return `${sections.join('\n')}\n`;
 }
 
 afterEach(() => {
@@ -49,8 +125,8 @@ afterEach(() => {
 });
 
 describe('ensure-types shared/common relocation', () => {
-  it('rewrites each imported name to the file that declares it', () => {
-    const distRoot = seedDist({
+  it('rewrites each imported name to the file that declares it', async () => {
+    const seeded = seedDist({
       'superdoc/src/public/index.d.ts':
         "import { DOCX, CommentEvent } from '@superdoc/common';\ndeclare class SuperDoc {}\nexport type RootEvent = CommentEvent;\nexport { SuperDoc, DOCX };\n",
       'superdoc/src/components/CommentsLayer/use-comment.d.ts':
@@ -61,63 +137,47 @@ describe('ensure-types shared/common relocation', () => {
         "import { vClickOutside as clickOutside } from '@superdoc/common';\nexport type Directive = typeof clickOutside;\n",
     });
 
-    const result = run('ensure-types.cjs', distRoot);
-    expect(result.status, result.output).toBe(0);
-
-    const index = read(distRoot, 'superdoc/src/public/index.d.ts');
-    expect(index).toContain(
-      "declare const DOCX: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';",
-    );
-    expect(index).toContain("import { CommentEvent } from '../../../shared/common/event-types.js';");
-    expect(index).not.toContain('@superdoc/common');
-
-    expect(read(distRoot, 'superdoc/src/components/CommentsLayer/use-comment.d.ts')).toContain(
-      "import { CommentEvent } from '../../../../shared/common/event-types.js';\nimport { Comment as CommonComment } from '../../../../shared/common/comments-types.js';",
-    );
-    expect(read(distRoot, 'superdoc/src/core/document-open-telemetry.d.ts')).toContain(
-      "import('../../../shared/common/Telemetry.js').Telemetry",
-    );
-    expect(read(distRoot, 'superdoc/src/core/create-app.d.ts')).toContain(
-      "import { default as clickOutside } from '../../../shared/common/helpers/v-click-outside.js';",
-    );
-    for (const file of ['event-types.d.ts', 'comments-types.d.ts', 'Telemetry.d.ts', 'helpers/v-click-outside.d.ts']) {
-      expect(existsSync(path.join(distRoot, 'shared/common', file)), file).toBe(true);
-    }
-
-    const audit = run('audit-declarations.cjs', distRoot);
-    expect(audit.status, audit.output).toBe(0);
-    expect(audit.output).toContain('OK    shared/common specifiers');
+    const runs = [run('ensure-types.cjs', seeded.distRoot), run('audit-declarations.cjs', seeded.distRoot)];
+    await expect(
+      record(seeded, runs, {
+        outputFiles: [
+          'superdoc/src/public/index.d.ts',
+          'superdoc/src/public/collaboration.d.cts',
+          'superdoc/src/components/CommentsLayer/use-comment.d.ts',
+          'superdoc/src/core/document-open-telemetry.d.ts',
+          'superdoc/src/core/create-app.d.ts',
+        ],
+        expectedFiles: relocatedSharedCommonDeclarations,
+      }),
+    ).toMatchFileSnapshot('./__snapshots__/ensure-types/relocates-shared-common-imports.txt');
   }, 120_000);
 
-  it('fails with the file and symbol when shared/common does not export a name', () => {
-    const distRoot = seedDist({
+  it('fails with the file and symbol when shared/common does not export a name', async () => {
+    const seeded = seedDist({
       'superdoc/src/core/collaboration/helpers.d.ts':
         "import { NotACommonExport } from '../../../../../shared/common';\nexport type Missing = NotACommonExport;\n",
     });
 
-    const result = run('ensure-types.cjs', distRoot);
-    expect(result.status).toBe(1);
-    expect(result.output).toContain(
-      "superdoc/src/core/collaboration/helpers.d.ts: 'NotACommonExport' is not exported by shared/common/index.ts",
+    await expect(record(seeded, [run('ensure-types.cjs', seeded.distRoot)])).toMatchFileSnapshot(
+      './__snapshots__/ensure-types/unknown-shared-common-export.txt',
     );
   }, 120_000);
 
-  it('fails when an import does not name the symbols it takes', () => {
-    const distRoot = seedDist({
+  it('fails when an import does not name the symbols it takes', async () => {
+    const seeded = seedDist({
       'superdoc/src/core/collaboration/helpers.d.ts':
         "import * as common from '../../../../../shared/common';\nexport type Event = common.CommentEvent;\n",
     });
 
-    const result = run('ensure-types.cjs', distRoot);
-    expect(result.status).toBe(1);
-    expect(result.output).toContain('superdoc/src/core/collaboration/helpers.d.ts');
-    expect(result.output).toContain('must name each symbol');
+    await expect(record(seeded, [run('ensure-types.cjs', seeded.distRoot)])).toMatchFileSnapshot(
+      './__snapshots__/ensure-types/namespace-import.txt',
+    );
   }, 120_000);
 });
 
 describe('audit-declarations shared/common rule', () => {
-  it('fails on shared/common specifiers that do not resolve to an emitted declaration', () => {
-    const distRoot = seedDist(
+  it('fails on shared/common specifiers that do not resolve to an emitted declaration', async () => {
+    const seeded = seedDist(
       {
         'shared/common/event-types.d.ts': 'export type CommentEvent = string;\n',
         'superdoc/src/ok.d.ts':
@@ -129,11 +189,8 @@ describe('audit-declarations shared/common rule', () => {
       { withEntries: false },
     );
 
-    const result = run('audit-declarations.cjs', distRoot);
-    expect(result.status).toBe(1);
-    expect(result.output).toContain('unrelocated-shared-common');
-    expect(result.output).toContain('superdoc/src/bare.d.ts: ../../shared/common');
-    expect(result.output).toContain('superdoc/src/missing.d.ts: ../../shared/common/missing.js');
-    expect(result.output).not.toContain('superdoc/src/ok.d.ts');
+    await expect(record(seeded, [run('audit-declarations.cjs', seeded.distRoot)])).toMatchFileSnapshot(
+      './__snapshots__/ensure-types/unresolved-shared-common.txt',
+    );
   });
 });

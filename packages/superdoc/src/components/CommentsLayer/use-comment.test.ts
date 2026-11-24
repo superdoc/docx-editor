@@ -124,4 +124,22 @@ describe('use-comment', () => {
 
     expect(comment.getValues().customAttributes).toEqual(customAttributes);
   });
+
+  it('reads comment bodies as HTML unless the input says they are plain text', () => {
+    expect(useComment({ commentId: 'legacy', commentText: '<p>x</p>' }).getValues().commentFormat).toBe('html');
+    expect(useComment({ commentId: 'v2', commentText: '<b>', commentFormat: 'text' }).getValues().commentFormat).toBe(
+      'text',
+    );
+  });
+
+  it('keeps the text format through a getValues round trip', () => {
+    const original = useComment({ commentId: 'v2', commentText: 'a < b', commentFormat: 'text' });
+    expect(useComment(original.getValues()).commentFormat).toBe('text');
+  });
+
+  it('treats setText input as HTML for the sanitizing renderer', () => {
+    const comment = useComment({ commentId: 'v2', commentText: 'plain', commentFormat: 'text' });
+    comment.setText({ text: '<p><b>rich</b></p>', suppressUpdate: true });
+    expect(comment.getValues()).toMatchObject({ commentText: '<p><b>rich</b></p>', commentFormat: 'html' });
+  });
 });

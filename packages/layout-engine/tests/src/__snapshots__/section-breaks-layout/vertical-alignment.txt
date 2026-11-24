@@ -1,0 +1,9 @@
+page 1 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=center baseMargins={top=96 bottom=96} sectionIndex=0 sectionRefs={-}
+  "Centered 1" x=96 y=508
+  "Centered 2" x=96 y=528
+page 2 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=bottom baseMargins={top=96 bottom=96} sectionIndex=1 sectionRefs={-}
+  "Bottom" x=96 y=940
+page 3 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=both baseMargins={top=96 bottom=96} sectionIndex=2 sectionRefs={-}
+  "Both" x=96 y=518
+page 4 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=3 sectionRefs={-}
+  "Top" x=96 y=96

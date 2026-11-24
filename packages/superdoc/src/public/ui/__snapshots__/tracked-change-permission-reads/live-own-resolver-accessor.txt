@@ -1,0 +1,11 @@
+resolver denies:
+  accept enabled: false
+  integrator calls per decision:
+read permissionResolver -> read permissionResolver -> permissionResolver({"permission":"REJECT_OWN","defaultDecision":true,"comment":{"commentId":"context-row","author":"Stored author"}}) = false
+read permissionResolver -> read permissionResolver -> permissionResolver({"permission":"RESOLVE_OWN","defaultDecision":true,"comment":{"commentId":"context-row","author":"Stored author"}}) = false
+
+resolver allows:
+  accept enabled: true
+  integrator calls per decision:
+read permissionResolver -> read permissionResolver -> permissionResolver({"permission":"REJECT_OWN","defaultDecision":true,"comment":{"commentId":"context-row","author":"Stored author"}}) = true
+read permissionResolver -> read permissionResolver -> permissionResolver({"permission":"RESOLVE_OWN","defaultDecision":true,"comment":{"commentId":"context-row","author":"Stored author"}}) = true

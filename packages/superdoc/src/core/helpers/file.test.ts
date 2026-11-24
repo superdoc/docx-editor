@@ -231,7 +231,6 @@ describe('normalizeDocumentEntry', () => {
     expect(out).toMatchObject({ type: DOCX, name: 'contract.docx', password: 'secret' });
     expect(out.data).toBeInstanceOf(Uint8Array);
     expect(out.data).toBe(data);
-    expect(out.data).toEqual(data);
   });
 
   it.each([

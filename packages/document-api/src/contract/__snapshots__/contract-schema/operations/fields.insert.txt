@@ -1,0 +1,221 @@
+{
+  "definition": {
+    "description": "Insert a raw field code at a target location, optionally preserving cached result text.",
+    "expectedResult": "Returns a FieldMutationResult indicating success with the field address or a failure.",
+    "memberPath": "fields.insert",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "fields/insert.mdx",
+    "referenceGroup": "fields",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/TextTarget"
+        },
+        "cachedResultText": {
+          "type": "string"
+        },
+        "instruction": {
+          "type": "string"
+        },
+        "mode": {
+          "const": "raw"
+        },
+        "updatePolicy": {
+          "enum": [
+            "rebuild",
+            "preserveCached"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "at",
+        "instruction"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "field": {
+              "additionalProperties": false,
+              "properties": {
+                "blockId": {
+                  "type": "string"
+                },
+                "fieldId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "field"
+                },
+                "nestingDepth": {
+                  "type": "integer"
+                },
+                "occurrenceIndex": {
+                  "type": "integer"
+                },
+                "storyId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "blockId",
+                "occurrenceIndex"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "field": {
+          "additionalProperties": false,
+          "properties": {
+            "blockId": {
+              "type": "string"
+            },
+            "fieldId": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "field"
+            },
+            "nestingDepth": {
+              "type": "integer"
+            },
+            "occurrenceIndex": {
+              "type": "integer"
+            },
+            "storyId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "blockId",
+            "occurrenceIndex"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "field"
+      ],
+      "type": "object"
+    }
+  }
+}

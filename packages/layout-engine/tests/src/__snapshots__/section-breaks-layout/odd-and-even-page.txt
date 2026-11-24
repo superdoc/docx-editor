@@ -1,0 +1,10 @@
+page 1 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=0 sectionRefs={-}
+  "Page one" x=96 y=96
+page 2 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=0 sectionRefs={-}
+page 3 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=1 sectionRefs={-}
+  "Odd section" x=96 y=96
+page 4 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=2 sectionRefs={-}
+  "Even section" x=96 y=96
+page 5 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=2 sectionRefs={-}
+page 6 size=- orientation=- margins={top=96 bottom=96 left=96 right=96 header=48 footer=48} vAlign=- baseMargins={top=96 bottom=96} sectionIndex=3 sectionRefs={-}
+  "Last even section" x=96 y=96

@@ -79,12 +79,12 @@ function createDeferredSearchHost() {
   // is exactly how the first version of this file "covered" both replace paths.
   const editCommands = {
     search: editSearch,
-    getSnapshot: () => ({
+    getSnapshot: vi.fn(() => ({
       commands: {
         'find.replace': { enabled: true, supported: true },
         'find.replaceAll': { enabled: true, supported: true },
       },
-    }),
+    })),
   };
   const superdoc: Record<string, unknown> = {
     activeEditor: { id: 'first', editorVersion: 2, editCommands },
@@ -98,6 +98,11 @@ function createDeferredSearchHost() {
   return {
     superdoc,
     editSearch,
+    editorReads: () => ({
+      getState: editSearch.getState.mock.calls.length,
+      query: editSearch.query.mock.calls.length,
+      getSnapshot: editCommands.getSnapshot.mock.calls.length,
+    }),
     emit: (event: string) => {
       for (const handler of [...(listeners.get(event) ?? [])]) handler();
     },
@@ -296,17 +301,17 @@ describe.each(CONTINUATIONS)('search.%s() settling late', (continuation) => {
     ui.destroy();
   });
 
-  it('does not write after the controller is destroyed', async () => {
+  it('does not read the old editor when it settles after the controller is destroyed', async () => {
     const harness = createDeferredSearchHost();
     const ui = createSuperDocUI({ superdoc: harness.superdoc as never });
     openSession(ui);
     invoke(ui, continuation);
 
-    const emitted = observeTotals(ui);
     ui.destroy();
+    const readsAtDestroy = harness.editorReads();
 
     await harness.settleAllWithStaleMatches();
 
-    expect(emitted()).not.toContain(STALE_TOTAL);
+    expect(harness.editorReads()).toEqual(readsAtDestroy);
   });
 });

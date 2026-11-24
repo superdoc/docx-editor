@@ -1,0 +1,15 @@
+input:
+{
+  "v2Collaboration": {
+    "documentId": "room-1",
+    "serverUrl": "wss://collab.example.com",
+    "createIfMissing": true
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "invalid-room-mode",
+  "message": "SuperDoc v2 collaboration createIfMissing has been removed. Use roomMode: \"create\" for creation or roomMode: \"join\" for normal opens."
+}

@@ -1,0 +1,79 @@
+{
+  "definition": {
+    "description": "Retrieve a specific list node by target. Pass the address `lists.list` returned; its `story` locates items outside the main body.",
+    "expectedResult": "Returns a ListItemInfo object with the item kind, level, marker, and address.",
+    "memberPath": "lists.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "lists/get.mdx",
+    "referenceGroup": "lists",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/ListItemAddress"
+        }
+      },
+      "required": [
+        "address"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/ListItemAddress"
+        },
+        "kind": {
+          "enum": [
+            "ordered",
+            "bullet"
+          ]
+        },
+        "level": {
+          "type": "integer"
+        },
+        "listId": {
+          "type": "string"
+        },
+        "marker": {
+          "type": "string"
+        },
+        "ordinal": {
+          "type": "integer"
+        },
+        "path": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "address",
+        "listId"
+      ],
+      "type": "object"
+    }
+  }
+}

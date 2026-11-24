@@ -1,0 +1,13 @@
+step: mount after the source completed
+  read doc.comments.list() -> [c-1]
+  read doc.trackChanges.list({"in":"all"}) -> [tc-a] (partial coverage)
+  read doc.trackChanges.list({"in":"all"}) -> [tc-a, tc-b]
+  read doc.contentControls.list() -> []
+  read doc.trackChanges.list({"in":"all"}) -> [tc-a, tc-b]
+  comments: ready [c-1]
+  trackChanges: ready [tc-a, tc-b]
+
+step: input stays idle for 6500ms
+  no reads
+  comments: ready [c-1]
+  trackChanges: ready [tc-a, tc-b]

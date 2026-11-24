@@ -1,0 +1,77 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`resolveSdtMetadata records normalized field annotation metadata 1`] = `
+{
+  "alias": "Customer Name",
+  "borderColor": undefined,
+  "defaultDisplayLabel": "Customer",
+  "displayLabel": "Customer",
+  "extras": {
+    "foo": "bar",
+  },
+  "fieldColor": "#ff00ff",
+  "fieldId": "field-123",
+  "fieldType": undefined,
+  "fontFamily": "Calibri",
+  "fontSize": "12pt",
+  "formatting": {
+    "bold": true,
+    "underline": true,
+  },
+  "generatorIndex": 2,
+  "hash": "abc123",
+  "hidden": false,
+  "highlighted": false,
+  "imageSrc": null,
+  "isLocked": true,
+  "linkUrl": "https://example.com",
+  "marks": undefined,
+  "multipleImage": true,
+  "rawHtml": {
+    "html": "<p>hello</p>",
+  },
+  "sdtId": "456",
+  "size": {
+    "height": 32,
+    "width": 120,
+  },
+  "textColor": "#333333",
+  "textHighlight": "#ffff00",
+  "type": "fieldAnnotation",
+  "variant": "text",
+  "visibility": "hidden",
+}
+`;
+
+exports[`resolveSdtMetadata handles field annotation with minimal attrs (only fieldId) 1`] = `
+{
+  "alias": undefined,
+  "borderColor": undefined,
+  "defaultDisplayLabel": undefined,
+  "displayLabel": undefined,
+  "extras": null,
+  "fieldColor": undefined,
+  "fieldId": "MINIMAL_FIELD",
+  "fieldType": undefined,
+  "fontFamily": null,
+  "fontSize": null,
+  "formatting": undefined,
+  "generatorIndex": null,
+  "hash": null,
+  "hidden": false,
+  "highlighted": true,
+  "imageSrc": null,
+  "isLocked": false,
+  "linkUrl": null,
+  "marks": undefined,
+  "multipleImage": false,
+  "rawHtml": undefined,
+  "sdtId": null,
+  "size": null,
+  "textColor": null,
+  "textHighlight": null,
+  "type": "fieldAnnotation",
+  "variant": undefined,
+  "visibility": undefined,
+}
+`;

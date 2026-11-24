@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "borders": {
+      "$ref": "#/$defs/SDInboundCellBorders"
+    },
+    "padding": {
+      "$ref": "#/$defs/SDInboundCellPadding"
+    },
+    "shading": {
+      "$ref": "#/$defs/SDInboundColor"
+    },
+    "verticalAlign": {
+      "enum": [
+        "top",
+        "center",
+        "bottom"
+      ]
+    }
+  },
+  "type": "object"
+}

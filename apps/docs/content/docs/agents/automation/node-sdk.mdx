@@ -153,6 +153,34 @@ created for this open request. Per-open token authentication is not supported fo
 
 To initialize a new room from a DOCX, set `roomMode: 'create'` for one worker. Later SDK sessions and editors use `roomMode: 'join'`. If multiple backend workers can start the same document, [coordinate room creation](/editor/collaboration/coordinate-room-creation) in your backend and collaboration server before calling `create`.
 
+### Plan memory for collaborative work
+
+Direct creation from a DOCX is the supported initialization path. Creating a blank room and calling `replaceFile()`
+is also a document replacement: it changes the room for every participant. It is not a recovery step for an
+unsuccessful join or an existing room with edits. The two paths share the document bootstrap; neither avoids loading
+the document engine, media, and collaboration state.
+
+One open handle retains a document session even while it is idle. A second SDK join opens another session; it does
+not borrow the first handle's engine. Reuse a handle throughout a batch, then close it when the workflow finishes.
+For infrequent backend work, join an existing room for the batch instead of keeping an SDK session open between
+batches. Save any required DOCX output and confirm the required server or storage boundary before closing. Use
+`close({ discard: true })` when the local source file should remain unchanged, and call `client.dispose()` when the
+worker no longer needs its host process. Browser viewers remain separate participants, and the server still needs
+[room storage](/editor/collaboration/save-and-restore-a-room) after everyone disconnects.
+
+There is no universal DOCX-size limit or fixed memory allowance per room. Compressed file size and encoded room
+size do not measure engine memory: uncompressed XML, media, document structure, and the number of open sessions all
+matter. Profile the SDK caller and its host descendants separately from the collaboration server and browsers.
+Measure seeding, an independent join, the intended edit batch, export, idle retention, and repeated close/reopen
+cycles. Closing a session releases its context; the host's allocator may retain memory for reuse, so RSS remaining
+above its starting value alone does not establish a leak.
+
+Limit concurrent seeding, editing, and exports using measured peaks with headroom for already open sessions and
+server storage. A larger timeout does not reduce memory or the WebSocket message size. Configure transport payload
+limits for the actual synchronized state, and isolate expensive backend jobs so one oversized document cannot
+exhaust the collaboration service. Retest the largest representative XML-heavy and media-heavy documents before
+choosing production limits.
+
 ### When an opened room is ready to read
 
 When `client.open()` resolves for a Hocuspocus or y-websocket room, the document already holds everything the collaboration

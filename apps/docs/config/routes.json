@@ -8,6 +8,7 @@
     "/agents/build/actions/",
     "/agents/build/build-an-agent/",
     "/agents/build/custom-actions/",
+    "/agents/build/full-preset/",
     "/agents/build/legacy-tools/",
     "/agents/build/providers/",
     "/agents/build/skills/",

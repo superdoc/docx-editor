@@ -541,8 +541,14 @@ export function normalizeUiConfig(config: UiConfigSource = {}): NormalizedUiConf
   const linkPopoverResolver = linkPopoverSuppressed
     ? undefined
     : firstDefined(options('linkPopover').popoverResolver, config.modules?.links?.popoverResolver);
+  const contentControlsOptions = options('contentControls');
   const contentControlsEnabled =
-    explicit('contentControls') ?? (!allDisabled && config.modules?.contentControls?.chrome !== 'none');
+    typeof contentControlsOptions.enabled === 'boolean'
+      ? contentControlsOptions.enabled
+      : (explicit('contentControls') ?? (!allDisabled && config.modules?.contentControls?.chrome !== 'none'));
+  const contentControlPresentations = Array.isArray(contentControlsOptions.presentations)
+    ? { presentations: contentControlsOptions.presentations }
+    : {};
   // `'none'` is the legacy disable sentinel, not a style, and `enabled` above
   // has already consumed it. Carrying it forward as a style would let a
   // leftover legacy value outrank an explicit `ui.contentControls` opt-in.
@@ -764,11 +770,13 @@ export function normalizeUiConfig(config: UiConfigSource = {}): NormalizedUiConf
       // `undefined` means "keep the engine default", which draws chrome.
       // An absent `chrome` on an enabled surface stays absent for that reason.
       //
-      // Nothing else survives the disabled branch: options only exist when
-      // `ui.contentControls` is an object, and that spelling always enables.
       options: contentControlsEnabled
-        ? mergeDefined({ chrome: legacyContentControlsChrome }, options('contentControls'))
-        : { chrome: 'none' },
+        ? mergeDefined(
+            { chrome: legacyContentControlsChrome },
+            { chrome: contentControlsOptions.chrome },
+            contentControlPresentations,
+          )
+        : { chrome: 'none', ...contentControlPresentations },
     },
   };
 }

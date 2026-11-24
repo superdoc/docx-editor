@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "trackedChange",
+      "description": "Optional discriminator. Omit it for the Labs-compatible { trackedChangeId } shape."
+    },
+    "side": {
+      "description": "Which revision side to anchor the comment on. Optional for grouped replacements (defaults to inserted) and paired moves (defaults to destination); required for separate replacements where both sides are reviewed independently.",
+      "enum": [
+        "inserted",
+        "deleted",
+        "source",
+        "destination"
+      ]
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    },
+    "trackedChangeId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "trackedChangeId"
+  ],
+  "type": "object"
+}

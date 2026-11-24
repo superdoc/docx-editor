@@ -1,0 +1,488 @@
+{
+  "definition": {
+    "description": "Accept or reject tracked changes by logical id, by several logical ids atomically, by selected text range, by logical anchor range ({ anchor, relativeStart, relativeEnd }), or every active change in the document. Range targets may include overlap / side selectors and may partially resolve a change, splitting surviving content into new fragments with stable ids. Legacy `{ id, range: { kind: \"partial\", ... } }` targets are promoted only when the active adapter supports `decide()`; legacy fallback adapters fail closed with `INVALID_INPUT`. `input.expectedRevision` is accepted as a compatibility alias for mutation options.",
+    "expectedResult": "Returns a Receipt. `removed` lists retired tracked-change ids; `inserted` lists successor fragment ids produced by partial range splits; `invalidatedRefs` lists every retired tracked-change ref plus cascade-deleted comment ids; `remappedRefs` carries surviving comment anchors moved by the decision; `affectedStories` lists touched stories; `textRangeShifts` reports per-story visible-text deltas; `txId` correlates with history. Formatting, structural and paired move changes are decided by id. Unpaired move sides are decided independently by id: move-from behaves like deletion and move-to like insertion. Failures: SPAN_FRAGMENTED when a range crosses an indivisible boundary; CAPABILITY_UNAVAILABLE for ambiguous mirrored text-box revisions by id, mirrored text-box revisions targeted by range or replacement side, textbox-scoped or inherited header/footer bulk decisions, range targets over changes that are not text insertions or deletions, and permissionResolver denials of an id or range target; TARGET_NOT_FOUND for unknown ids or a range with no overlapping text revision (formatting-only changes are not range targets); NO_OP for an id already resolved by an id or bulk decision (an id retired by a range decision returns TARGET_NOT_FOUND); STALE_REVISION for stale expectedRevision; REVISION_MISMATCH for stale range coverage. { kind: 'all' } skips changes permissionResolver denies and succeeds with an empty receipt when nothing is decidable.",
+    "intentAction": "decide",
+    "intentGroup": "track_changes",
+    "memberPath": "trackChanges.decide",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "INVALID_INPUT",
+        "INVALID_TARGET",
+        "TARGET_NOT_FOUND",
+        "CAPABILITY_UNAVAILABLE",
+        "PERMISSION_DENIED",
+        "PRECONDITION_FAILED",
+        "COMMENT_CASCADE_PARTIAL",
+        "SPAN_FRAGMENTED",
+        "STALE_REVISION",
+        "REVISION_MISMATCH"
+      ],
+      "returnsReceipt": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT",
+          "INVALID_TARGET"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "track-changes/decide.mdx",
+    "referenceGroup": "trackChanges",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_INPUT",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE",
+                "PERMISSION_DENIED",
+                "PRECONDITION_FAILED",
+                "COMMENT_CASCADE_PARTIAL",
+                "SPAN_FRAGMENTED",
+                "STALE_REVISION",
+                "REVISION_MISMATCH"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "commentRetention": {
+          "const": "point",
+          "description": "Keep erased comment anchors as points instead of deleting their threads.",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "accept",
+            "reject"
+          ]
+        },
+        "expectedRevision": {
+          "description": "Backward-compatible alias for options.expectedRevision. Explicit mutation options take precedence when both are supplied.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Decision target. Canonical shapes: { kind: 'id', id, story? } (one whole logical tracked change), { kind: 'ids', ids } (several whole logical tracked changes in one atomic history unit), { kind: 'range', range: TextTarget, coordinateSpace?, overlap?, side?, story?, part? } or { kind: 'range', range: { anchor, relativeStart, relativeEnd }, overlap?, side?, story?, part? } (resolves only the selected overlap; may split fragments), { kind: 'all' } (every active tracked change). Legacy { id, story? } / { id, range: { kind: 'partial', start, end } } / { scope: 'all' } shapes are accepted and transparently promoted to canonical targets.",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "id"
+                },
+                "moveRole": {
+                  "description": "Optional move pairing assertion. 'pair' requires the resolved tracked change to be a paired move; 'source' / 'destination' further narrow to a specific half. When the assertion does not hold the decide adapter fails closed.",
+                  "enum": [
+                    "pair",
+                    "source",
+                    "destination"
+                  ]
+                },
+                "side": {
+                  "enum": [
+                    "insert",
+                    "inserted",
+                    "delete",
+                    "deleted"
+                  ]
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "kind",
+                "id"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "ids": {
+                  "description": "Logical tracked-change ids resolved atomically in one decision and history unit.",
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "kind": {
+                  "const": "ids"
+                }
+              },
+              "required": [
+                "kind",
+                "ids"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "coordinateSpace": {
+                  "description": "Coordinate space of the TextTarget offsets. Omitted preserves legacy tracked-space behavior.",
+                  "enum": [
+                    "visible",
+                    "tracked"
+                  ]
+                },
+                "kind": {
+                  "const": "range"
+                },
+                "overlap": {
+                  "description": "Optional logical overlap selector for callers that already resolved an ambiguous overlap surface. Adapter-owned interpretation.",
+                  "type": "string"
+                },
+                "part": {
+                  "description": "Compatibility alias used by older range callers; interpretation is adapter-owned.",
+                  "type": "string"
+                },
+                "range": {
+                  "$ref": "#/$defs/TextTarget"
+                },
+                "side": {
+                  "description": "Optional revision side for grouped replacement or move targets.",
+                  "enum": [
+                    "insert",
+                    "inserted",
+                    "delete",
+                    "deleted",
+                    "source",
+                    "destination"
+                  ]
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator",
+                  "description": "Optional story containing the range target."
+                }
+              },
+              "required": [
+                "kind",
+                "range"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "range"
+                },
+                "overlap": {
+                  "description": "Optional logical overlap selector for callers that already resolved an ambiguous overlap surface. Adapter-owned interpretation.",
+                  "type": "string"
+                },
+                "part": {
+                  "description": "Compatibility alias used by older range callers; interpretation is adapter-owned.",
+                  "type": "string"
+                },
+                "range": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "anchor": {
+                      "type": "string"
+                    },
+                    "relativeEnd": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "relativeStart": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "anchor",
+                    "relativeStart",
+                    "relativeEnd"
+                  ],
+                  "type": "object"
+                },
+                "side": {
+                  "description": "Optional revision side for grouped replacement or move targets.",
+                  "enum": [
+                    "insert",
+                    "inserted",
+                    "delete",
+                    "deleted",
+                    "source",
+                    "destination"
+                  ]
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator",
+                  "description": "Optional story containing the range target."
+                }
+              },
+              "required": [
+                "kind",
+                "range"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "anchor": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "range"
+                },
+                "overlap": {
+                  "description": "Optional logical overlap selector for callers that already resolved an ambiguous overlap surface. Adapter-owned interpretation.",
+                  "type": "string"
+                },
+                "part": {
+                  "description": "Compatibility alias used by older range callers; interpretation is adapter-owned.",
+                  "type": "string"
+                },
+                "relativeEnd": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "relativeStart": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "side": {
+                  "description": "Optional revision side for grouped replacement or move targets.",
+                  "enum": [
+                    "insert",
+                    "inserted",
+                    "delete",
+                    "deleted",
+                    "source",
+                    "destination"
+                  ]
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator",
+                  "description": "Optional story containing the range target."
+                }
+              },
+              "required": [
+                "kind",
+                "anchor",
+                "relativeStart",
+                "relativeEnd"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "all"
+                },
+                "story": {
+                  "description": "Optional explicit bulk filter. Omit or pass 'all' to target every revision-capable story, or pass a StoryLocator to scope the decision to one story.",
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    {
+                      "const": "all"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "moveRole": {
+                  "description": "Optional move pairing assertion. 'pair' requires the resolved tracked change to be a paired move; 'source' / 'destination' further narrow to a specific half. When the assertion does not hold the decide adapter fails closed.",
+                  "enum": [
+                    "pair",
+                    "source",
+                    "destination"
+                  ]
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "range": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "const": "partial"
+                    },
+                    "start": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "start",
+                    "end"
+                  ],
+                  "type": "object"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "id",
+                "range"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "scope": {
+                  "enum": [
+                    "all"
+                  ]
+                },
+                "story": {
+                  "description": "Optional explicit bulk filter. Omit or pass 'all' to target every revision-capable story, or pass a StoryLocator to scope the decision to one story.",
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    {
+                      "const": "all"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "scope"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "decision",
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ReceiptSuccess"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_INPUT",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE",
+                    "PERMISSION_DENIED",
+                    "PRECONDITION_FAILED",
+                    "COMMENT_CASCADE_PARTIAL",
+                    "SPAN_FRAGMENTED",
+                    "STALE_REVISION",
+                    "REVISION_MISMATCH"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "$ref": "#/$defs/ReceiptSuccess"
+    }
+  }
+}

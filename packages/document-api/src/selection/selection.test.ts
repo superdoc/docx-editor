@@ -1,6 +1,37 @@
 import { describe, expect, it, mock } from 'bun:test';
-import { executeSelectionExtractOoxml, type SelectionAdapter } from './selection.js';
-import type { SelectionExtractOoxmlInput } from './selection.types.js';
+import { executeSelectionCurrent, executeSelectionExtractOoxml, type SelectionAdapter } from './selection.js';
+import type { SelectionExtractOoxmlInput, SelectionInfo } from './selection.types.js';
+
+describe('logical selection inventory contract', () => {
+  const empty: SelectionInfo = {
+    empty: true,
+    target: null,
+    activeMarks: [],
+    activeCommentIds: [],
+    activeChangeIds: [],
+  };
+  const extractOoxml = () => {
+    throw new Error('Unexpected capture.');
+  };
+
+  it('keeps default reads unchanged and forwards the explicit inventory request', () => {
+    const current = mock((input: { includeLogicalChanges?: boolean }) =>
+      input.includeLogicalChanges ? { ...empty, logicalChangeIds: ['logical-change'] } : empty,
+    );
+    const adapter = { current, extractOoxml };
+    expect(executeSelectionCurrent(adapter)).toEqual(empty);
+    expect(executeSelectionCurrent(adapter, { includeLogicalChanges: true })).toMatchObject({
+      logicalChangeIds: ['logical-change'],
+    });
+    expect(current).toHaveBeenLastCalledWith({ includeLogicalChanges: true });
+  });
+
+  it('refuses an incomplete inventory instead of implying there are no changes', () => {
+    expect(() =>
+      executeSelectionCurrent({ current: () => empty, extractOoxml }, { includeLogicalChanges: true }),
+    ).toThrow('does not provide a complete logical change inventory');
+  });
+});
 
 describe('table-cell capture scope', () => {
   const rectangle = {

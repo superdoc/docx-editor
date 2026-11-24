@@ -1,0 +1,34 @@
+input: null
+active paragraph style: Heading1
+direct formatting state: set
+
+doc.format.readSelection calls:
+  {"selection":"current","keys":["bold","italic","underline","color","fontSize","rFonts","rStyle"],"view":"effective"}
+  {"selection":"current","keys":["bold","italic","underline","color","fontSize","rFonts","rStyle"],"view":"direct"}
+
+doc.styles.apply calls:
+  {
+    "target": {
+      "scope": "style",
+      "styleId": "Heading1",
+      "channel": "run"
+    },
+    "patch": {
+      "bold": true,
+      "italic": false,
+      "underline": {
+        "val": "double",
+        "color": "00FF00"
+      },
+      "color": {
+        "val": "C00000"
+      },
+      "fontSize": 27,
+      "fontFamily": {
+        "ascii": "Cambria",
+        "hAnsi": "Cambria"
+      }
+    }
+  }
+
+receipt: {"success":true}

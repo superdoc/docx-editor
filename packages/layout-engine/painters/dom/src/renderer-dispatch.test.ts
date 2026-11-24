@@ -1,14 +1,12 @@
 /**
  * Fragment dispatch coverage tests.
  *
- * Verifies that renderFragment routes each fragment kind to the correct
- * renderer method. Uses prototype spying + paint() to test the real
- * dispatch chain, not synthetic calls.
+ * Paints one fragment of each kind and checks the painted root and content
+ * that kind's renderer produces.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
+import { describe, it, expect, beforeEach } from 'vite-plus/test';
 import { createTestPainter as createDomPainter } from './_test-utils.js';
-import { DomPainter } from './renderer.js';
 import type { FlowBlock, Measure, Layout } from '@superdoc/contracts';
 
 // ---------------------------------------------------------------------------
@@ -265,58 +263,35 @@ describe('renderFragment dispatch', () => {
     container = document.createElement('div');
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('routes para fragment to renderParagraphFragment', () => {
-    const dummyDiv = document.createElement('div');
-    const spy = vi.spyOn(DomPainter.prototype as any, 'renderParagraphFragment').mockReturnValue(dummyDiv);
-    const { blocks, measures, layout } = paragraphFixtures();
+  it.each([
+    { name: 'para', fixtures: paragraphFixtures, rootClass: 'superdoc-fragment', content: '.superdoc-line' },
+    { name: 'image', fixtures: imageFixtures, rootClass: 'superdoc-fragment superdoc-image-fragment', content: 'img' },
+    {
+      name: 'drawing',
+      fixtures: drawingFixtures,
+      rootClass: 'superdoc-fragment superdoc-drawing-fragment',
+      content: '.superdoc-drawing-inner > .superdoc-vector-shape',
+    },
+    {
+      name: 'chart drawing',
+      fixtures: chartDrawingFixtures,
+      rootClass: 'superdoc-fragment superdoc-drawing-fragment',
+      content: '.superdoc-drawing-inner > .superdoc-chart > svg',
+    },
+    {
+      name: 'table',
+      fixtures: tableFixtures,
+      rootClass: 'superdoc-fragment superdoc-table-fragment',
+      content: '[data-superdoc-table-row-role="body"] .superdoc-line',
+    },
+  ])('paints a $name fragment with its own renderer', ({ fixtures, rootClass, content }) => {
+    const { blocks, measures, layout } = fixtures();
     const painter = createDomPainter({ blocks, measures });
     painter.paint(layout, container);
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]![0].kind).toBe('para');
-  });
-
-  it('routes image fragment to renderImageFragment', () => {
-    const dummyDiv = document.createElement('div');
-    const spy = vi.spyOn(DomPainter.prototype as any, 'renderImageFragment').mockReturnValue(dummyDiv);
-    const { blocks, measures, layout } = imageFixtures();
-    const painter = createDomPainter({ blocks, measures });
-    painter.paint(layout, container);
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]![0].kind).toBe('image');
-  });
-
-  it('routes drawing fragment to renderDrawingFragment', () => {
-    const dummyDiv = document.createElement('div');
-    const spy = vi.spyOn(DomPainter.prototype as any, 'renderDrawingFragment').mockReturnValue(dummyDiv);
-    const { blocks, measures, layout } = drawingFixtures();
-    const painter = createDomPainter({ blocks, measures });
-    painter.paint(layout, container);
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]![0].kind).toBe('drawing');
-  });
-
-  it('routes chart drawing fragment to renderDrawingFragment', () => {
-    const dummyDiv = document.createElement('div');
-    const spy = vi.spyOn(DomPainter.prototype as any, 'renderDrawingFragment').mockReturnValue(dummyDiv);
-    const { blocks, measures, layout } = chartDrawingFixtures();
-    const painter = createDomPainter({ blocks, measures });
-    painter.paint(layout, container);
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]![0].drawingKind).toBe('chart');
-  });
-
-  it('routes table fragment to renderTableFragment', () => {
-    const dummyDiv = document.createElement('div');
-    const spy = vi.spyOn(DomPainter.prototype as any, 'renderTableFragment').mockReturnValue(dummyDiv);
-    const { blocks, measures, layout } = tableFixtures();
-    const painter = createDomPainter({ blocks, measures });
-    painter.paint(layout, container);
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0]![0].kind).toBe('table');
+    const fragments = container.querySelectorAll('.superdoc-page > .superdoc-fragment');
+    expect(fragments).toHaveLength(1);
+    expect(fragments[0]!.className).toBe(rootClass);
+    expect(fragments[0]!.querySelector(content)).not.toBeNull();
   });
 
   it('throws for unknown fragment kind', () => {

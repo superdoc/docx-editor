@@ -1,0 +1,39 @@
+<div>
+  data-superdoc-table-row-role="body"
+  style border-bottom-color: #000000
+  style border-bottom-style: solid
+  style border-bottom-width: 1px
+  style border-left-color: transparent
+  style border-left-style: solid
+  style border-left-width: 0.5px
+  style border-right-color: #0000FF
+  style border-right-style: solid
+  style border-right-width: 3px
+  style border-top-color: #000000
+  style border-top-style: solid
+  style border-top-width: 1px
+  style height: 20px
+  style left: 0px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px
+<svg>
+  aria-hidden="true"
+  data-superdoc-cell-border-overlay="true"
+  viewBox="0 0 100 20"
+  style height: 20px
+  style left: 0px
+  style top: 0px
+  style width: 100px
+  <g>
+    data-side="left"
+    stroke-linecap="square"
+    transform="translate(0.25 0) rotate(90)"
+    <path>
+      d="M 0 0 H 20"
+      fill="none"
+      stroke="#FF0000"
+      stroke-width="0.5"

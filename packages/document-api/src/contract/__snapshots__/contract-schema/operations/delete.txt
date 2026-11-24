@@ -1,0 +1,178 @@
+{
+  "definition": {
+    "description": "Delete content at a contiguous document selection. Accepts a SelectionTarget or mutation-ready ref. Supports cross-block deletion and optional block-edge expansion via behavior mode.",
+    "expectedResult": "Returns a TextMutationReceipt with applied status; receipt reports NO_OP if the target range is collapsed or empty.",
+    "intentAction": "delete",
+    "intentGroup": "edit",
+    "memberPath": "delete",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "LOCK_VIOLATION",
+        "CAPABILITY_UNAVAILABLE",
+        "PRECONDITION_FAILED",
+        "REVISION_MISMATCH"
+      ],
+      "returnsReceipt": true,
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "delete.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "LOCK_VIOLATION",
+                "CAPABILITY_UNAVAILABLE",
+                "PRECONDITION_FAILED",
+                "REVISION_MISMATCH"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "resolution": {
+          "$ref": "#/$defs/TextMutationResolution"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure",
+        "resolution"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "behavior": {
+              "$ref": "#/$defs/DeleteBehavior",
+              "description": "Delete behavior: 'selection' (default) or 'exact'."
+            },
+            "in": {
+              "$ref": "#/$defs/StoryLocator"
+            },
+            "target": {
+              "$ref": "#/$defs/SelectionTarget",
+              "description": "Selection target: {kind:'selection', start:{kind:'text', blockId, offset}, end:{kind:'text', blockId, offset}}. Use 'ref' instead when you have a search result handle."
+            }
+          },
+          "required": [
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "behavior": {
+              "$ref": "#/$defs/DeleteBehavior",
+              "description": "Delete behavior: 'selection' (default) or 'exact'."
+            },
+            "in": {
+              "$ref": "#/$defs/StoryLocator"
+            },
+            "ref": {
+              "description": "Handle ref string from a superdoc_search result. Pass the handle.ref value directly (e.g. 'text:eyJ...'). Preferred over 'target' for inline formatting.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TextMutationSuccess"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "LOCK_VIOLATION",
+                    "CAPABILITY_UNAVAILABLE",
+                    "PRECONDITION_FAILED",
+                    "REVISION_MISMATCH"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "resolution": {
+              "$ref": "#/$defs/TextMutationResolution"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure",
+            "resolution"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "$ref": "#/$defs/TextMutationSuccess"
+    }
+  }
+}

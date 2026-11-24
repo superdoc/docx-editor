@@ -1,0 +1,89 @@
+{
+  "definition": {
+    "description": "Parse and sanitize a ClipboardPayload into a deterministic v2 clipboard insert plan with diagnostics. Does not mutate the document.",
+    "expectedResult": "Returns a ClipboardParseResult with a ClipboardInsertPlan or a named fail-closed reason.",
+    "memberPath": "clipboard.parse",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [
+        "INVALID_INPUT",
+        "INVALID_PAYLOAD",
+        "EMPTY_FRAGMENT",
+        "CAPABILITY_UNSUPPORTED",
+        "INVALID_FRAGMENT",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "clipboard/parse.mdx",
+    "referenceGroup": "clipboard",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "data": {},
+              "kind": {
+                "enum": [
+                  "string",
+                  "bytes"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "kind",
+              "data"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "type": "array"
+        },
+        "failure": {
+          "type": "object"
+        },
+        "plan": {
+          "type": "object"
+        },
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  }
+}

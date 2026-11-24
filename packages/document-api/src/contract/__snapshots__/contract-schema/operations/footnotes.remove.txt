@@ -1,0 +1,220 @@
+{
+  "definition": {
+    "description": "Remove a footnote or endnote from the document.",
+    "expectedResult": "Returns a FootnoteMutationResult indicating success or a failure.",
+    "memberPath": "footnotes.remove",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "footnotes/remove.mdx",
+    "referenceGroup": "footnotes",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "footnote"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "noteId": {
+              "type": "string"
+            },
+            "noteType": {
+              "enum": [
+                "footnote",
+                "endnote"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "noteId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "footnote": {
+              "additionalProperties": false,
+              "properties": {
+                "entityType": {
+                  "const": "footnote"
+                },
+                "kind": {
+                  "const": "entity"
+                },
+                "noteId": {
+                  "type": "string"
+                },
+                "noteType": {
+                  "enum": [
+                    "footnote",
+                    "endnote"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "entityType",
+                "noteId"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "footnote"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "footnote": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "footnote"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "noteId": {
+              "type": "string"
+            },
+            "noteType": {
+              "enum": [
+                "footnote",
+                "endnote"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "noteId"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "footnote"
+      ],
+      "type": "object"
+    }
+  }
+}

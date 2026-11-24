@@ -33,7 +33,7 @@ describe('SuperDoc.save', () => {
 
     const saving = instance.save().then(settled);
     await Promise.resolve();
-    expect(editor.save).toHaveBeenCalledOnce();
+    expect(editor.save).toHaveBeenCalledExactlyOnceWith({ purpose: 'working-copy' });
     expect(settled).not.toHaveBeenCalled();
 
     finishSave(new ArrayBuffer(1));

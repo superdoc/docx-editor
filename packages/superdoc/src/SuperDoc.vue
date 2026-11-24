@@ -39,7 +39,6 @@ import type {
   CollaborationProvider,
   Editor,
   EditorUpdateEvent,
-  SuperDocCommentsUpdatePayload,
   SuperDocPageMarginsChangePayload,
   SuperDocWorkerFailureDetail,
   LinkPopoverResolution,
@@ -60,8 +59,7 @@ import { useCommentsStore } from './stores/comments-store';
 
 import { DOCX, PDF } from '@superdoc/common';
 import { composeAuthorColorResolver } from '@superdoc/contracts';
-import useComment, { type CommentModel, type UseCommentParams } from './components/CommentsLayer/use-comment';
-import { collectRemovedCommentIds } from './components/CommentsLayer/collect-removed-comment-ids.js';
+import type { CommentModel } from './components/CommentsLayer/use-comment';
 import { useHighContrastMode } from './composables/use-high-contrast-mode';
 import { useSuperDocInstance } from './composables/use-superdoc-instance';
 import { useCommentSmallScreen } from './composables/use-comment-small-screen.js';
@@ -104,7 +102,12 @@ import {
 import { useUiFontFamily } from './composables/useUiFontFamily.js';
 import { usePasswordPrompt } from './composables/use-password-prompt.js';
 import { useFindReplace } from './composables/use-find-replace.js';
-import { claimFindShortcut, releaseFindShortcut, shouldHandleFindShortcut } from './composables/find-shortcut-owner.js';
+import {
+  claimFindShortcut,
+  isFindShortcutEvent,
+  releaseFindShortcut,
+  shouldHandleFindShortcut,
+} from './composables/find-shortcut-owner.js';
 import { useViewportFit } from './composables/use-viewport-fit.js';
 import { useLinkPopover } from './composables/use-link-popover.js';
 import { createV2EditorRuntimeAdapter } from './core/editor-runtime/v2/v2-editor-runtime-adapter.js';
@@ -132,7 +135,14 @@ import {
   createV2DiagnosticDedupe,
   isBootDiagnosticRedundant,
 } from './internal/diagnostics/diagnostic-dedupe.js';
+import type { EditorRendering } from './public/rendering.js';
 import SurfaceHost from './components/surfaces/SurfaceHost.vue';
+import {
+  registerCommentComposerBridge,
+  releaseCommentComposerBridge,
+  type CommentComposerBridge,
+  type CommentComposerResult,
+} from './helpers/comment-composer-bridge.js';
 import {
   getCommentsLayoutBridge,
   isActiveTrackedChangeContextMenuTarget,
@@ -229,10 +239,9 @@ type ShellCommentPositionEntry = { bounds?: { top?: number } | null; [key: strin
 type RawCommentsStore = ReturnType<typeof useCommentsStore>;
 type ShellCommentsStoreRefs = Omit<
   ReturnType<typeof storeToRefs<RawCommentsStore>>,
-  'commentsList' | 'pendingComment' | 'activeComment' | 'editorCommentPositions'
+  'pendingComment' | 'activeComment' | 'editorCommentPositions'
 > & {
   commentsByDocument?: unknown;
-  commentsList: Ref<ShellCommentRecord[]>;
   pendingComment: Ref<ShellCommentRecord | null>;
   activeComment: Ref<string | null>;
   editorCommentPositions: Ref<Record<string, unknown>>;
@@ -241,8 +250,6 @@ type ShellCommentsStoreActions = Omit<
   RawCommentsStore,
   | 'showAddComment'
   | 'handleEditorLocationsUpdate'
-  | 'handleTrackedChangeUpdate'
-  | 'addHydratedComment'
   | 'getComment'
   | 'resolveCommentPositionEntry'
   | 'belongsToDocument'
@@ -281,13 +288,14 @@ type ShellCommentsStoreActions = Omit<
   ) => void;
   announceV2CommentCreated: (input: { superdoc: object; commentId: unknown }) => Promise<unknown>;
   setActiveComment: (superdoc: object, id: string | null | undefined) => void;
-  showAddComment: (superdoc: object, targetClientY?: number | null) => Promise<{ ok?: boolean } | null | undefined>;
+  showAddComment: (
+    superdoc: object,
+    targetClientY?: number | null,
+  ) => Promise<{ ok?: boolean; reason?: string } | null | undefined>;
   handleEditorLocationsUpdate: (
     positions: Record<string, unknown>,
     options?: { retainMissingTrackedChangeGeometry?: boolean; retainedTrackedChangeIds?: Iterable<string> },
   ) => void;
-  handleTrackedChangeUpdate: (input: { superdoc: object; params: object }) => void;
-  addHydratedComment: (input: { superdoc: object; comment: unknown; skipEditorUpdate?: boolean }) => void;
   getComment: (id: string) => ShellCommentRecord | null | undefined;
   resolveCommentPositionEntry: (commentOrId: unknown) => {
     key: string | null;
@@ -386,6 +394,7 @@ type V2HostEvent = Record<string, unknown> & {
   dryRun?: boolean;
   state?: Readonly<HistoryState>;
   reviewMutation?: { token?: string } | null;
+  previous?: V2ReviewTarget | null;
   next?: V2ReviewTarget | null;
   reviewChanged?: boolean;
   diagnostics?: Parameters<typeof translateSsigParseDiagnostic>[0][];
@@ -432,6 +441,7 @@ type V2EditorReadyPayload = {
   documentApi?: V2DocumentApi | null;
   documentMutationReadiness?: { whenPainted?: (receipt: unknown) => unknown } | null;
   documentApiUnavailableReason?: string | null;
+  rendering?: EditorRendering;
   pageMetrics?: unknown;
   pageLayout?: V2RulerPageLayout | null;
   pageFurniture?: unknown;
@@ -466,31 +476,7 @@ type V2DiagnosticsPayload = {
   documentId?: unknown;
   diagnostics?: unknown;
   generation?: unknown;
-  snapshot?: { diagnostics?: unknown } | null;
-};
-type ReplayCommentPayload = Record<string, unknown> & {
-  isDone?: unknown;
-  resolvedTime?: unknown;
-  resolvedById?: unknown;
-  resolvedByEmail?: unknown;
-  resolvedByName?: unknown;
-  creatorId?: unknown;
-  creatorEmail?: unknown;
-  creatorName?: unknown;
-  createdTime?: unknown;
-  commentText?: unknown;
-  text?: unknown;
-  docxCommentJSON?: unknown;
-  elements?: unknown;
-  documentId?: unknown;
-  fileId?: unknown;
-  commentId?: unknown;
-  importedId?: unknown;
-};
-type EditorCommentsUpdateParams = {
-  activeCommentId?: string | null;
-  type?: string;
-  comment?: ReplayCommentPayload | null;
+  snapshot?: { diagnostics?: unknown; presentationStatus?: string; renderStage?: string } | null;
 };
 type ShellSelection = {
   selectionBounds?: { top: number; left: number; right?: number; bottom?: number } | null;
@@ -594,7 +580,6 @@ emit('page-loaded', documentId, index, containerBounds);
 const {
   getConfig,
   documentsWithConverations,
-  commentsList,
   pendingComment,
   activeComment,
   skipSelectionUpdate,
@@ -611,13 +596,9 @@ const {
 const {
   showAddComment,
   handleEditorLocationsUpdate,
-  handleTrackedChangeUpdate,
   addComment,
-  addHydratedComment,
   getComment,
   resolveCommentPositionEntry,
-  belongsToDocument,
-  COMMENT_EVENTS,
   requestInstantSidebarAlignment,
   peekInstantSidebarAlignment,
   clearInstantSidebarAlignment,
@@ -861,31 +842,45 @@ const getPendingCommentTargetClientY = () => {
   return layers.value.getBoundingClientRect().top + top * zoom;
 };
 
-const handleCommentToolClick = async () => {
+const handleCommentToolClick = async (): Promise<CommentComposerResult> => {
+  if (!isCommentsEnabled.value) return { ok: false, reason: 'comments-disabled' };
+  if (getConfig.value?.readOnly) return { ok: false, reason: 'read-only' };
   if (isV2Mode.value) {
     cancelScheduledV2DomSelectionSync();
-    if (applyCurrentV2DomSelection()?.ok === false) return;
+    if (applyCurrentV2DomSelection()?.ok === false) return { ok: false, reason: 'editing-range-required' };
   }
   const result = await showAddComment(proxy.$superdoc, getPendingCommentTargetClientY());
-  if (result?.ok === false) return;
-  if (!isV2Mode.value) return;
+  if (result?.ok === false) return { ok: false, reason: result.reason };
+  if (!isV2Mode.value) return { ok: true };
 
   const pendingPosition = buildV2PendingPositionEntry();
   if (pendingPosition) publishV2PendingPositionEntry(pendingPosition);
+  return { ok: true };
 };
 
-const handleToolClick = async (tool: string) => {
-  const toolOptions: Record<string, (selection?: unknown, position?: unknown) => Promise<void>> = {
+const handleToolClick = async (tool: string): Promise<CommentComposerResult> => {
+  const toolOptions: Record<string, (selection?: unknown, position?: unknown) => Promise<CommentComposerResult>> = {
     comments: () => handleCommentToolClick(),
   };
 
-  if (tool in toolOptions) {
-    await toolOptions[tool](activeSelection.value, selectionPosition.value);
-  }
+  const result =
+    tool in toolOptions
+      ? await toolOptions[tool](activeSelection.value, selectionPosition.value)
+      : { ok: false, reason: 'unknown-tool' };
 
   activeSelection.value = null;
   toolsMenuPosition.top = null;
+  return result;
 };
+
+const commentComposerBridge: CommentComposerBridge = {
+  open: () => handleToolClick('comments'),
+  close: () => {
+    if (pendingComment.value) commentsStore.removePendingComment(proxy.$superdoc);
+    else commentsStore.cancelPendingCommentRequest();
+  },
+};
+registerCommentComposerBridge(superdoc, commentComposerBridge);
 
 const handleHighlightClick = () => (toolsMenuPosition.top = null);
 
@@ -1295,6 +1290,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     documentApi,
     documentMutationReadiness,
     documentApiUnavailableReason,
+    rendering,
     pageMetrics,
     pageLayout,
     pageFurniture,
@@ -1681,6 +1677,7 @@ const onV2EditorReady = (payload: V2EditorReadyPayload | null | undefined) => {
     //   - SuperDoc.vue's `activeZoom` watcher calls `pageMetrics.setZoom`
     //   - rulers, floating layers, whiteboard overlays consume
     //     `pageMetrics.getSnapshot()` / `subscribe(...)`.
+    rendering: rendering ?? null,
     pageMetrics: pageMetrics ?? null,
     // ui-phase4-002: narrow v2 page-layout bridge for ruler / margin chrome.
     // Always present in v2 mode (null only if the v2 editor host boot failed).
@@ -2462,6 +2459,7 @@ const onV2HostEvent = (document: ShellDocument | null | undefined, event: V2Host
     const sync = document?.id ? v2ReviewTargetSidebarSyncs.get(document.id) : undefined;
     if (sync) sync.onReviewTargetChanged(event.next);
     else syncSidebarActiveCommentFromV2ReviewTarget(event.next);
+    if (!isSidebarFollowedV2ReviewTarget(event.next)) retireSidebarActiveCommentFromV2ReviewTarget(event.previous);
     return;
   }
   if (event.type === 'collaboration:remote-changed') {
@@ -2829,13 +2827,16 @@ const onV2RenderReadiness = (
   payload: V2DiagnosticsPayload | null | undefined,
 ) => {
   const documentId = doc?.id ?? null;
+  const generation = getV2DiagnosticGeneration(payload);
+  const presentationCurrent =
+    payload?.snapshot?.presentationStatus === 'current' && payload.snapshot.renderStage === 'render-complete';
+  if (presentationCurrent) v2DiagnosticDedupe.markRenderRecovered(documentId, generation);
   const diagnostics = payload?.snapshot?.diagnostics;
   if (!Array.isArray(diagnostics) || diagnostics.length === 0) return;
-  const generation = getV2DiagnosticGeneration(payload);
   for (const diag of diagnostics as Parameters<typeof translateRenderReadinessDiagnostic>[0][]) {
     const diagnostic = translateRenderReadinessDiagnostic(diag, { documentId, editor: null });
     if (!diagnostic) continue;
-    if (!v2DiagnosticDedupe.shouldEmit(documentId, generation, diagnostic.internalCode)) continue;
+    if (!v2DiagnosticDedupe.shouldEmit(documentId, generation, diagnostic.internalCode, presentationCurrent)) continue;
     proxy.$superdoc.emit('exception', diagnostic);
   }
 };
@@ -2967,7 +2968,6 @@ const editorOptions = (doc: ShellDocument) => {
     ...(v2Collaboration ? { v2Collaboration } : {}),
     ...(collaborationPreflightFailure ? { collaborationPreflightFailure } : {}),
     onCollaborationReady: onEditorCollaborationReady,
-    onCommentsUpdate: onEditorCommentsUpdate,
     onFontsResolved: onFontsResolvedFn,
     // Painter plan P7 §1: page-count seam (layout-end; v2 vertical only).
     onPageCountKnown: proxy.$superdoc.config.onPageCountKnown ?? null,
@@ -3051,6 +3051,7 @@ const editorOptions = (doc: ShellDocument) => {
           // re-reading it would let it outrank an explicit `ui.contentControls`.
           contentControlsChrome: proxy.$superdoc.uiConfig.contentControls.options.chrome,
           commentHighlights: proxy.$superdoc.uiConfig.comments.highlights,
+          contentControlPresentations: proxy.$superdoc.uiConfig.contentControls.options.presentations,
           resolveTrackedChangeColor: composeAuthorColorResolver(
             proxy.$superdoc.config.modules?.trackChanges?.authorColors,
           ),
@@ -3060,104 +3061,6 @@ const editorOptions = (doc: ShellDocument) => {
   };
 
   return options;
-};
-
-// Replay updates should only patch mutable comment state.
-// Identity and construction-time metadata are intentionally excluded.
-const REPLAY_MUTABLE_COMMENT_FIELDS = new Set([
-  'commentText',
-  'isInternal',
-  'parentCommentId',
-  'trackedChangeParentId',
-  'trackedChangeThreadParentId',
-  'threadingParentCommentId',
-  'trackedChange',
-  'trackedChangeType',
-  'trackedChangeText',
-  'trackedChangeDisplayType',
-  'semanticColorKey',
-  'semanticColor',
-  'trackedChangeStory',
-  'trackedChangeStoryKind',
-  'trackedChangeStoryLabel',
-  'trackedChangeAnchorKey',
-  'trackedChangeLabel',
-  'trackedChangeDetailLines',
-  'deletedText',
-  'resolvedTime',
-  'resolvedById',
-  'resolvedByEmail',
-  'resolvedByName',
-  'importedAuthor',
-  'docxCommentJSON',
-]);
-
-const applyReplayIsDoneResolutionFallback = (
-  target: ReplayCommentPayload | null | undefined,
-  payload: ReplayCommentPayload = {},
-) => {
-  if (!target || payload.isDone === undefined) return;
-  if (
-    payload.resolvedTime != null ||
-    payload.resolvedById != null ||
-    payload.resolvedByEmail != null ||
-    payload.resolvedByName != null
-  ) {
-    return;
-  }
-
-  // Imported replay payloads often use `isDone` while resolved fields remain null.
-  // When resolved fields are not explicitly populated, derive sidebar/export state from `isDone`.
-  if (payload.isDone) {
-    target.resolvedTime = target.resolvedTime || Date.now();
-    target.resolvedById = target.resolvedById || payload.creatorId || null;
-    target.resolvedByEmail = target.resolvedByEmail || payload.creatorEmail || null;
-    target.resolvedByName = target.resolvedByName || payload.creatorName || null;
-    return;
-  }
-
-  target.resolvedTime = null;
-  target.resolvedById = null;
-  target.resolvedByEmail = null;
-  target.resolvedByName = null;
-};
-
-const applyReplayUpdateToComment = (
-  commentModel: ReplayCommentPayload | null | undefined,
-  payload: ReplayCommentPayload | null | undefined,
-  resolvedText: unknown,
-) => {
-  if (!commentModel || !payload) return;
-
-  if (Array.isArray(payload.elements)) {
-    commentModel.docxCommentJSON = payload.elements;
-  }
-
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined) return;
-    if (key === 'text') return;
-    if (key === 'elements') return;
-    if (!REPLAY_MUTABLE_COMMENT_FIELDS.has(key)) return;
-    commentModel[key] = value;
-  });
-
-  if (resolvedText !== undefined) {
-    commentModel.commentText = resolvedText;
-  }
-
-  applyReplayIsDoneResolutionFallback(commentModel, payload);
-};
-
-const normalizeReplayCommentModelPayload = (payload: ReplayCommentPayload = {}) => {
-  const normalizedPayload: ReplayCommentPayload = { ...payload };
-  if (!normalizedPayload.commentText && normalizedPayload.text) {
-    normalizedPayload.commentText = normalizedPayload.text;
-  }
-  if (!normalizedPayload.docxCommentJSON && Array.isArray(normalizedPayload.elements)) {
-    normalizedPayload.docxCommentJSON = normalizedPayload.elements;
-  }
-  applyReplayIsDoneResolutionFallback(normalizedPayload, normalizedPayload);
-  return normalizedPayload;
 };
 
 const syncInstantSidebarAlignmentFromEditorSelection = (commentId: string | null | undefined) => {
@@ -3190,9 +3093,12 @@ const isSameActiveCommentSelection = (commentId: string | null | undefined) => {
   return String(activeComment.value) === String(commentId);
 };
 
+const isSidebarFollowedV2ReviewTarget = (target: V2ReviewTarget | null | undefined) =>
+  target?.origin === 'document' || target?.origin === 'api';
+
 const syncSidebarActiveCommentFromV2ReviewTarget = (target: V2ReviewTarget | null | undefined) => {
-  if (target?.origin !== 'document') return;
-  if (shouldSuppressCommentActivation()) return;
+  if (!isSidebarFollowedV2ReviewTarget(target)) return;
+  if (target?.origin === 'document' && shouldSuppressCommentActivation()) return;
 
   const commentId = resolveV2ReviewTargetCommentId(target, getComment);
   if (!commentId) return;
@@ -3206,177 +3112,10 @@ const syncSidebarActiveCommentFromV2ReviewTarget = (target: V2ReviewTarget | nul
   }, 0);
 };
 
-const onEditorCommentsUpdate = (params: EditorCommentsUpdateParams = {}) => {
-  // Set the active comment in the store
-  let { activeCommentId, type, comment: commentPayload } = params;
-  if (Object.prototype.hasOwnProperty.call(params, 'activeCommentId')) retireInlineCommentDismissal();
-  // Only sync active state when the event explicitly requests it.
-  // Replay add/update events often omit activeCommentId; inferring it here can
-  // cause repeated focus toggles while replay emits batched updates.
-  let shouldSyncActiveComment = Object.prototype.hasOwnProperty.call(params, 'activeCommentId');
-  const resolveCommentEventIds = (payload: ReplayCommentPayload) => {
-    const ids = [payload?.importedId, payload?.commentId].filter(Boolean).map((value) => String(value));
-    return [...new Set(ids)];
-  };
-  const resolveDocumentScopedCommentMatch = (payload: ReplayCommentPayload) => {
-    const candidateIds = [payload?.importedId, payload?.commentId].filter(Boolean).map((value) => String(value));
-    const activeDocumentId =
-      proxy.$superdoc?.activeEditor?.options?.documentId != null
-        ? String(proxy.$superdoc.activeEditor.options.documentId)
-        : null;
-
-    for (const candidateId of candidateIds) {
-      const existingComment = commentsList.value.find((comment) => {
-        const commentId = comment?.commentId != null ? String(comment.commentId) : null;
-        const importedId = comment?.importedId != null ? String(comment.importedId) : null;
-        const isIdMatch = commentId === candidateId || importedId === candidateId;
-        if (!isIdMatch) return false;
-        if (!activeDocumentId || typeof belongsToDocument !== 'function') return true;
-        return belongsToDocument(comment, activeDocumentId);
-      });
-
-      if (existingComment) {
-        const matchedCommentId = existingComment?.commentId ?? existingComment?.importedId ?? candidateId;
-        return {
-          id: matchedCommentId != null ? String(matchedCommentId) : null,
-          existingComment,
-        };
-      }
-    }
-    return {
-      id: candidateIds[0] || null,
-      existingComment: null,
-    };
-  };
-
-  if (COMMENT_EVENTS?.ADD && type === COMMENT_EVENTS.ADD && commentPayload) {
-    commentPayload = normalizeReplayCommentModelPayload(commentPayload);
-
-    const currentUser = proxy.$superdoc?.user;
-    if (currentUser) {
-      if (!commentPayload.creatorId) commentPayload.creatorId = currentUser.id;
-      if (!commentPayload.creatorName) commentPayload.creatorName = currentUser.name;
-      if (!commentPayload.creatorEmail) commentPayload.creatorEmail = currentUser.email;
-    }
-
-    if (!commentPayload.createdTime) commentPayload.createdTime = Date.now();
-
-    const primaryDocumentId = commentPayload.documentId || documents.value?.[0]?.id;
-    if (!commentPayload.documentId && primaryDocumentId) {
-      commentPayload.documentId = primaryDocumentId;
-    }
-
-    if (!commentPayload.fileId && primaryDocumentId) {
-      commentPayload.fileId = primaryDocumentId;
-    }
-
-    const { id, existingComment } = resolveDocumentScopedCommentMatch(commentPayload);
-    if (id && !existingComment) {
-      const commentModel = useComment(commentPayload as UseCommentParams);
-      addHydratedComment({
-        superdoc: proxy.$superdoc,
-        comment: commentModel,
-        skipEditorUpdate: true,
-      });
-    }
-  }
-
-  if (COMMENT_EVENTS?.UPDATE && type === COMMENT_EVENTS.UPDATE && commentPayload) {
-    const { id, existingComment } = resolveDocumentScopedCommentMatch(commentPayload);
-    if (id) {
-      const resolvedText = commentPayload.commentText || commentPayload.text;
-
-      if (existingComment) {
-        applyReplayUpdateToComment(existingComment, commentPayload, resolvedText);
-      } else {
-        const normalizedPayload = normalizeReplayCommentModelPayload(commentPayload);
-        const commentModel = useComment(normalizedPayload as UseCommentParams);
-        addHydratedComment({
-          superdoc: proxy.$superdoc,
-          comment: commentModel,
-          skipEditorUpdate: true,
-        });
-      }
-    }
-  }
-
-  if (COMMENT_EVENTS?.DELETED && type === COMMENT_EVENTS.DELETED && commentPayload) {
-    const targetIds = resolveCommentEventIds(commentPayload);
-    if (targetIds.length) {
-      const activeDocumentId =
-        proxy.$superdoc?.activeEditor?.options?.documentId != null
-          ? String(proxy.$superdoc.activeEditor.options.documentId)
-          : null;
-      const isInActiveDocument = (comment: ShellCommentRecord) => {
-        if (!activeDocumentId || typeof belongsToDocument !== 'function') return true;
-        return belongsToDocument(comment, activeDocumentId);
-      };
-
-      // Remove the entire thread subtree (parent + all descendants), not only direct replies.
-      const removedCommentIds = collectRemovedCommentIds(commentsList.value, targetIds, isInActiveDocument);
-
-      if (removedCommentIds.size) {
-        const previousComments = [...commentsList.value];
-        commentsList.value = commentsList.value.filter((comment) => {
-          if (!isInActiveDocument(comment)) return true;
-          const commentId = comment.commentId != null ? String(comment.commentId) : null;
-          const importedId = comment.importedId != null ? String(comment.importedId) : null;
-          return !(
-            (commentId && removedCommentIds.has(commentId)) ||
-            (importedId && removedCommentIds.has(importedId))
-          );
-        });
-
-        const activeCommentKey = activeComment.value != null ? String(activeComment.value) : null;
-        const activeCommentModel =
-          activeCommentKey != null
-            ? previousComments.find((comment) => {
-                const commentId = comment.commentId != null ? String(comment.commentId) : null;
-                const importedId = comment.importedId != null ? String(comment.importedId) : null;
-                return commentId === activeCommentKey || importedId === activeCommentKey;
-              })
-            : null;
-        const activeCommentInActiveDocument = activeCommentModel ? isInActiveDocument(activeCommentModel) : false;
-        if (activeCommentKey && removedCommentIds.has(activeCommentKey) && activeCommentInActiveDocument) {
-          activeCommentId = null;
-          shouldSyncActiveComment = true;
-        }
-      }
-    }
-  }
-
-  if (type === 'trackedChange') {
-    handleTrackedChangeUpdate({ superdoc: proxy.$superdoc, params });
-  }
-
-  if (shouldSyncActiveComment && activeCommentId != null && shouldSuppressCommentActivation()) {
-    shouldSyncActiveComment = false;
-  }
-
-  if (shouldSyncActiveComment && (activeCommentId == null || !isSameActiveCommentSelection(activeCommentId))) {
-    syncInstantSidebarAlignmentFromEditorSelection(activeCommentId);
-  }
-
-  nextTick(() => {
-    if (pendingComment.value) return;
-    if (shouldSyncActiveComment) {
-      commentsStore.setActiveComment(proxy.$superdoc, activeCommentId);
-    }
-    // Briefly suppress click-outside so the same click that selected the comment
-    // highlight in the editor doesn't immediately deactivate it via the sidebar.
-    // Reset after the event loop settles so subsequent outside clicks work normally.
-    if (shouldSyncActiveComment) {
-      isCommentHighlighted.value = true;
-      setTimeout(() => {
-        isCommentHighlighted.value = false;
-      }, 0);
-    }
-  });
-
-  // Bubble up the event to the user, if handled
-  if (typeof proxy.$superdoc.config.onCommentsUpdate === 'function') {
-    proxy.$superdoc.config.onCommentsUpdate(params as SuperDocCommentsUpdatePayload);
-  }
+const retireSidebarActiveCommentFromV2ReviewTarget = (previous: V2ReviewTarget | null | undefined) => {
+  if (previous?.origin !== 'api' && previous?.origin !== 'panel') return;
+  if (!isSameActiveCommentSelection(resolveV2ReviewTargetCommentId(previous, getComment))) return;
+  activeComment.value = null;
 };
 
 const isCommentsEnabled = computed(() => Boolean(commentsModuleConfig.value));
@@ -3807,10 +3546,6 @@ watch(layers, () => {
   recollectV2GeometryIfActive();
 });
 
-function isFindShortcutEvent(e: KeyboardEvent) {
-  return (e.metaKey || e.ctrlKey) && !e.altKey && e.key?.toLowerCase?.() === 'f';
-}
-
 function isFormattingMarksShortcutEvent(e: KeyboardEvent) {
   return (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && (e.code === 'Digit8' || e.key === '8' || e.key === '*');
 }
@@ -3939,6 +3674,7 @@ function handleContainerKeydown(e: KeyboardEvent) {
 onBeforeUnmount(() => {
   v2CommentSelectionRequest += 1;
   commentsLayoutBridge?.setResolver(null);
+  releaseCommentComposerBridge(superdoc, commentComposerBridge);
   passwordPrompt.destroy();
   findReplace.destroy();
   retireInlineCommentDismissal();

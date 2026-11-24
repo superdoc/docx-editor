@@ -1,0 +1,287 @@
+editor, external, own change, accept:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"accept","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+editor, external, own change, reject:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"reject","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+editor, external, other change, accept:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"accept","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+editor, external, other change, reject:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"reject","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+editor, external, unknown change, accept:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"accept","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+editor, external, unknown change, reject:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"reject","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+editor, internal, own change, accept:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"accept","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+editor, internal, own change, reject:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"reject","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+editor, internal, other change, accept:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"accept","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+editor, internal, other change, reject:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"reject","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+editor, internal, unknown change, accept:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"accept","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+editor, internal, unknown change, reject:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"reject","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+suggester, external, own change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+suggester, external, own change, reject:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"reject","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+suggester, external, other change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+suggester, external, other change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+suggester, external, unknown change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+suggester, external, unknown change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+suggester, internal, own change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+suggester, internal, own change, reject:
+  state: enabled=true reason=none
+  execute: {"success":true}
+  decide calls: [[{"decision":"reject","target":{"kind":"id","id":"tc-1"}}]]
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+suggester, internal, other change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+suggester, internal, other change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+suggester, internal, unknown change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+suggester, internal, unknown change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+viewer, external, own change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+viewer, external, own change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+viewer, external, other change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+viewer, external, other change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+viewer, external, unknown change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+viewer, external, unknown change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+viewer, internal, own change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+viewer, internal, own change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+viewer, internal, other change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+viewer, internal, other change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: ["tc-1"]
+  comment hydrations: 0
+
+viewer, internal, unknown change, accept:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0
+
+viewer, internal, unknown change, reject:
+  state: enabled=false reason=permission-denied
+  execute: false
+  decide calls: []
+  catalog reads: 0
+  listed changes: []
+  comment hydrations: 0

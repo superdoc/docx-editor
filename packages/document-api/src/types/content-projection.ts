@@ -87,6 +87,7 @@ export interface SDProjectionReadInput {
 }
 
 export interface ProjectHtmlInput extends SDProjectionReadInput {
+  styling?: 'inline';
   includeSourceMap?: boolean;
 }
 

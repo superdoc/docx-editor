@@ -1,0 +1,275 @@
+{
+  "definition": {
+    "description": "List top-level blocks in document order with IDs, types, text previews, and optional full text when includeText:true. Supports pagination via offset/limit after optional nodeTypes, nodeIds, and literal textSearch filtering, single-story scoping via `in: <StoryLocator>`, and final/original/redline projection of numbering metadata without changing block membership.",
+    "expectedResult": "Returns a BlocksListResult with total block count, an ordered array of block entries, the effective numbering reviewMode, and the current document revision.",
+    "intentAction": "blocks",
+    "intentGroup": "get_content",
+    "memberPath": "blocks.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "blocks/list.mdx",
+    "referenceGroup": "blocks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "includeText": {
+          "description": "When true, includes the full flattened block text in each block entry.",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "Maximum blocks to return. Omit for all blocks.",
+          "minimum": 1,
+          "type": "number"
+        },
+        "nodeIds": {
+          "description": "Top-level block identities to match before pagination.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "nodeTypes": {
+          "description": "Filter by block types (e.g. ['paragraph', 'heading']). Omit for all types.",
+          "items": {
+            "enum": [
+              "paragraph",
+              "heading",
+              "listItem",
+              "table",
+              "tableRow",
+              "tableCell",
+              "tableOfContents",
+              "image",
+              "sdt"
+            ]
+          },
+          "type": "array"
+        },
+        "offset": {
+          "description": "Number of blocks to skip. Default: 0.",
+          "minimum": 0,
+          "type": "number"
+        },
+        "reviewMode": {
+          "$ref": "#/$defs/SDProjectionReviewMode"
+        },
+        "textSearch": {
+          "additionalProperties": false,
+          "properties": {
+            "caseSensitive": {
+              "type": "boolean"
+            },
+            "match": {
+              "enum": [
+                "all",
+                "any"
+              ]
+            },
+            "terms": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "terms"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "blocks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "alignment": {
+                "description": "Paragraph alignment.",
+                "type": "string"
+              },
+              "bold": {
+                "description": "True if text is bold.",
+                "type": "boolean"
+              },
+              "color": {
+                "description": "Text color when explicitly set (e.g. '#000000').",
+                "type": "string"
+              },
+              "fontFamily": {
+                "description": "Font family from first text run.",
+                "type": "string"
+              },
+              "fontSize": {
+                "description": "Font size from first text run.",
+                "type": "number"
+              },
+              "headingLevel": {
+                "description": "Heading level (1-9).",
+                "maximum": 9,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "isEmpty": {
+                "type": "boolean"
+              },
+              "nodeId": {
+                "description": "Block ID for targeting with other tools.",
+                "type": "string"
+              },
+              "nodeType": {
+                "enum": [
+                  "paragraph",
+                  "heading",
+                  "listItem",
+                  "table",
+                  "tableRow",
+                  "tableCell",
+                  "tableOfContents",
+                  "image",
+                  "sdt"
+                ]
+              },
+              "numbering": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "ordered",
+                      "bullet"
+                    ]
+                  },
+                  "marker": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "marker",
+                  "path",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "ordinal": {
+                "type": "number"
+              },
+              "paragraphNumbering": {
+                "additionalProperties": false,
+                "description": "Numbering reference (numId + level) for numbered blocks, including numbered headings. Absent for non-numbered blocks.",
+                "properties": {
+                  "level": {
+                    "type": "number"
+                  },
+                  "numId": {
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              },
+              "ref": {
+                "description": "Ref handle for this block. Pass directly to superdoc_format or superdoc_edit ref param. Only present for non-empty blocks.",
+                "type": "string"
+              },
+              "styleId": {
+                "description": "Named paragraph style.",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tabCount": {
+                "description": "Tabs in complete paragraph text, even beyond the preview.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "text": {
+                "description": "Full flattened block text when requested with includeText.",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "textPreview": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "ordinal",
+              "nodeId",
+              "nodeType"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "reviewMode": {
+          "$ref": "#/$defs/SDProjectionReviewMode"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "total": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "total",
+        "blocks",
+        "revision",
+        "reviewMode"
+      ],
+      "type": "object"
+    }
+  }
+}

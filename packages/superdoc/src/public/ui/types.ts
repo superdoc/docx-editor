@@ -259,7 +259,16 @@ export type TrackChangeInfo = TrackChangesListResult['items'][number];
  * the v1 custom-UI row contract. New consumers can read the flat row; existing
  * custom UI code can continue to pass `row.change` to detail renderers.
  */
-export type TrackChangesItem = TrackChangeInfo & { change: TrackChangeInfo };
+export type TrackChangesItem = TrackChangeInfo & {
+  change: TrackChangeInfo;
+  /**
+   * The label SuperDoc's built-in review card shows for a list change, such as
+   * `Split list item`, `Merged list items`, `Added to list`, `Removed from list`,
+   * `Indented item` or `Changed list style: numbers → bullets`. Absent for
+   * other changes.
+   */
+  listLabel?: string;
+};
 
 /** A point hit-test result mapping a viewport point to a tracked-change row. */
 export interface TrackChangePointHit {
@@ -1151,6 +1160,22 @@ export interface CommentsHandle extends SnapshotSubscribable<CommentsSlice> {
    * comments surface is unavailable.
    */
   createFromSelection(input: { text: string }): WorkflowReceipt;
+  /**
+   * Open SuperDoc's built-in comment composer for the live selection, the
+   * same action as the floating comment tool. The comment is created only
+   * when the user submits the composer. Resolves `{ ok: false, reason }` with
+   * `range-selection-required` when nothing is selected, `document-readonly`
+   * when comments are read-only, `operation-unavailable` when the built-in
+   * comments UI is not mounted, or `not-ready` before an Editor is ready.
+   */
+  openComposer(): Promise<WorkflowActionResult>;
+  /**
+   * Discard the built-in composer's unsaved draft. Also cancels an
+   * {@link openComposer} call that is still capturing the selection; that
+   * call resolves `{ ok: false, reason: 'operation-unavailable' }`. Safe to
+   * call when no composer is open.
+   */
+  closeComposer(): void;
   /** Reply to a comment thread, when supported by the Document API. */
   reply(commentId: string, input: { text: string }): WorkflowReceipt;
   /**
@@ -1173,8 +1198,8 @@ export interface CommentsHandle extends SnapshotSubscribable<CommentsSlice> {
    */
   delete(commentId: string): WorkflowReceipt;
   /**
-   * Mark a comment focused in consumer UI; reflected by `activeId`. Accepts a
-   * bare id, an `importedId` alias, or a reply's id - all resolve to the
+   * Mark a comment focused in consumer UI and in the built-in comments UI;
+   * reflected by `activeId`. Accepts a bare id, an `importedId` alias, or a reply's id - all resolve to the
    * thread-root comment, which becomes `activeId`. Returns `true` when the
    * activation request was accepted (including an idempotent re-activation
    * of the already-active id), or `false` when no editor is mounted / not

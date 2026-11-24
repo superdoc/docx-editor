@@ -1,0 +1,227 @@
+{
+  "definition": {
+    "description": "Read the full document as an SDDocument structure.",
+    "expectedResult": "Returns an SDDocument with body content projected into SDM/1 canonical shapes, plus the document's authored styles, theme (labeled document or fallback), docDefaults, and diagnostics for missing or unreadable style parts. Paragraph indent *Chars values remain hundredths of a character; numeric distances remain points. Read-model fields do not expand operation-specific authoring support.",
+    "memberPath": "get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "get.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "additionalProperties": false,
+          "properties": {
+            "includeContext": {
+              "type": "boolean"
+            },
+            "includeProvenance": {
+              "type": "boolean"
+            },
+            "includeResolved": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "type": "array"
+        },
+        "diagnostics": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "construct": {
+                "enum": [
+                  "document",
+                  "source",
+                  "text",
+                  "paragraph",
+                  "emptyParagraph",
+                  "softBreak",
+                  "lineBreak",
+                  "heading",
+                  "bold",
+                  "italic",
+                  "underline",
+                  "strike",
+                  "hyperlink",
+                  "list",
+                  "table",
+                  "tableHeader",
+                  "colSpan",
+                  "rowSpan",
+                  "horizontalRule",
+                  "inlineCode",
+                  "codeBlock",
+                  "blockquote",
+                  "taskList",
+                  "image",
+                  "footnote",
+                  "rawHtml",
+                  "unknownWrapper",
+                  "script",
+                  "style",
+                  "eventHandler"
+                ]
+              },
+              "disposition": {
+                "enum": [
+                  "preserved",
+                  "normalized",
+                  "downgraded",
+                  "dropped",
+                  "rejected"
+                ]
+              },
+              "lossy": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              },
+              "source": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "enum": [
+                      "html",
+                      "markdown"
+                    ]
+                  },
+                  "range": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "endColumn": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "endLine": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "endOffset": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "startColumn": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "startLine": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "startOffset": {
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "startOffset",
+                      "endOffset"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "format"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "docDefaults": {
+          "type": "object"
+        },
+        "modelVersion": {
+          "const": "sdm/1"
+        },
+        "styles": {
+          "type": "object"
+        },
+        "theme": {
+          "additionalProperties": false,
+          "properties": {
+            "colorScheme": {
+              "type": "object"
+            },
+            "colorSchemeMapping": {
+              "type": "object"
+            },
+            "fontScheme": {
+              "type": "object"
+            },
+            "source": {
+              "enum": [
+                "document",
+                "fallback"
+              ]
+            }
+          },
+          "required": [
+            "colorScheme"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "modelVersion",
+        "body"
+      ],
+      "type": "object"
+    }
+  }
+}

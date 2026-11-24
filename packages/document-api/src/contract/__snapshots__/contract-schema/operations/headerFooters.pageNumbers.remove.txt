@@ -1,0 +1,200 @@
+{
+  "definition": {
+    "description": "Atomically remove a section's PAGE fields from its header, footer, or both, keeping other header and footer content.",
+    "expectedResult": "Returns the header/footer parts that lost a PAGE field; a paragraph left with only whitespace is removed. NO_OP when the section shows no page number.",
+    "memberPath": "headerFooters.pageNumbers.remove",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "TARGET_NOT_FOUND",
+        "NO_OP",
+        "CAPABILITY_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "header-footers/page-numbers/remove.mdx",
+    "referenceGroup": "headerFooters",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "TARGET_NOT_FOUND",
+                "NO_OP",
+                "CAPABILITY_UNAVAILABLE",
+                "INTERNAL_ERROR"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "header",
+            "footer"
+          ]
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        }
+      },
+      "required": [
+        "section"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "parts": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "headerFooterPart"
+                  },
+                  "refId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "refId"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "section",
+            "parts"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "TARGET_NOT_FOUND",
+                    "NO_OP",
+                    "CAPABILITY_UNAVAILABLE",
+                    "INTERNAL_ERROR"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "parts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "headerFooterPart"
+              },
+              "refId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "refId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "section",
+        "parts"
+      ],
+      "type": "object"
+    }
+  }
+}

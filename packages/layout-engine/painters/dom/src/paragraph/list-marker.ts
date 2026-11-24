@@ -111,6 +111,22 @@ const applyNegativeInlineMarkerAnchor = (
   }
 };
 
+export const setListMarkerText = (label: HTMLElement, text: string, originalMarkerLength?: number): void => {
+  label.classList.toggle('superdoc-list-marker-renumbered', originalMarkerLength !== undefined);
+  if (originalMarkerLength === undefined) {
+    label.textContent = text;
+    return;
+  }
+
+  const original = label.ownerDocument.createElement('span');
+  original.className = 'superdoc-list-marker-original';
+  original.textContent = text.slice(0, originalMarkerLength);
+  const current = label.ownerDocument.createElement('span');
+  current.className = 'superdoc-list-marker-current';
+  current.textContent = text.slice(originalMarkerLength + 1);
+  label.replaceChildren(original, ' ', current);
+};
+
 export const createListMarkerElement = (
   doc: Document,
   markerText: string,
@@ -119,6 +135,7 @@ export const createListMarkerElement = (
   resolvePhysical: ResolvePhysicalFamily = (css) => resolvePhysicalFamily(css),
   trackedChange?: MarkerTrackedChangeView,
   trackedChangesConfig?: TrackedChangesRenderConfig,
+  originalMarkerLength?: number,
 ): HTMLElement => {
   const markerContainer = doc.createElement('span');
   markerContainer.classList.add(DOM_CLASS_NAMES.LIST_MARKER);
@@ -127,7 +144,13 @@ export const createListMarkerElement = (
 
   const markerEl = doc.createElement('span');
   markerEl.classList.add('superdoc-paragraph-marker');
-  markerEl.textContent = markerText;
+  setListMarkerText(
+    markerEl,
+    markerText,
+    !trackedChangesConfig || (trackedChangesConfig.enabled && trackedChangesConfig.mode === 'review')
+      ? originalMarkerLength
+      : undefined,
+  );
   markerEl.style.pointerEvents = 'none';
   // Compose the Word fallback stack first, then let the resolver swap only the primary family.
   // This keeps Times New Roman -> Liberation Serif on a serif fallback instead of inventing sans-serif.
@@ -175,6 +198,7 @@ const renderMarkerAtParagraphTextStart = (params: {
   doc: Document;
   lineEl: HTMLElement;
   text: string;
+  originalMarkerLength?: number;
   run: MarkerRunStyle;
   markerStartPx: number;
   textStartPx: number;
@@ -188,6 +212,7 @@ const renderMarkerAtParagraphTextStart = (params: {
     doc,
     lineEl,
     text,
+    originalMarkerLength,
     run,
     markerStartPx,
     textStartPx,
@@ -208,6 +233,7 @@ const renderMarkerAtParagraphTextStart = (params: {
     resolvePhysical,
     trackedChange,
     trackedChangesConfig,
+    originalMarkerLength,
   );
   element.style.position = 'absolute';
   element.style.textIndent = '0px';
@@ -262,6 +288,7 @@ export const renderLegacyListMarker = (params: {
         doc,
         lineEl,
         text: markerLayout.markerText ?? '',
+        originalMarkerLength: markerLayout.originalMarkerLength,
         run: markerLayout.run ?? {},
         markerStartPx: geometry.markerStartPx,
         textStartPx: geometry.textStartPx,
@@ -341,6 +368,7 @@ export const renderLegacyListMarker = (params: {
     resolvePhysical,
     markerLayout?.trackedChange,
     trackedChangesConfig,
+    markerLayout?.originalMarkerLength,
   );
   markerContainer.style.position = 'relative';
   if (markerJustification === 'right') {
@@ -392,6 +420,7 @@ export const renderResolvedListMarker = (params: {
       doc,
       lineEl,
       text: marker.text,
+      originalMarkerLength: marker.originalMarkerLength,
       run: { ...marker.run, vanish: marker.vanish },
       markerStartPx: marker.markerStartPx,
       textStartPx: marker.textStartPx,
@@ -421,6 +450,7 @@ export const renderResolvedListMarker = (params: {
     resolvePhysical,
     marker.trackedChange,
     trackedChangesConfig,
+    marker.originalMarkerLength,
   );
   markerContainer.style.position = 'relative';
   if (marker.justification === 'right') {

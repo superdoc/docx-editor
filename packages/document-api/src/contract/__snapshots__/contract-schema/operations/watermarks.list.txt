@@ -1,0 +1,435 @@
+{
+  "definition": {
+    "description": "List Word-compatible text and picture watermarks and their effective header scopes.",
+    "expectedResult": "Returns a paginated WatermarksListResult with stable watermark identities and Word placement settings.",
+    "memberPath": "watermarks.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "watermarks/list.mdx",
+    "referenceGroup": "watermarks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "headerFooterKind": {
+                  "const": "header"
+                },
+                "kind": {
+                  "const": "headerFooterSlot"
+                },
+                "section": {
+                  "$ref": "#/$defs/SectionAddress"
+                },
+                "variant": {
+                  "enum": [
+                    "default",
+                    "first",
+                    "even"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "section",
+                "headerFooterKind",
+                "variant"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "effectiveIn": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "headerFooterKind": {
+                      "const": "header"
+                    },
+                    "kind": {
+                      "const": "headerFooterSlot"
+                    },
+                    "section": {
+                      "$ref": "#/$defs/SectionAddress"
+                    },
+                    "variant": {
+                      "enum": [
+                        "default",
+                        "first",
+                        "even"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "section",
+                    "headerFooterKind",
+                    "variant"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "handle": {
+                "$ref": "#/$defs/ResolvedHandle"
+              },
+              "id": {
+                "type": "string"
+              },
+              "owner": {
+                "additionalProperties": false,
+                "properties": {
+                  "partPath": {
+                    "type": "string"
+                  },
+                  "refId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "refId",
+                  "partPath"
+                ],
+                "type": "object"
+              },
+              "watermark": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "bold": {
+                        "type": "boolean"
+                      },
+                      "color": {
+                        "pattern": "^#?[0-9A-Fa-f]{6}$",
+                        "type": "string"
+                      },
+                      "fontFamily": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "fontSizePt": {
+                        "oneOf": [
+                          {
+                            "const": "auto"
+                          },
+                          {
+                            "exclusiveMinimum": 0,
+                            "type": "number"
+                          }
+                        ]
+                      },
+                      "italic": {
+                        "type": "boolean"
+                      },
+                      "kind": {
+                        "const": "text"
+                      },
+                      "opacity": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "orientation": {
+                        "enum": [
+                          "horizontal",
+                          "diagonal"
+                        ]
+                      },
+                      "placement": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "behindText": {
+                            "type": "boolean"
+                          },
+                          "heightPt": {
+                            "exclusiveMinimum": 0,
+                            "type": "number"
+                          },
+                          "horizontal": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "alignment": {
+                                "enum": [
+                                  "left",
+                                  "center",
+                                  "right"
+                                ]
+                              },
+                              "offsetPt": {
+                                "type": "number"
+                              },
+                              "relativeFrom": {
+                                "enum": [
+                                  "page",
+                                  "margin"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "relativeFrom"
+                            ],
+                            "type": "object"
+                          },
+                          "rotationDegrees": {
+                            "type": "number"
+                          },
+                          "vertical": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "alignment": {
+                                "enum": [
+                                  "top",
+                                  "center",
+                                  "bottom"
+                                ]
+                              },
+                              "offsetPt": {
+                                "type": "number"
+                              },
+                              "relativeFrom": {
+                                "enum": [
+                                  "page",
+                                  "margin"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "relativeFrom"
+                            ],
+                            "type": "object"
+                          },
+                          "widthPt": {
+                            "exclusiveMinimum": 0,
+                            "type": "number"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "text": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "text"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "contentType": {
+                        "type": "string"
+                      },
+                      "heightPt": {
+                        "exclusiveMinimum": 0,
+                        "type": "number"
+                      },
+                      "kind": {
+                        "const": "picture"
+                      },
+                      "lockAspectRatio": {
+                        "type": "boolean"
+                      },
+                      "mediaPartPath": {
+                        "type": "string"
+                      },
+                      "opacity": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "placement": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "behindText": {
+                            "type": "boolean"
+                          },
+                          "heightPt": {
+                            "exclusiveMinimum": 0,
+                            "type": "number"
+                          },
+                          "horizontal": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "alignment": {
+                                "enum": [
+                                  "left",
+                                  "center",
+                                  "right"
+                                ]
+                              },
+                              "offsetPt": {
+                                "type": "number"
+                              },
+                              "relativeFrom": {
+                                "enum": [
+                                  "page",
+                                  "margin"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "relativeFrom"
+                            ],
+                            "type": "object"
+                          },
+                          "rotationDegrees": {
+                            "type": "number"
+                          },
+                          "vertical": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "alignment": {
+                                "enum": [
+                                  "top",
+                                  "center",
+                                  "bottom"
+                                ]
+                              },
+                              "offsetPt": {
+                                "type": "number"
+                              },
+                              "relativeFrom": {
+                                "enum": [
+                                  "page",
+                                  "margin"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "relativeFrom"
+                            ],
+                            "type": "object"
+                          },
+                          "widthPt": {
+                            "exclusiveMinimum": 0,
+                            "type": "number"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "scalePercent": {
+                        "enum": [
+                          "auto",
+                          50,
+                          100,
+                          150,
+                          200,
+                          500
+                        ]
+                      },
+                      "washout": {
+                        "type": "boolean"
+                      },
+                      "widthPt": {
+                        "exclusiveMinimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "mediaPartPath",
+                      "contentType",
+                      "scalePercent",
+                      "widthPt",
+                      "heightPt",
+                      "lockAspectRatio",
+                      "washout",
+                      "opacity",
+                      "placement"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "watermarkId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "handle",
+              "watermarkId",
+              "owner",
+              "effectiveIn",
+              "watermark"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "$ref": "#/$defs/PageInfo"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "total",
+        "items",
+        "page"
+      ],
+      "type": "object"
+    }
+  }
+}

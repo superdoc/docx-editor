@@ -182,7 +182,9 @@ interface ModeAwareHostLike {
   setTrackedChangesRenderOptions(options?: { mode?: 'review' | 'original' | 'final' | 'off'; enabled?: boolean }): void;
   setShowFormattingMarks(show: boolean): void;
   dispatch(command: HostCommandLike): Promise<HostDispatchResultLike>;
-  save(options?: { format?: 'docx' } & ReturnType<typeof resolveV2DocxExportOptions>): Promise<ArrayBuffer>;
+  save(
+    options?: { format?: 'docx'; purpose?: 'working-copy' } & ReturnType<typeof resolveV2DocxExportOptions>,
+  ): Promise<ArrayBuffer>;
   dispose(): Promise<void>;
   getHandles(): HostHandlesLike;
   getDocumentFacade?(): DocumentFacadeResultLike;

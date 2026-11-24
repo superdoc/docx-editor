@@ -208,6 +208,7 @@ export function resolveParagraphContent(
 
     marker = {
       text: m.markerText ?? '',
+      ...(m.originalMarkerLength !== undefined ? { originalMarkerLength: m.originalMarkerLength } : {}),
       justification,
       suffix: (m.suffix ?? 'tab') as 'tab' | 'space' | 'nothing',
       vanish: m.run?.vanish,

@@ -1,0 +1,54 @@
+{
+  "definition": {
+    "batchable": false,
+    "description": "Release a retained exact-selection snapshot without changing document content or Undo history.",
+    "expectedResult": "Returns released=true when a same-session handle was removed; otherwise false.",
+    "memberPath": "selection.releaseSnapshot",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "selection/release-snapshot.mdx",
+    "referenceGroup": "selection",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "snapshotId": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "snapshotId"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "released": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "released"
+      ],
+      "type": "object"
+    }
+  }
+}

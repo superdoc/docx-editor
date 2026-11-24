@@ -6,8 +6,8 @@ const SRC_ROOT = join(__dirname, '..', '..');
 
 // V2 branch invariant: the customer `superdoc` package consumes the internal v2
 // runtime through the separate `@superdoc/docx-engine` package, but it must only be
-// reached through three approved internal seams: the browser integration, the
-// Node-only collaboration-upgrade facade, and the collaboration Worker facade.
+// reached through approved internal seams: the browser integration and the
+// collaboration worker, upgrade, validation, and room-name facades.
 // Every other source file in the package must not import any internal v2
 // implementation package directly.
 // The publish-artifact audit enforces the packed boundary. This map keeps each
@@ -16,7 +16,13 @@ const APPROVED_SEAMS = new Map([
   ['core/v2-integration/v2-integration.ts', '@superdoc/docx-engine'],
   ['public/collaboration-upgrade-engine.ts', '@superdoc/docx-engine/collaboration-upgrade-engine'],
   ['public/collaboration-worker.ts', '@superdoc/docx-engine/collaboration-worker'],
+  ['public/collaboration-validation.ts', '@superdoc/docx-engine/document-runtime'],
 ]);
+
+const publicExports = JSON.parse(readFileSync(join(SRC_ROOT, '..', 'package.json'), 'utf8')).exports;
+if (Object.prototype.hasOwnProperty.call(publicExports, './collaboration')) {
+  APPROVED_SEAMS.set('public/collaboration.ts', '@superdoc/docx-engine/collaboration');
+}
 
 const FORBIDDEN_IMPORT_FRAGMENTS = [
   '@superdoc/v2-browser-shell',

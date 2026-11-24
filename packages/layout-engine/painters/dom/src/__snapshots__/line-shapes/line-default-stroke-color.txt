@@ -1,0 +1,32 @@
+<div class="superdoc-vector-shape">
+  style height: 100%
+  style overflow: hidden
+  style position: relative
+  style width: 100%
+  <div>
+    style height: 1px
+    style left: 0px
+    style position: absolute
+    style top: 0px
+    style width: 100px
+    <svg>
+      height="100%"
+      preserveAspectRatio="none"
+      viewBox="0 0 100 1"
+      width="100%"
+      xmlns="http://www.w3.org/2000/svg"
+      style display: block
+      style left: 0px
+      style overflow: visible
+      style pointer-events: none
+      style position: absolute
+      style top: 0px
+      style z-index: 0
+      <line>
+        shape-rendering="crispEdges"
+        stroke="#000000"
+        stroke-width="2"
+        x1="0"
+        x2="100"
+        y1="0.5"
+        y2="0.5"

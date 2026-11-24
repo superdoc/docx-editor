@@ -76,10 +76,14 @@ describe('use-comment: extended coverage', () => {
       expect(c.resolvedByEmail).toBe('a@b.com');
       expect(c.resolvedByName).toBe('Alice');
       expect(typeof c.resolvedTime).toBe('number');
-      expect(superdoc.emit).toHaveBeenCalledWith(
-        'comments-update',
-        expect.objectContaining({ type: expect.any(String) }),
-      );
+      expect(
+        superdoc.emit.mock.calls.map(([event, payload]) => [
+          event,
+          payload.type,
+          payload.comment.commentId,
+          payload.comment.resolvedById,
+        ]),
+      ).toEqual([['comments-update', 'resolved', 'c-1', 'alice-id']]);
     });
 
     it('is a no-op when already resolved', () => {
@@ -230,7 +234,6 @@ describe('use-comment: extended coverage', () => {
     it('falls back to synthetic selection when none provided', () => {
       const c = useComment({ commentId: 'c-1', fileId: 'doc-1' });
       const v = c.getValues();
-      expect(v.selection).toBeDefined();
       expect(v.selection.documentId).toBe('doc-1');
     });
   });

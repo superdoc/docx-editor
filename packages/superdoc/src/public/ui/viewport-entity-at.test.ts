@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vite-plus/test';
+import { describe, it, expect, expectTypeOf, vi, afterEach } from 'vite-plus/test';
 import { createSuperDocUI } from './create-super-doc-ui.js';
 import { SUPERDOC_UI_REASONS } from './reasons.js';
 import type { ViewportContext } from './types.js';
@@ -725,25 +725,7 @@ describe('viewport.entityAt / trackChanges.getAt — point hit-testing', () => {
   });
 
   it('ViewportContext.point is optional — a consumer context that omits it still typechecks', () => {
-    const hit = document.createElement('span');
-    const { superdoc } = makeHitStub(hit, []);
-    const ui = createSuperDocUI({ superdoc });
-
-    // `point` became optional/additive (was required). A custom-UI context built
-    // without it must still satisfy `ViewportContext`, so consumer code compiled
-    // against the older shape keeps working. The `ViewportContext` annotation is
-    // the type-level guard; it would be a compile error if `point` were required.
-    const baseSelection = ui.viewport.contextAt({ x: 0, y: 0 }).selection;
-    const ctxWithoutPoint: ViewportContext = {
-      entities: [],
-      selection: baseSelection,
-      position: null,
-      insideSelection: false,
-    };
-    expect('point' in ctxWithoutPoint).toBe(false);
-    expect(ctxWithoutPoint.point).toBeUndefined();
-
-    ui.destroy();
+    expectTypeOf<Omit<ViewportContext, 'point'>>().toExtend<ViewportContext>();
   });
 
   it('validates a story-scoped hit against the internal all-story set and resolves it via getAt', () => {

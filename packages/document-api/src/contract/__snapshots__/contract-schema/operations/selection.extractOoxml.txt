@@ -1,0 +1,448 @@
+{
+  "definition": {
+    "description": "Capture a nonempty current or addressed selection as portable OOXML with native dependencies. Optional retain:true keeps an exact same-session restoration handle for one complete standalone body paragraph; release it when unused. Unsupported retained contexts and collaboration reject.",
+    "expectedResult": "Returns the selected OOXML, structural placement, source provenance, and required relationships and parts without changing the document.",
+    "memberPath": "selection.extractOoxml",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET",
+          "TARGET_NOT_FOUND",
+          "INVALID_CONTEXT",
+          "AMBIGUOUS_MATCH",
+          "PRECONDITION_FAILED",
+          "RESOURCE_LIMIT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "selection/extract-ooxml.mdx",
+    "referenceGroup": "selection",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SelectionTarget"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "end": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "columnIndex": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "rowIndex": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "rowIndex",
+                        "columnIndex"
+                      ],
+                      "type": "object"
+                    },
+                    "isRectangular": {
+                      "const": true
+                    },
+                    "kind": {
+                      "const": "tableCells"
+                    },
+                    "selectionMode": {
+                      "const": "cells"
+                    },
+                    "start": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "columnIndex": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "rowIndex": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "rowIndex",
+                        "columnIndex"
+                      ],
+                      "type": "object"
+                    },
+                    "story": {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    "tableId": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "tableId",
+                    "start",
+                    "end"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "retain": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "at"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "retain": {
+              "type": "boolean"
+            },
+            "selection": {
+              "const": "current"
+            }
+          },
+          "required": [
+            "selection"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SelectionTarget"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "end": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "columnIndex": {
+                      "type": "integer"
+                    },
+                    "rowIndex": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "rowIndex",
+                    "columnIndex"
+                  ],
+                  "type": "object"
+                },
+                "isRectangular": {
+                  "const": true
+                },
+                "kind": {
+                  "const": "tableCells"
+                },
+                "selectionMode": {
+                  "const": "cells"
+                },
+                "start": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "columnIndex": {
+                      "type": "integer"
+                    },
+                    "rowIndex": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "rowIndex",
+                    "columnIndex"
+                  ],
+                  "type": "object"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "tableId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "tableId",
+                "start",
+                "end"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "context": {
+          "additionalProperties": false,
+          "properties": {
+            "tableMerges": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "columnIndex": {
+                    "type": "integer"
+                  },
+                  "restartCellPropertiesXml": {
+                    "type": "string"
+                  },
+                  "restartRowIndex": {
+                    "type": "integer"
+                  },
+                  "selectedRowIndex": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "selectedRowIndex",
+                  "columnIndex",
+                  "restartRowIndex",
+                  "restartCellPropertiesXml"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "xml": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "xml"
+          ],
+          "type": "object"
+        },
+        "dependencies": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "contentType": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "dataBase64": {
+                "type": "string"
+              },
+              "relationshipId": {
+                "type": "string"
+              },
+              "relationshipType": {
+                "type": "string"
+              },
+              "sourcePartUri": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              },
+              "targetMode": {
+                "enum": [
+                  "Internal",
+                  "External"
+                ]
+              }
+            },
+            "required": [
+              "sourcePartUri",
+              "relationshipId",
+              "relationshipType",
+              "target",
+              "targetMode",
+              "contentType"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "diagnostics": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "formatVersion": {
+          "const": 1
+        },
+        "fragment": {
+          "additionalProperties": false,
+          "properties": {
+            "namespaces": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "placement": {
+              "enum": [
+                "inline",
+                "blocks",
+                "table"
+              ]
+            },
+            "table": {
+              "additionalProperties": false,
+              "properties": {
+                "cells": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "columnIndex": {
+                        "type": "integer"
+                      },
+                      "gridSpan": {
+                        "type": "integer"
+                      },
+                      "rowIndex": {
+                        "type": "integer"
+                      },
+                      "vMerge": {
+                        "enum": [
+                          "none",
+                          "restart",
+                          "continue"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "rowIndex",
+                      "columnIndex",
+                      "gridSpan",
+                      "vMerge"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "gridColumnCount": {
+                  "type": "integer"
+                },
+                "tableId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tableId",
+                "gridColumnCount",
+                "cells"
+              ],
+              "type": "object"
+            },
+            "xml": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "placement",
+            "xml",
+            "namespaces"
+          ],
+          "type": "object"
+        },
+        "snapshotId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "packageRevision": {
+              "type": "string"
+            },
+            "paragraphStyleId": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "partUri": {
+              "type": "string"
+            },
+            "story": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "story",
+            "partUri",
+            "paragraphStyleId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "formatVersion",
+        "at",
+        "evaluatedRevision",
+        "fragment",
+        "source",
+        "context",
+        "dependencies",
+        "diagnostics"
+      ],
+      "type": "object"
+    }
+  }
+}

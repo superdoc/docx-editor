@@ -1,0 +1,206 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "coordinateSpace": {
+      "$ref": "#/$defs/TextCoordinateSpace"
+    },
+    "range": {
+      "$ref": "#/$defs/Range"
+    },
+    "ref": {
+      "type": "string"
+    },
+    "styleId": {
+      "type": "string"
+    },
+    "styles": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "type": "string"
+        },
+        "direct": {
+          "additionalProperties": false,
+          "properties": {
+            "bold": {
+              "enum": [
+                "on",
+                "off",
+                "clear"
+              ]
+            },
+            "italic": {
+              "enum": [
+                "on",
+                "off",
+                "clear"
+              ]
+            },
+            "strike": {
+              "enum": [
+                "on",
+                "off",
+                "clear"
+              ]
+            },
+            "underline": {
+              "enum": [
+                "on",
+                "off",
+                "clear"
+              ]
+            }
+          },
+          "required": [
+            "bold",
+            "italic",
+            "underline",
+            "strike"
+          ],
+          "type": "object"
+        },
+        "effective": {
+          "additionalProperties": false,
+          "properties": {
+            "bold": {
+              "type": "boolean"
+            },
+            "color": {
+              "type": "string"
+            },
+            "fontFamily": {
+              "type": "string"
+            },
+            "fontSizePt": {
+              "type": "number"
+            },
+            "highlight": {
+              "type": "string"
+            },
+            "italic": {
+              "type": "boolean"
+            },
+            "sources": {
+              "additionalProperties": false,
+              "properties": {
+                "color": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "fallback": {
+                      "const": true
+                    },
+                    "origin": {
+                      "enum": [
+                        "literal",
+                        "theme",
+                        "default"
+                      ]
+                    },
+                    "shade": {
+                      "maximum": 255,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "themeColor": {
+                      "enum": [
+                        "dk1",
+                        "dk2",
+                        "lt1",
+                        "lt2",
+                        "accent1",
+                        "accent2",
+                        "accent3",
+                        "accent4",
+                        "accent5",
+                        "accent6",
+                        "hyperlink",
+                        "followedHyperlink"
+                      ]
+                    },
+                    "tint": {
+                      "maximum": 255,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "origin"
+                  ],
+                  "type": "object"
+                },
+                "fontFamily": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "fallback": {
+                      "const": true
+                    },
+                    "origin": {
+                      "enum": [
+                        "literal",
+                        "theme"
+                      ]
+                    },
+                    "themeFont": {
+                      "enum": [
+                        "majorAscii",
+                        "majorHAnsi",
+                        "majorEastAsia",
+                        "majorBidi",
+                        "minorAscii",
+                        "minorHAnsi",
+                        "minorEastAsia",
+                        "minorBidi"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "origin"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "strike": {
+              "type": "boolean"
+            },
+            "underline": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "bold",
+            "italic",
+            "underline",
+            "strike"
+          ],
+          "type": "object"
+        },
+        "fontFamily": {
+          "type": "string"
+        },
+        "fontSizePt": {
+          "type": "number"
+        },
+        "highlight": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "direct",
+        "effective"
+      ],
+      "type": "object"
+    },
+    "text": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "range",
+    "text",
+    "styles",
+    "ref"
+  ],
+  "type": "object"
+}

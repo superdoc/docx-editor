@@ -1,0 +1,128 @@
+{
+  "definition": {
+    "description": "Remove the targeted comment or reply by ID. Deleting a root does not delete descendant replies.",
+    "expectedResult": "Returns a Receipt with the targeted removed commentId in `removed` and every story touched in `affectedStories`. Rejects with `TARGET_NOT_FOUND` when the comment id does not exist and reports `NO_OP` when the command layer accepts the target but removes nothing.",
+    "inputAliases": {
+      "id": "commentId"
+    },
+    "intentAction": "delete",
+    "intentGroup": "comment",
+    "memberPath": "comments.delete",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "TARGET_NOT_FOUND",
+        "CAPABILITY_UNAVAILABLE",
+        "NO_OP"
+      ],
+      "returnsReceipt": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "comments/delete.mdx",
+    "referenceGroup": "comments",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE",
+                "NO_OP"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "commentId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "commentId"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ReceiptSuccess"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE",
+                    "NO_OP"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "$ref": "#/$defs/ReceiptSuccess"
+    }
+  }
+}

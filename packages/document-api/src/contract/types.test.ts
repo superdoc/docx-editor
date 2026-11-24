@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { assertOperationId, isOperationId, isValidOperationIdFormat, OPERATION_IDS } from './types.js';
+import { assertOperationId, isOperationId, isValidOperationIdFormat } from './types.js';
 import type { DocumentApiMemberPath } from './operation-map.js';
 
 describe('isValidOperationIdFormat', () => {
@@ -47,10 +47,9 @@ describe('isValidOperationIdFormat', () => {
 });
 
 describe('isOperationId', () => {
-  it('returns true for every known operation ID', () => {
-    for (const id of OPERATION_IDS) {
-      expect(isOperationId(id)).toBe(true);
-    }
+  it('returns true for known operation IDs', () => {
+    expect(isOperationId('insert')).toBe(true);
+    expect(isOperationId('format.paragraph.setAlignment')).toBe(true);
   });
 
   it('returns false for unknown but validly formatted strings', () => {
@@ -65,10 +64,8 @@ describe('isOperationId', () => {
 });
 
 describe('assertOperationId', () => {
-  it('does not throw for known operation IDs', () => {
-    for (const id of OPERATION_IDS) {
-      expect(() => assertOperationId(id)).not.toThrow();
-    }
+  it('does not throw for a known operation ID', () => {
+    expect(() => assertOperationId('comments.create')).not.toThrow();
   });
 
   it('throws for unknown operation IDs', () => {

@@ -1,0 +1,100 @@
+## editor ready
+controller.setContext document=doc-a comments=true trackedChanges=true
+
+## first paint commits its page window
+controller.onCommittedPagePaint {"commitSequence":1,"pageIndices":[0],"documentId":"doc-a"}
+host.resolveReviewWindow {"documentId":"doc-a"}
+publisher.noteCommittedPageWindow commit=1
+controller applied the window: {"ok":true,"commentItems":1,"trackedItems":1}
+publisher.publish epoch=1 reason=render-epoch-handoff
+sidebar rows:
+tracked change change-1: inserted words
+comment comment-1: Check this clause
+
+## typing commits without review effects
+sidebar rows:
+tracked change change-1: inserted words
+comment comment-1: Check this clause
+
+## review mutation starts
+controller.beginMutation {"token":"mutation-1"}
+sidebar rows:
+tracked change change-1: inserted words
+comment comment-1: Check this clause
+
+## review mutation commits and repaints
+comments-update deleted comment-1
+controller.settleMutation "mutation-1" {"outcome":"committed","allResolved":false,"resumeDomains":["comments","trackedChanges"],"trackedRowCount":0}
+publisher.publish epoch=2 reason=tracked-change-mutation
+sidebar rows:
+(none)
+
+## a collaborator adds a tracked change
+controller.invalidate "collaboration:remote-review-changed"
+controller.refreshCommittedWindow "collaboration:remote-review-changed"
+host.resolveReviewWindow {"documentId":"doc-a"}
+controller applied the window: {"ok":true,"commentItems":0,"trackedItems":1}
+sidebar rows:
+tracked change change-2: remote words
+
+## a collaborator edits text without review changes
+sidebar rows:
+tracked change change-2: remote words
+
+## undo
+controller.refreshCommittedWindow "history-undo"
+host.resolveReviewWindow {"documentId":"doc-a"}
+controller applied the window: {"ok":true,"commentItems":0,"trackedItems":2}
+sidebar rows:
+tracked change change-2: remote words
+tracked change change-3: not read yet
+
+## redo
+controller.refreshCommittedWindow "history-redo"
+host.resolveReviewWindow {"documentId":"doc-a"}
+controller applied the window: {"ok":true,"commentItems":0,"trackedItems":2}
+sidebar rows:
+tracked change change-2: remote words
+tracked change change-3: not read yet
+
+## review metadata commits without a paint
+controller.refreshCommittedWindow "review-sidecar-committed"
+host.resolveReviewWindow {"documentId":"doc-a"}
+controller applied the window: {"ok":true,"commentItems":0,"trackedItems":2}
+sidebar rows:
+tracked change change-2: remote words
+tracked change change-3: not read yet
+
+## document mode changes
+controller.refreshCommittedWindow "document-mode-change"
+host.resolveReviewWindow {"documentId":"doc-a"}
+controller applied the window: {"ok":true,"commentItems":0,"trackedItems":2}
+publisher.publish epoch=2 reason=none
+sidebar rows:
+tracked change change-2: remote words
+tracked change change-3: not read yet
+
+## a review mutation is rejected
+controller.beginMutation {"token":"mutation-2"}
+controller.settleMutation "mutation-2" {"outcome":"rejected","resumeDomains":["comments","trackedChanges"],"trackedRowCount":2}
+sidebar rows:
+tracked change change-2: remote words
+tracked change change-3: not read yet
+
+## a review mutation is aborted
+controller.beginMutation {"token":"mutation-3"}
+controller.settleMutation "mutation-3" {"outcome":"aborted","resumeDomains":["comments","trackedChanges"],"trackedRowCount":2}
+sidebar rows:
+tracked change change-2: remote words
+tracked change change-3: not read yet
+
+## accept all resolves every tracked change
+controller.beginMutation {"token":"mutation-4"}
+controller.settleMutation "mutation-4" {"outcome":"committed","allResolved":true,"resumeDomains":["comments"],"trackedRowCount":0}
+sidebar rows:
+(none)
+
+## the render is cleared
+controller.reset "render-cleared"
+sidebar rows:
+(none)

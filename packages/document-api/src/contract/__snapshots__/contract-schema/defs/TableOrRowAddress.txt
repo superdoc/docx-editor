@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "block"
+    },
+    "nodeId": {
+      "type": "string"
+    },
+    "nodeType": {
+      "enum": [
+        "table",
+        "tableRow"
+      ]
+    }
+  },
+  "required": [
+    "kind",
+    "nodeType",
+    "nodeId"
+  ],
+  "type": "object"
+}

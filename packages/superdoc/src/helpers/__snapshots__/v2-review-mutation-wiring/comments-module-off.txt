@@ -1,0 +1,16 @@
+## editor ready
+controller.setContext document=doc-a comments=true trackedChanges=true
+
+## a collaborator adds a tracked change
+controller.invalidate "collaboration:remote-review-changed"
+controller.refreshCommittedWindow "collaboration:remote-review-changed"
+host.resolveReviewWindow {"documentId":"doc-a"}
+controller applied the window: {"ok":false,"reason":"comments-adapter-stale"}
+sidebar rows:
+(none)
+
+## accept all resolves every tracked change
+controller.beginMutation {"token":"mutation-1"}
+controller.settleMutation "mutation-1" {"outcome":"committed","allResolved":false,"resumeDomains":["comments","trackedChanges"],"trackedRowCount":0}
+sidebar rows:
+(none)

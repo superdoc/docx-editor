@@ -9,7 +9,11 @@ afterEach(() => {
   for (const ui of controllers.splice(0)) ui.destroy?.();
 });
 
-function makeHost() {
+type CommandCall = unknown[];
+
+type CommandRecorder = { has: (id: string) => boolean; record: (call: CommandCall) => void };
+
+function makeHost(recorder?: CommandRecorder) {
   const host: Record<string, unknown> = {
     activeEditor: { id: 'editor-1' },
     config: { documentMode: 'editing', rulers: true, layoutEngineOptions: { showFormattingMarks: false } },
@@ -25,8 +29,21 @@ function makeHost() {
   Object.defineProperty(host, 'ui', {
     get() {
       if (!ui) {
-        ui = createSuperDocUI({ superdoc: host as SuperDocLike });
-        controllers.push(ui);
+        const controller = createSuperDocUI({ superdoc: host as SuperDocLike });
+        controllers.push(controller);
+        ui = recorder
+          ? {
+              ...controller,
+              commands: {
+                ...controller.commands,
+                has: recorder.has,
+                executeAsync: async (...call: CommandCall) => {
+                  recorder.record(call);
+                  return true;
+                },
+              },
+            }
+          : controller;
       }
       return ui;
     },
@@ -42,6 +59,28 @@ function makeToolbar(host = makeHost()) {
     showFormattingMarksButton: true,
     showTableOfContentsButton: true,
   });
+}
+
+function recordCommandsRun(click: (toolbar: BuiltInToolbar) => void, has: (id: string) => boolean = () => true) {
+  const calls: CommandCall[] = [];
+  const toolbar = makeToolbar(makeHost({ has, record: (call) => calls.push(call) }));
+  const exceptions: string[] = [];
+  toolbar.on('exception', ({ error }: { error: Error }) => exceptions.push(error.message));
+  click(toolbar);
+  toolbar.destroy();
+  return { calls, exceptions };
+}
+
+function formatCall(call: CommandCall): string {
+  return `executeAsync(${call.map((value) => (value === undefined ? 'undefined' : JSON.stringify(value))).join(', ')})`;
+}
+
+function recordRouting(rows: Array<[string, ReturnType<typeof recordCommandsRun>]>): string {
+  const lines = rows.map(([input, { calls, exceptions }]) => {
+    const ran = calls.length ? calls.map(formatCall).join(', ') : 'nothing';
+    return `${input} -> ${ran}${exceptions.map((message) => `, exception ${JSON.stringify(message)}`).join('')}`;
+  });
+  return `${lines.join('\n')}\n`;
 }
 
 const enabled: CommandState = { enabled: true, disabled: false, active: false, supported: true };
@@ -177,21 +216,18 @@ describe('built-in toolbar item to command routing', () => {
     toolbar.destroy();
   });
 
-  it('runs each clicked item through the command it follows', () => {
-    const toolbar = makeToolbar();
-    const ran: string[] = [];
-    const spy = vi.spyOn(toolbar.ui.commands, 'has').mockImplementation((id: string) => {
-      ran.push(id);
-      return false;
+  it('runs each clicked item through the command it follows, with its argument', async () => {
+    const click = (name: string, argument: string) => (toolbar: BuiltInToolbar) =>
+      toolbar.emitCommand({ item: toolbar.getToolbarItemByName(name)!, argument });
+    const rows = Object.keys(COMMAND_FOLLOWED_BY_ITEM).map((name): [string, ReturnType<typeof recordCommandsRun>] => {
+      const argument = `${name} argument`;
+      return [`click ${name} with ${JSON.stringify(argument)}`, recordCommandsRun(click(name, argument))];
     });
-    const clicked = Object.entries(COMMAND_FOLLOWED_BY_ITEM).filter(([name]) => name !== 'image');
-    for (const [name] of clicked) {
-      ran.length = 0;
-      toolbar.emitCommand({ item: toolbar.getToolbarItemByName(name)!, argument: 'value' });
-      expect(ran[0], name).toBe(COMMAND_FOLLOWED_BY_ITEM[name]);
-    }
-    spy.mockRestore();
-    toolbar.destroy();
+    rows.push([
+      'click bold with "bold argument" when the controller has no bold command',
+      recordCommandsRun(click('bold', 'bold argument'), (id) => id !== 'bold'),
+    ]);
+    await expect(recordRouting(rows)).toMatchFileSnapshot('./__snapshots__/toolbar-command-routing/clicked-items.txt');
   });
 
   it('enables the table actions dropdown when any table action, including Fix tables, is enabled', () => {
@@ -221,13 +257,6 @@ describe('built-in toolbar item to command routing', () => {
   });
 
   it('runs each table action option through its own command', async () => {
-    const toolbar = makeToolbar();
-    const tableActions = toolbar.getToolbarItemByName('tableActions')!;
-    const ran: string[] = [];
-    const spy = vi.spyOn(toolbar.ui.commands, 'has').mockImplementation((id: string) => {
-      ran.push(id);
-      return false;
-    });
     const options = [
       'addRowBefore',
       'addRowAfter',
@@ -242,21 +271,12 @@ describe('built-in toolbar item to command routing', () => {
       'fixTables',
       'notAnOption',
     ];
-    for (const command of options) toolbar.emitCommand({ item: tableActions, argument: { command } });
-    expect(ran).toEqual([
-      'table-add-row-before',
-      'table-add-row-after',
-      'table-delete-row',
-      'table-add-column-before',
-      'table-add-column-after',
-      'table-delete-column',
-      'table-delete',
-      'table-remove-borders',
-      'table-merge-cells',
-      'table-split-cell',
-      'table-fix',
+    const rows = options.map((command): [string, ReturnType<typeof recordCommandsRun>] => [
+      `choose tableActions option ${command}`,
+      recordCommandsRun((toolbar) =>
+        toolbar.emitCommand({ item: toolbar.getToolbarItemByName('tableActions')!, argument: { command } }),
+      ),
     ]);
-    spy.mockRestore();
-    toolbar.destroy();
+    await expect(recordRouting(rows)).toMatchFileSnapshot('./__snapshots__/toolbar-command-routing/table-actions.txt');
   });
 });

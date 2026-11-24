@@ -1,0 +1,26 @@
+input:
+{
+  "comment": {
+    "commentId": null,
+    "trackedChange": false
+  },
+  "positionKey": null,
+  "positionEntry": null,
+  "fallbackId": "fallback-thread-id"
+}
+
+instances:
+[
+  {
+    "id": "fallback-thread-id",
+    "threadId": "fallback-thread-id",
+    "comment": {
+      "commentId": null,
+      "trackedChange": false
+    },
+    "positionKey": null,
+    "positionEntry": null,
+    "pageIndex": null,
+    "isPrimary": true
+  }
+]

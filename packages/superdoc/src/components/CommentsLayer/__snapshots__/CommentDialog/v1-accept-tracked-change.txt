@@ -1,0 +1,97 @@
+before:
+
+store:
+{
+  "activeComment": null,
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "tc-v1-inserted-words",
+      "trackedChange": true
+    }
+  ]
+}
+
+dialog:
+classes: (none)
+tc-v1-inserted-words: tracked change: Added "inserted words"
+
+action: header emits resolve; the decision then succeeds
+
+store while the decision is pending:
+{
+  "activeComment": null,
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "tc-v1-inserted-words",
+      "trackedChange": true
+    }
+  ]
+}
+
+document calls:
+doc.trackChanges.decide {"decision":"accept","target":{"id":"tc-v1-inserted-words"}}
+
+comments-update events:
+[
+  {
+    "type": "resolved",
+    "comment": {
+      "commentId": "tc-v1-inserted-words",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      },
+      "trackedChange": true,
+      "trackedChangeText": "inserted words",
+      "trackedChangeType": "trackInsert",
+      "trackedChangeDisplayType": "insert",
+      "trackedChangeDecision": "accept",
+      "resolvedTime": 1795089600000,
+      "resolvedById": "user-1",
+      "resolvedByEmail": "user@example.com",
+      "resolvedByName": "User"
+    }
+  }
+]
+
+superdoc.focus calls: [
+  []
+]
+
+after:
+
+store:
+{
+  "activeComment": null,
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "tc-v1-inserted-words",
+      "trackedChange": true,
+      "trackedChangeDecision": "accept",
+      "resolvedTime": 1795089600000,
+      "resolvedById": "user-1",
+      "resolvedByEmail": "user@example.com",
+      "resolvedByName": "User"
+    }
+  ]
+}
+
+dialog:
+classes: is-resolved
+badge: Accepted
+tc-v1-inserted-words: tracked change: Added "inserted words"

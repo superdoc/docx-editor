@@ -275,7 +275,7 @@ describe('useFindReplace', () => {
       expect(manager.open).toHaveBeenCalledTimes(1);
       const call = manager.open.mock.calls[0][0];
       // markRaw wraps the component, so check identity through the raw value
-      expect(call.component).toBeDefined();
+      expect(call.component).toBe(CustomComponent);
       expect(call.props!.findReplace).toBeDefined();
     });
 
@@ -303,7 +303,7 @@ describe('useFindReplace', () => {
       expect(manager.open).toHaveBeenCalledTimes(1);
       const call = manager.open.mock.calls[0][0];
       // The resolver's component should win (it's raw-wrapped)
-      expect(call.component).toBeDefined();
+      expect(call.component).toBe(ResolverComponent);
     });
 
     it('resolver returning null falls through to direct component', async () => {
@@ -317,7 +317,7 @@ describe('useFindReplace', () => {
 
       expect(manager.open).toHaveBeenCalledTimes(1);
       const call = manager.open.mock.calls[0][0];
-      expect(call.component).toBeDefined();
+      expect(call.component).toBe(DirectComponent);
     });
 
     it('resolver returning default falls through to built-in', async () => {
@@ -422,26 +422,30 @@ describe('useFindReplace', () => {
       expect(findReplace.isOpen.value).toBe(false);
     });
 
-    it('stale settle callback does not clobber newer surface state', async () => {
+    it('tracks the reopened surface after the first one was replaced', async () => {
       await findReplace.open();
       await vi.dynamicImportSettled();
+      const [firstHandle] = manager.handles;
 
-      const firstHandle = manager.lastHandle;
-
-      // Settle the first handle (simulating replacement by another surface)
-      firstHandle!._settle!({ status: 'replaced', replacedBy: 'surface-2' });
+      firstHandle._settle!({ status: 'replaced', replacedBy: 'surface-2' });
       await tick();
+      search.clear.mockClear();
 
-      // Now open again (simulating the user re-pressing Cmd+F)
       await findReplace.open();
       await vi.dynamicImportSettled();
+      const [, secondHandle] = manager.handles;
 
       expect(manager.open).toHaveBeenCalledTimes(2);
       expect(findReplace.isOpen.value).toBe(true);
 
-      // The second handle's settle should not have been clobbered
-      const secondHandle = manager.lastHandle;
-      expect(secondHandle.id).not.toBe(firstHandle.id);
+      findReplace.close();
+      expect(secondHandle.close).toHaveBeenCalledWith('programmatic');
+      expect(firstHandle.close).not.toHaveBeenCalled();
+
+      secondHandle._settle!({ status: 'closed', reason: 'programmatic' });
+      await tick();
+      expect(findReplace.isOpen.value).toBe(false);
+      expect(search.clear).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -996,7 +1000,13 @@ describe('useFindReplace', () => {
 
       // Setting via the wrapper should update the underlying ref
       capturedCtx!.findReplace.findQuery = 'hello';
-      expect(capturedCtx!.findReplace.findQuery).toBe('hello');
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      expect(search.find).toHaveBeenLastCalledWith('hello', {
+        caseSensitive: false,
+        regex: false,
+        includeTrackedDeletions: false,
+      });
+      expect(capturedCtx?.findReplace.matchCount).toBe(2);
     });
   });
 });

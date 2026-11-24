@@ -1,0 +1,106 @@
+yjs comments:
+[
+  {
+    "createdTime": 1767225600000,
+    "importedId": "legacy-1",
+    "commentText": "legacy without commentId"
+  },
+  {
+    "createdTime": 1767225600000,
+    "importedId": "legacy-1",
+    "commentText": "duplicate legacy"
+  },
+  {
+    "createdTime": 1767225600000,
+    "commentId": "c2",
+    "commentText": "normal comment"
+  },
+  {
+    "createdTime": 1767225600000,
+    "commentId": "c2",
+    "commentText": "duplicate normal comment"
+  }
+]
+
+store:
+[
+  {
+    "commentId": "legacy-1",
+    "importedId": "legacy-1",
+    "mentions": [],
+    "creatorId": null,
+    "creatorEmail": null,
+    "creatorName": null,
+    "creatorImage": null,
+    "createdTime": 1767225600000,
+    "importedAuthor": null,
+    "docxCommentJSON": null,
+    "isInternal": true,
+    "commentText": "legacy without commentId",
+    "commentFormat": "html",
+    "selection": {
+      "page": 1,
+      "selectionBounds": {}
+    },
+    "trackedChangeText": null,
+    "trackedChangeType": null,
+    "trackedChangeDisplayType": null,
+    "semanticColorKey": null,
+    "semanticColor": null,
+    "trackedChangeStory": null,
+    "trackedChangeStoryKind": null,
+    "trackedChangeStoryLabel": "",
+    "trackedChangeAnchorKey": null,
+    "trackedChangeCanonicalId": null,
+    "trackedChangePositionAliases": [],
+    "trackedChangeDecision": null,
+    "trackedChangeLabel": null,
+    "trackedChangeDetailLines": null,
+    "trackedChangeImagePreview": null,
+    "customAttributes": null,
+    "deletedText": null,
+    "resolvedTime": null,
+    "resolvedById": null,
+    "resolvedByEmail": null,
+    "resolvedByName": null
+  },
+  {
+    "commentId": "c2",
+    "mentions": [],
+    "creatorId": null,
+    "creatorEmail": null,
+    "creatorName": null,
+    "creatorImage": null,
+    "createdTime": 1767225600000,
+    "importedAuthor": null,
+    "docxCommentJSON": null,
+    "isInternal": true,
+    "commentText": "normal comment",
+    "commentFormat": "html",
+    "selection": {
+      "page": 1,
+      "selectionBounds": {}
+    },
+    "trackedChangeText": null,
+    "trackedChangeType": null,
+    "trackedChangeDisplayType": null,
+    "semanticColorKey": null,
+    "semanticColor": null,
+    "trackedChangeStory": null,
+    "trackedChangeStoryKind": null,
+    "trackedChangeStoryLabel": "",
+    "trackedChangeAnchorKey": null,
+    "trackedChangeCanonicalId": null,
+    "trackedChangePositionAliases": [],
+    "trackedChangeDecision": null,
+    "trackedChangeLabel": null,
+    "trackedChangeDetailLines": null,
+    "trackedChangeImagePreview": null,
+    "customAttributes": null,
+    "deletedText": null,
+    "resolvedTime": null,
+    "resolvedById": null,
+    "resolvedByEmail": null,
+    "resolvedByName": null
+  }
+]

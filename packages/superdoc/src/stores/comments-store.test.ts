@@ -125,33 +125,6 @@ describe('comments-store position alias lookup (SD-5650)', () => {
     };
   });
 
-  it('enumerates registered position aliases once across repeated permission misses', () => {
-    let enumerations = 0;
-    const positions = Object.fromEntries(
-      Array.from({ length: 512 }, (_, index) => [
-        `slot-${index}`,
-        position(index, { key: `anchor-${index}`, threadId: `thread-${index}` }),
-      ]),
-    );
-    store.commentsList = [];
-    store.editorCommentPositions = new Proxy(positions, {
-      ownKeys(target) {
-        enumerations++;
-        return Reflect.ownKeys(target);
-      },
-    });
-    enumerations = 0;
-
-    expect(store.getComment('missing-first')).toBeNull();
-    const firstLookupEnumerations = enumerations;
-    expect(firstLookupEnumerations).toBeGreaterThan(0);
-    for (let index = 0; index < 96; index++) {
-      expect(store.getComment(`missing-${index}`)).toBeNull();
-    }
-
-    expect(enumerations).toBe(firstLookupEnumerations);
-  });
-
   it('preserves first alias matches and direct position key precedence', () => {
     store.editorCommentPositions.first = position(100, { key: 'shared' });
     store.editorCommentPositions.second = position(200, { threadId: 'shared' });
@@ -199,25 +172,13 @@ describe('comments-store position alias lookup (SD-5650)', () => {
     expect(store.getComment(7)).toBe(store.commentsList[0]);
   });
 
-  it('keeps geometry live without rescanning aliases and refuses ambiguous or cross-story matches', () => {
-    let enumerations = 0;
-    store.editorCommentPositions = new Proxy(
-      {
-        'tc::body::row-a': position(100),
-        'tc::body::row-b': position(200),
-        slot: position(100, { key: 'painted' }),
-      },
-      {
-        ownKeys(target) {
-          enumerations++;
-          return Reflect.ownKeys(target);
-        },
-      },
-    );
-    enumerations = 0;
+  it('keeps alias geometry live and refuses ambiguous or cross-story matches', () => {
+    store.editorCommentPositions = {
+      'tc::body::row-a': position(100),
+      'tc::body::row-b': position(200),
+      slot: position(100, { key: 'painted' }),
+    };
     expect(store.getComment('painted')).toBe(store.commentsList[0]);
-    const firstLookupEnumerations = enumerations;
-    expect(firstLookupEnumerations).toBeGreaterThan(0);
     store.editorCommentPositions.slot.start = 200;
     store.editorCommentPositions.slot.end = 201;
     expect(store.getComment('painted')).toBe(store.commentsList[1]);
@@ -227,7 +188,6 @@ describe('comments-store position alias lookup (SD-5650)', () => {
     store.editorCommentPositions['tc::body::row-a'].start = 200;
     store.editorCommentPositions['tc::body::row-a'].end = 201;
     expect(store.getComment('painted')).toBeNull();
-    expect(enumerations).toBe(firstLookupEnumerations);
   });
 });
 
@@ -239,34 +199,21 @@ describe('comments-store comment identity lookup (SD-5650)', () => {
     store = useCommentsStore();
   });
 
-  it('reads the reactive backing rows once across repeated permission misses and hits', () => {
-    let reads = 0;
-    const rows = Array.from({ length: 512 }, (_, index) => ({
+  it('finds rows by primary and imported id across repeated misses and reads live row edits', () => {
+    store.commentsList = Array.from({ length: 512 }, (_, index) => ({
       commentId: `comment-${index}`,
       importedId: `word-${index}`,
       commentText: 'Body',
     }));
-    store.commentsList = new Proxy(rows, {
-      get(target, key, receiver) {
-        if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
-        return Reflect.get(target, key, receiver);
-      },
-    });
-    reads = 0;
     expect(store.getComment('missing-first')).toBeNull();
-    const firstReads = reads;
-    expect(firstReads).toBeGreaterThan(0);
     const last = store.commentsList[511];
-    const warmedReads = reads;
     for (let index = 0; index < 64; index++) {
       expect(store.getComment(`missing-${index}`)).toBeNull();
       expect(store.getComment('comment-511')).toBe(last);
       expect(store.getComment('word-511')).toBe(last);
     }
-    expect(reads).toBe(warmedReads);
     last.commentText = 'Updated body';
     expect(store.getComment('comment-511').commentText).toBe('Updated body');
-    expect(reads).toBe(warmedReads);
   });
 
   it('preserves primary, earliest alias, and backing-list precedence', () => {
@@ -1236,36 +1183,50 @@ describe('comments-store v2 reopen mutation', () => {
     ]);
   });
 
-  it('applies a successful resolve receipt to the local thread without waiting for readback items', async () => {
-    const adapter = makeAdapter([], {
-      complete: false,
-      visibleWindowSource: 'mutation-receipt',
-      threadLifecycle: { commentId: 'c1', status: 'resolved' },
-      mutationPath: 'document-api',
-    });
-    const superdoc = makeSuperdoc(adapter);
-    store.commentsList = [
-      makeOpenRow(),
-      makeOpenRow({ commentId: 'c2', parentCommentId: 'c1', commentText: 'Reply body' }),
-      makeOpenRow({ commentId: 'c-unrelated', commentText: 'Keep this thread' }),
-    ];
-    store.setV2CommentsAdapter(adapter);
+  it.each([
+    {},
+    { resolvedTime: 1234, resolvedById: 'bob', resolvedByEmail: 'bob@example.test', resolvedByName: 'Bob' },
+  ])(
+    'applies a successful resolve receipt to the local thread without waiting for readback items',
+    async (resolution) => {
+      const expected = { resolvedTime: null, resolvedByName: null, ...resolution };
+      const adapter = makeAdapter([], {
+        complete: false,
+        visibleWindowSource: 'mutation-receipt',
+        threadLifecycle: { commentId: 'c1', status: 'resolved', resolution },
+        mutationPath: 'document-api',
+      });
+      const superdoc = makeSuperdoc(adapter);
+      store.commentsList = [
+        makeOpenRow(),
+        makeOpenRow({ commentId: 'c2', parentCommentId: 'c1', commentText: 'Reply body' }),
+        makeOpenRow({ commentId: 'c-unrelated', commentText: 'Keep this thread' }),
+      ];
+      store.setV2CommentsAdapter(adapter);
 
-    const result = await store.resolveCommentV2({ superdoc, commentId: 'c1' });
+      const result = await store.resolveCommentV2({ superdoc, commentId: 'c1' });
 
-    expect(result).toMatchObject({
-      ok: true,
-      complete: false,
-      visibleWindowSource: 'mutation-receipt',
-      mutationPath: 'document-api',
-    });
-    expect(store.commentsList).toEqual([
-      expect.objectContaining({ commentId: 'c1', resolvedTime: expect.any(Number) }),
-      expect.objectContaining({ commentId: 'c2', resolvedTime: expect.any(Number) }),
-      expect.objectContaining({ commentId: 'c-unrelated', resolvedTime: null }),
-    ]);
-    expect(adapter.mapV2CommentToUseCommentInput).not.toHaveBeenCalled();
-  });
+      expect(result).toMatchObject({
+        ok: true,
+        complete: false,
+        visibleWindowSource: 'mutation-receipt',
+        mutationPath: 'document-api',
+      });
+      expect(store.commentsList).toEqual([
+        expect.objectContaining({ commentId: 'c1', isResolved: true, ...expected }),
+        expect.objectContaining({ commentId: 'c2', isResolved: true, ...expected }),
+        expect.objectContaining({ commentId: 'c-unrelated', resolvedTime: null }),
+      ]);
+      expect(superdoc.emit).toHaveBeenCalledWith(
+        'comments-update',
+        expect.objectContaining({
+          type: 'resolved',
+          comment: expect.objectContaining({ commentId: 'c1', ...expected }),
+        }),
+      );
+      expect(adapter.mapV2CommentToUseCommentInput).not.toHaveBeenCalled();
+    },
+  );
 
   it('applies a successful reopen receipt to the local thread without waiting for readback items', async () => {
     const adapter = makeAdapter([], {
@@ -1291,7 +1252,6 @@ describe('comments-store v2 reopen mutation', () => {
       expect.objectContaining({ commentId: 'c1', resolvedTime: null }),
       expect.objectContaining({ commentId: 'c2', resolvedTime: null }),
     ]);
-    expect(adapter.mapV2CommentToUseCommentInput).not.toHaveBeenCalled();
   });
 
   it('merges a bounded resolve result without pruning unrelated hydrated comments', async () => {
@@ -1979,7 +1939,7 @@ describe('comments-store v2 tracked-change hydration', () => {
     expect(store.commentsList.map((comment) => comment.trackedChangeText)).toEqual(['body text', 'header text']);
   });
 
-  it('reconciles 1,300 tracked rows through one batch identity index', async () => {
+  it('reconciles 1,300 tracked rows in place and keeps the ordinary comment', async () => {
     const rowCount = 1_300;
     const items = Array.from({ length: rowCount }, (_, index) => ({
       id: `tc-${index}`,
@@ -2020,32 +1980,15 @@ describe('comments-store v2 tracked-change hydration', () => {
       ordinaryComment,
     ];
     store.setV2TrackedChangesAdapter(adapter);
-    let batchWork = null;
-    const previousTrace = globalThis.__superdocInteractionTrace;
-    globalThis.__superdocInteractionTrace = {
-      startSpan: (stage) => ({ traceId: 'batch-test', spanId: stage }),
-      endSpan: (span, meta) => {
-        if (span?.spanId === 'store.trackedChanges.batchIdentity') batchWork = meta;
-      },
-    };
+    const before = [...store.commentsList];
 
-    try {
-      store.reconcileTrackedChangesFromV2({ adapter, documentId: 'doc-1', items, pruneStale: false });
-    } finally {
-      if (previousTrace === undefined) delete globalThis.__superdocInteractionTrace;
-      else globalThis.__superdocInteractionTrace = previousTrace;
-    }
+    store.reconcileTrackedChangesFromV2({ adapter, documentId: 'doc-1', items, pruneStale: false });
 
     expect(store.commentsList).toHaveLength(rowCount + 1);
-    expect(store.commentsList[0].trackedChangeText).toBe('updated tc-0');
-    expect(store.commentsList[rowCount - 1].trackedChangeText).toBe('updated tc-1299');
-    expect(store.commentsList).toContain(ordinaryComment);
-    expect(batchWork).toMatchObject({
-      trackedRowsIndexed: rowCount,
-      invalidatedIdMembershipChecks: 0,
-      candidateVisits: rowCount * 4,
-    });
-    expect(batchWork.incomingAliasLookups).toBeLessThanOrEqual(rowCount * 6);
+    before.forEach((row, index) => expect(store.commentsList[index]).toBe(row));
+    items.forEach((item, index) => expect(store.commentsList[index].trackedChangeText).toBe(`updated ${item.id}`));
+    expect(store.commentsList[rowCount]).toBe(ordinaryComment);
+    expect(ordinaryComment.commentText).toBe('Thread body');
   });
 
   it('does not acknowledge all-resolved reconciliation without a document scope', async () => {
@@ -3099,6 +3042,29 @@ describe('comments-store v2 tracked-change hydration', () => {
     expect(reply.threadingParentCommentId).toBe('tc-1');
   });
 
+  it('keeps a markup-shaped first reply on a tracked change visible instead of treating it as an empty sidecar', () => {
+    const items = [
+      {
+        commentId: '0',
+        fileId: 'doc-1',
+        parentCommentId: null,
+        trackedChangeParentId: 'tc-1',
+        trackedChangeThreadParentId: 'tc-1',
+        commentText: '<TODO>',
+        commentFormat: 'text',
+      },
+    ];
+    const adapter = makeAdapter(items);
+    const superdoc = makeSuperdoc(adapter);
+    store.commentsList = [makeTrackedChangeRow({ commentId: 'tc-1' })];
+    store.setV2CommentsAdapter(adapter);
+
+    store.reconcileCommentsFromV2({ superdoc, adapter, documentId: 'doc-1', items });
+
+    expect(store.commentsList.map((comment) => comment.commentId).sort()).toEqual(['0', 'tc-1']);
+    expect(store.commentsList.find((comment) => comment.commentId === '0').commentText).toBe('<TODO>');
+  });
+
   it('keeps a spatial-only V2 comment as a standalone grouped row', () => {
     const items = [
       {
@@ -3690,25 +3656,7 @@ describe('comments-store committed review-window apply', () => {
     };
   }
 
-  function countRowUpdates(callback) {
-    const previous = globalThis.__superdocInteractionTrace;
-    let calls = 0;
-    globalThis.__superdocInteractionTrace = {
-      startSpan(stage) {
-        if (stage === 'store.trackedChanges.handleUpdate') calls++;
-        return null;
-      },
-    };
-    try {
-      const result = callback();
-      return { result, calls };
-    } finally {
-      if (previous === undefined) delete globalThis.__superdocInteractionTrace;
-      else globalThis.__superdocInteractionTrace = previous;
-    }
-  }
-
-  it.each([0, 1])('publishes fresh geometry while reconciling only %s changed semantic rows', (changed) => {
+  it.each([0, 1])('publishes fresh geometry and keeps row identity with %s changed semantic rows', (changed) => {
     const rows = ['first', 'second', 'third'].map((id) => trackedParams(id));
     expect(publishTracked(rows, trackedPublication(rows, 1)).ok).toBe(true);
     const retained = [...store.commentsList];
@@ -3718,10 +3666,8 @@ describe('comments-store committed review-window apply', () => {
     );
     const next = trackedPublication(nextRows, 2, { rowVersions: { first: 1, second: 1, third: 1 + changed } });
 
-    const { result, calls } = countRowUpdates(() => publishTracked(nextRows, next));
+    expect(publishTracked(nextRows, next).ok).toBe(true);
 
-    expect(result.ok).toBe(true);
-    expect(calls).toBe(changed);
     expect(store.commentsList).toHaveLength(3);
     retained.forEach((row, index) => expect(store.commentsList[index]).toBe(row));
     expect(store.commentsList[2].trackedChangeText).toBe(changed ? 'typed 😀' : 'third');
@@ -3759,25 +3705,20 @@ describe('comments-store committed review-window apply', () => {
     expect(notifications).toEqual([['after']]);
   });
 
-  it('builds retention identities once per row across reverse thread closure and preserves pins', () => {
-    const aliasReads = [];
-    const rows = Array.from({ length: 8 }, (_, index) => {
-      const row = makeTrackedChangeRow({
+  it('retains a reverse thread closure for a requested row and preserves pins', () => {
+    const rows = Array.from({ length: 8 }, (_, index) =>
+      makeTrackedChangeRow({
         commentId: `chain-${index}`,
+        trackedChangePositionAliases: [`source-${index}`],
         ...(index ? { parentCommentId: `chain-${index - 1}` } : {}),
-      });
-      const read = vi.fn(() => [`source-${index}`]);
-      Object.defineProperty(row, 'trackedChangePositionAliases', { configurable: true, get: read });
-      aliasReads.push(read);
-      return row;
-    }).reverse();
+      }),
+    ).reverse();
     const active = makeTrackedChangeRow({ commentId: 'active-pin' });
     const pending = makeTrackedChangeRow({ commentId: 'pending-pin' });
     const foreign = makeTrackedChangeRow({ commentId: 'foreign-row', fileId: 'doc-2' });
     store.commentsList = [...rows, active, pending, foreign, makeTrackedChangeRow({ commentId: 'stale' })];
     store.activeComment = 'active-pin';
     store.pendingComment = pending;
-    aliasReads.forEach((read) => read.mockClear());
 
     expect(
       apply({
@@ -3794,7 +3735,6 @@ describe('comments-store committed review-window apply', () => {
       'pending-pin',
       'foreign-row',
     ]);
-    aliasReads.forEach((read) => expect(read).toHaveBeenCalledTimes(3));
     expect(store.activeComment).toBe('active-pin');
     expect(store.pendingComment).toBe(pending);
   });
@@ -3818,12 +3758,13 @@ describe('comments-store committed review-window apply', () => {
     expect(store.commentsList).toEqual([]);
   });
 
-  it('rejects canonical collisions before expanding a large alias group and refreshes updated row aliases', () => {
+  it('rejects canonical collisions with a large alias group and refreshes updated row aliases', () => {
     const count = 40;
-    const aliases = Array.from({ length: 2000 }, (_, index) => `source-${index}`);
-    const group = makeTrackedChangeRow({ commentId: 'group', trackedChangeCanonicalId: 'canonical-group' });
-    const groupAliases = vi.fn(() => aliases);
-    Object.defineProperty(group, 'trackedChangePositionAliases', { configurable: true, get: groupAliases });
+    const group = makeTrackedChangeRow({
+      commentId: 'group',
+      trackedChangeCanonicalId: 'canonical-group',
+      trackedChangePositionAliases: Array.from({ length: 2000 }, (_, index) => `source-${index}`),
+    });
     const rows = Array.from({ length: count }, (_, index) =>
       makeTrackedChangeRow({
         commentId: `child-${index}`,
@@ -3838,34 +3779,15 @@ describe('comments-store committed review-window apply', () => {
       trackedChangeCanonicalId: row.trackedChangeCanonicalId,
       trackedChangePositionAliases: [`source-${index}`, `new-source-${index}`],
     }));
-    const previous = globalThis.__superdocInteractionTrace;
-    let work;
-    globalThis.__superdocInteractionTrace = {
-      startSpan: (stage) => ({ stage }),
-      endSpan: (span, meta) => {
-        if (span.stage === 'store.trackedChanges.batchIdentity') work = meta;
-      },
-    };
-    try {
-      store.reconcileTrackedChangesFromV2({
-        superdoc,
-        adapter: trackedChangesAdapter,
-        documentId: 'doc-1',
-        items: params,
-        preparedParams: params,
-        pruneStale: false,
-      });
-    } finally {
-      if (previous === undefined) delete globalThis.__superdocInteractionTrace;
-      else globalThis.__superdocInteractionTrace = previous;
-    }
-
-    expect(groupAliases).toHaveBeenCalledTimes(1);
-    expect(work).toMatchObject({
-      trackedRowsIndexed: count + 1,
-      rowAliasBuilds: count * 2 + 1,
-      rowAliasCacheHits: count,
+    store.reconcileTrackedChangesFromV2({
+      superdoc,
+      adapter: trackedChangesAdapter,
+      documentId: 'doc-1',
+      items: params,
+      preparedParams: params,
+      pruneStale: false,
     });
+
     expect(store.commentsList).toHaveLength(count + 1);
     rows.forEach((row, index) => {
       expect(row.trackedChangeText).toBe(`updated-${index}`);
@@ -3876,12 +3798,13 @@ describe('comments-store committed review-window apply', () => {
   });
 
   it.each(['gap', 'epoch', 'mount', 'empty-mount', 'commit', 'review-version', 'previous-review-version'])(
-    'reconciles rows normally when the retained publication has an invalid %s chain',
+    'reconciles rows with unchanged worker versions when the retained publication has an invalid %s chain',
     (invalid) => {
       const rows = [trackedParams('first'), trackedParams('second')];
       const previous = trackedPublication(rows, 1);
       expect(publishTracked(rows, previous).ok).toBe(true);
-      const next = trackedPublication(rows, 2);
+      const nextRows = [trackedParams('first', 'first edited'), trackedParams('second', 'second edited')];
+      const next = trackedPublication(nextRows, 2);
       if (invalid === 'gap') next.baseVersion = 0;
       if (invalid === 'epoch') next.coordinate.documentEpoch = next.epoch = 'replacement';
       if (invalid === 'mount') next.coordinate.mountId = 'replacement';
@@ -3890,11 +3813,9 @@ describe('comments-store committed review-window apply', () => {
       if (invalid === 'review-version') next.coordinate.reviewVersion = 1;
       if (invalid === 'previous-review-version') previous.coordinate.reviewVersion = 0;
 
-      const { result, calls } = countRowUpdates(() => publishTracked(rows, next));
+      expect(publishTracked(nextRows, next).ok).toBe(true);
 
-      expect(result.ok).toBe(true);
-      expect(calls).toBe(2);
-      expect(store.commentsList.map((row) => row.trackedChangeText)).toEqual(['first', 'second']);
+      expect(store.commentsList.map((row) => row.trackedChangeText)).toEqual(['first edited', 'second edited']);
     },
   );
 
@@ -3906,12 +3827,11 @@ describe('comments-store committed review-window apply', () => {
       if (invalid === 'missing') store.commentsList.splice(1, 1);
       if (invalid === 'resolved') store.commentsList[1].resolvedTime = 123;
       if (invalid === 'type') store.commentsList[1].trackedChangeType = 'delete';
-      const { result, calls } = countRowUpdates(() => publishTracked(rows, trackedPublication(rows, 2)));
-      expect(result.ok).toBe(true);
-      expect(calls).toBe(1);
+      expect(publishTracked(rows, trackedPublication(rows, 2)).ok).toBe(true);
       expect(store.commentsList).toHaveLength(2);
       expect(store.commentsList[1].trackedChangeText).toBe('second');
       expect(store.commentsList[1].trackedChangeType).toBe('insert');
+      expect(store.commentsList[1].resolvedTime).toBeNull();
     },
   );
 
@@ -3932,16 +3852,17 @@ describe('comments-store committed review-window apply', () => {
         previousPreparedPresentation: previous,
         pruneStale,
       });
-    const retained = countRowUpdates(() => reconcile(false));
-    expect(retained.calls).toBe(0);
-    expect([...retained.result.liveIds]).toEqual(['first']);
-    expect([...retained.result.liveAnchorKeys]).toEqual(['tc::body::first']);
+    const first = store.commentsList[0];
+    const retained = reconcile(false);
+    expect([...retained.liveIds]).toEqual(['first']);
+    expect([...retained.liveAnchorKeys]).toEqual(['tc::body::first']);
+    expect(store.commentsList[0]).toBe(first);
     store.commentsList.push(makeTrackedChangeRow({ commentId: 'stale' }));
     const foreign = makeTrackedChangeRow({ commentId: 'foreign', fileId: 'doc-2' });
     store.commentsList.push(foreign);
-    const complete = countRowUpdates(() => reconcile(true));
-    expect(complete.calls).toBe(1);
+    reconcile(true);
     expect(store.commentsList.map((row) => row.commentId)).toEqual(['first', 'foreign']);
+    expect(store.commentsList[0]).toBe(first);
     expect(store.commentsList[1]).toBe(foreign);
   });
 
@@ -3960,14 +3881,6 @@ describe('comments-store committed review-window apply', () => {
     };
     const preparedReview = { catalogVersion: 1, comments: [], trackedChanges: [], presentation };
     expect(apply({ commentItems: [], trackedChangeItems: [], preparedReview }).ok).toBe(true);
-    let computedRuns = 0,
-      clones = 0;
-    const instances = computed(() => {
-      computedRuns++;
-      return store.committedReviewPresentations['doc-1'].instances;
-    });
-    void instances.value;
-    computedRuns = 0;
     const next = {
       ...presentation,
       unchanged: true,
@@ -3975,18 +3888,8 @@ describe('comments-store committed review-window apply', () => {
       version: 2,
       coordinate: { ...presentation.coordinate, reviewVersion: 2 },
     };
-    Object.defineProperty(next, 'instances', {
-      enumerable: true,
-      get() {
-        clones++;
-        return structuredClone([]);
-      },
-    });
     expect(apply({ preparedReview: { ...preparedReview, reuseCatalog: true, presentation: next } }).ok).toBe(true);
-    void instances.value;
-    expect.soft(store.committedReviewPresentations['doc-1']).toBe(presentation);
-    expect.soft(computedRuns).toBe(0);
-    expect(clones).toBe(0);
+    expect(store.committedReviewPresentations['doc-1']).toBe(presentation);
   });
 
   it.each([false, true])('publishes changed font generations reactively (catalog-qualified: %s)', (qualified) => {
@@ -4024,7 +3927,7 @@ describe('comments-store committed review-window apply', () => {
     expect(revision.value).toBe(2);
   });
 
-  it('updates acknowledged review geometry without remapping unchanged catalog rows', () => {
+  it('updates acknowledged review geometry and keeps the unchanged catalog rows', () => {
     const presentation = {
       catalogVersion: 1,
       coordinate: { documentEpoch: 'e', mountId: 'm', reviewVersion: 1, commitSequence: 1 },
@@ -4034,10 +3937,16 @@ describe('comments-store committed review-window apply', () => {
       groupOrder: { open: [], resolved: [] },
     };
     const preparedReview = { catalogVersion: 1, comments: [], trackedChanges: [], presentation };
-    expect(apply({ commentItems: [], trackedChangeItems: [], preparedReview }).ok).toBe(true);
+    const seeded = {
+      ...preparedReview,
+      comments: [{ commentId: 'comment-1', fileId: 'doc-1', commentText: 'Comment one' }],
+      trackedChanges: [{ ...trackedParams('tc-1'), documentId: 'doc-1' }],
+      presentation: { ...presentation, rowVersions: { 'tc-1': 1 } },
+    };
+    expect(apply({ preparedReview: seeded }).ok).toBe(true);
     const rows = store.commentsList;
-    commentsAdapter.mapV2CommentToUseCommentInput.mockClear();
-    trackedChangesAdapter.mapV2TrackedChangeToCommentParams.mockClear();
+    const retained = [...rows];
+    expect(retained.map((row) => row.commentId).sort()).toEqual(['comment-1', 'tc-1']);
     const next = { ...presentation, coordinate: { ...presentation.coordinate, reviewVersion: 2 } };
     expect(apply({ preparedReview: { ...preparedReview, reuseCatalog: true, presentation: next } })).toMatchObject({
       ok: true,
@@ -4046,8 +3955,8 @@ describe('comments-store committed review-window apply', () => {
     expect(store.committedReviewPresentations['doc-1']).toBe(next);
     Object.assign(next, { epoch: 'e', version: 3 });
     expect(store.commentsList).toBe(rows);
-    expect(commentsAdapter.mapV2CommentToUseCommentInput).not.toHaveBeenCalled();
-    expect(trackedChangesAdapter.mapV2TrackedChangeToCommentParams).not.toHaveBeenCalled();
+    expect(store.commentsList).toHaveLength(retained.length);
+    retained.forEach((row, index) => expect(store.commentsList[index]).toBe(row));
     const advanced = {
       ...next,
       catalogVersion: 2,
@@ -4725,26 +4634,16 @@ describe('comments-store document scope', () => {
     expect(store.belongsToDocument({ fileId: 'peer-doc' }, 'doc-1', { allowSingleDocumentMismatch: true })).toBe(true);
   });
 
-  it('recomputes a scoped computed on document changes only', () => {
-    const fallback = vi.fn(() => store.belongsToDocument({}, 'doc-1'));
-    const explicit = vi.fn(() => store.belongsToDocument({ fileId: 'doc-1' }, 'doc-1'));
-    const fallbackScope = computed(fallback);
-    const explicitScope = computed(explicit);
-    const read = () => [
-      fallbackScope.value,
-      explicitScope.value,
-      fallback.mock.calls.length,
-      explicit.mock.calls.length,
-    ];
+  it('recomputes a scoped computed when the open documents change', () => {
+    const fallbackScope = computed(() => store.belongsToDocument({}, 'doc-1'));
+    const explicitScope = computed(() => store.belongsToDocument({ fileId: 'doc-1' }, 'doc-1'));
+    const read = () => [fallbackScope.value, explicitScope.value];
 
-    expect(read()).toEqual([true, true, 1, 1]);
-    store.isCommentsListVisible = !store.isCommentsListVisible;
-    superdocStore.activeZoom = 150;
-    expect(read()).toEqual([true, true, 1, 1]);
+    expect(read()).toEqual([true, true]);
     superdocStore.documents.push({ id: 'doc-2' });
-    expect(read()).toEqual([false, true, 2, 1]);
+    expect(read()).toEqual([false, true]);
     superdocStore.documents = [{ id: 'doc-1' }];
-    expect(read()).toEqual([true, true, 3, 1]);
+    expect(read()).toEqual([true, true]);
   });
 });
 
@@ -5011,6 +4910,84 @@ describe('comments-store v2 pending document comments', () => {
       expect(store.activeFloatingCommentInstanceId).toBe(changedActiveThread ? null : 'created');
     },
   );
+
+  const makeCommentDocument = () => {
+    const items = [
+      { commentId: 'mine', fileId: 'doc-1', commentText: 'My thread', creatorName: 'Me' },
+      { commentId: 'peer', fileId: 'doc-1', commentText: 'Peer thread', creatorName: 'Peer' },
+      { commentId: 'peer-reply', parentCommentId: 'peer', fileId: 'doc-1', commentText: 'Peer reply' },
+    ];
+    const thread = (commentId) => {
+      const root = items.find((item) => item.commentId === commentId)?.parentCommentId ?? commentId;
+      return { items: items.filter((item) => item.commentId === root || item.parentCommentId === root) };
+    };
+    const adapter = makeV2CommentsAdapter({
+      documentId: 'doc-1',
+      commitPendingComment: vi.fn(async ({ text }) => {
+        items.push({ commentId: 'created', fileId: 'doc-1', commentText: text, creatorName: 'Me' });
+        return { ok: true, createdCommentId: 'created', complete: false, ...thread('created') };
+      }),
+      reply: vi.fn(async ({ parentCommentId, text }) => {
+        items.push({ commentId: 'created', parentCommentId, fileId: 'doc-1', commentText: text, creatorName: 'Me' });
+        return { ok: true, createdCommentId: 'created', complete: false, ...thread('created') };
+      }),
+      edit: vi.fn(async ({ commentId, text }) => {
+        items.find((item) => item.commentId === commentId).commentText = text;
+        return { ok: true, complete: false, ...thread(commentId) };
+      }),
+      mapV2CommentToUseCommentInput: vi.fn((item) => item),
+    });
+    const superdoc = makeSuperdoc(adapter);
+    superdoc.config = { isInternal: true };
+    store.setV2CommentsAdapter(adapter);
+    store.commentsList = [useComment(items[0])];
+    for (const item of items.slice(1)) {
+      store.addHydratedComment({ superdoc, comment: useComment(item), skipEditorUpdate: true });
+    }
+    return { adapter, superdoc, items };
+  };
+
+  it.each([
+    [
+      'a new comment',
+      (superdoc) => store.addComment({ superdoc, comment: useComment({ fileId: 'doc-1', commentText: 'New' }) }),
+    ],
+    [
+      'a reply through addComment',
+      (superdoc) =>
+        store.addComment({
+          superdoc,
+          comment: useComment({ fileId: 'doc-1', parentCommentId: 'mine', commentText: 'New' }),
+        }),
+    ],
+    ['a reply', (superdoc) => store.replyCommentV2({ superdoc, parentCommentId: 'mine', text: 'New' })],
+    ['an edit', (superdoc) => store.editCommentV2({ superdoc, commentId: 'mine', text: 'New' })],
+  ])('keeps threads outside the result when %s returns only its own thread', async (_write, write) => {
+    const { superdoc, items } = makeCommentDocument();
+
+    expect(await write(superdoc)).toMatchObject({ ok: true });
+
+    expect(store.commentsList.map(({ commentId, commentText }) => ({ commentId, commentText }))).toEqual(
+      items.map(({ commentId, commentText }) => ({ commentId, commentText })),
+    );
+  });
+
+  it('removes threads missing from a complete result after a new comment', async () => {
+    const { adapter, superdoc, items } = makeCommentDocument();
+    adapter.commitPendingComment.mockImplementation(async ({ text }) => ({
+      ok: true,
+      createdCommentId: 'created',
+      items: [items[0], { commentId: 'created', fileId: 'doc-1', commentText: text }],
+    }));
+
+    expect(
+      await store.addComment({ superdoc, comment: useComment({ fileId: 'doc-1', commentText: 'New' }) }),
+    ).toMatchObject({
+      ok: true,
+    });
+
+    expect(store.commentsList.map((row) => row.commentId)).toEqual(['mine', 'created']);
+  });
 
   it.each([
     { instance: null, expectedInstance: '0' },

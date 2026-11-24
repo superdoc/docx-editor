@@ -1,0 +1,23 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "limit": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "offset": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "returned": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "limit",
+    "offset",
+    "returned"
+  ],
+  "type": "object"
+}

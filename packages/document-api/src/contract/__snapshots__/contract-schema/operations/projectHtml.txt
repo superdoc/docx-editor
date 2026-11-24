@@ -1,0 +1,76 @@
+{
+  "definition": {
+    "batchable": false,
+    "description": "Project document content as HTML with review, scope, diagnostics, and provenance metadata.",
+    "expectedResult": "Returns a Promise resolving to a detailed HTML content projection result.",
+    "intentAction": "html_projection",
+    "intentGroup": "get_content",
+    "memberPath": "projectHtml",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "returnsPromise": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "project-html.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "includeSourceMap": {
+          "type": "boolean"
+        },
+        "reviewMode": {
+          "$ref": "#/$defs/SDProjectionReviewMode"
+        },
+        "scope": {
+          "$ref": "#/$defs/SDProjectionScope"
+        },
+        "styling": {
+          "enum": [
+            "inline"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SDContentProjectionResult"
+        },
+        {
+          "properties": {
+            "format": {
+              "const": "html"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    }
+  }
+}

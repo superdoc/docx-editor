@@ -7,13 +7,22 @@
  * `patchCommentStatus`, so guarding each caller individually is how one of
  * them gets missed.
  */
+import type { TextTarget } from '@superdoc/document-api';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
 import { createSuperDocUI } from './create-super-doc-ui.js';
 
+const written = { success: true };
+const readOnly = { success: false, failure: { code: 'DOCUMENT_READONLY', message: 'Comments are read-only.' } };
+const resolveDisabled = {
+  success: false,
+  failure: { code: 'DOCUMENT_READONLY', message: 'Resolving comments is disabled.' },
+};
+const target: TextTarget = { kind: 'text', segments: [{ blockId: 'p1', range: { start: 0, end: 4 } }] };
+
 /** A host whose `comments.patch` records whether the policy let it through. */
 function mountWithPolicy(readOnly: boolean, allowResolve: boolean) {
-  const patch = vi.fn(async () => ({ ok: true }));
+  const patch = vi.fn(async () => written);
   const ui = createSuperDocUI({
     superdoc: {
       interactionConfig: { comments: { readOnly, allowResolve } },
@@ -22,59 +31,53 @@ function mountWithPolicy(readOnly: boolean, allowResolve: boolean) {
       config: { modules: { comments: false } },
       activeEditor: { editorVersion: 2, doc: { comments: { patch } } },
     } as never,
-  }) as unknown as {
-    comments: { resolve: (id: string) => { success: boolean }; reopen: (id: string) => { success: boolean } };
-  };
+  });
   return { ui, patch };
 }
 
 describe('comment status changes honor the interaction policy', () => {
-  it('refuses resolve and reopen under readOnly', () => {
+  it('refuses resolve and reopen under readOnly', async () => {
     const { ui, patch } = mountWithPolicy(true, true);
 
-    expect(ui.comments.resolve('c1').success).toBe(false);
-    expect(ui.comments.reopen('c1').success).toBe(false);
+    expect(await ui.comments.resolve('c1')).toStrictEqual(readOnly);
+    expect(await ui.comments.reopen('c1')).toStrictEqual(readOnly);
     expect(patch).not.toHaveBeenCalled();
   });
 
-  it('refuses them when allowResolve is false, even though writes are permitted', () => {
+  it('refuses them when allowResolve is false, even though writes are permitted', async () => {
     const { ui, patch } = mountWithPolicy(false, false);
 
-    expect(ui.comments.resolve('c1').success).toBe(false);
-    expect(ui.comments.reopen('c1').success).toBe(false);
+    expect(await ui.comments.resolve('c1')).toStrictEqual(resolveDisabled);
+    expect(await ui.comments.reopen('c1')).toStrictEqual(resolveDisabled);
     expect(patch).not.toHaveBeenCalled();
   });
 
-  it('reaches the Document API when both policies permit it', () => {
+  it('reaches the Document API when both policies permit it', async () => {
     const { ui, patch } = mountWithPolicy(false, true);
 
-    ui.comments.resolve('c1');
+    expect(await ui.comments.resolve('c1')).toStrictEqual(written);
+    expect(await ui.comments.reopen('c1')).toStrictEqual(written);
 
-    expect(patch).toHaveBeenCalled();
+    expect(patch.mock.calls).toStrictEqual([
+      [{ commentId: 'c1', status: 'resolved' }],
+      [{ commentId: 'c1', status: 'active' }],
+    ]);
   });
 });
 
 /** Every write route on the comments controller, with the host ops recorded. */
-type CommentWrites = {
-  createFromCapture: (capture: unknown, input: unknown) => { success: boolean };
-  createFromSelection: (input: unknown) => { success: boolean; reason?: string };
-  reply: (commentId: string, input: unknown) => { success: boolean };
-  edit: (commentId: string, input: unknown) => { success: boolean };
-  delete: (commentId: string) => { success: boolean };
-};
-
 function mountWithWrites(readOnly: boolean) {
-  const create = vi.fn(async () => ({ ok: true }));
-  const reply = vi.fn(async () => ({ ok: true }));
-  const remove = vi.fn(async () => ({ ok: true }));
-  const patch = vi.fn(async () => ({ ok: true }));
+  const create = vi.fn(async () => written);
+  const reply = vi.fn(async () => written);
+  const remove = vi.fn(async () => written);
+  const patch = vi.fn(async () => written);
   const ui = createSuperDocUI({
     superdoc: {
       interactionConfig: { comments: { readOnly, allowResolve: true } },
       config: { modules: { comments: false } },
       activeEditor: { editorVersion: 2, doc: { comments: { create, reply, patch, delete: remove } } },
     } as never,
-  }) as unknown as { comments: CommentWrites };
+  });
   return { ui, create, reply, remove, patch };
 }
 
@@ -87,13 +90,13 @@ function mountWithWrites(readOnly: boolean) {
  * exactly that hole.
  */
 describe('comment writes honor readOnly on every route', () => {
-  it('refuses create, reply, edit, and delete under readOnly', () => {
+  it('refuses create, reply, edit, and delete under readOnly', async () => {
     const { ui, create, reply, remove, patch } = mountWithWrites(true);
 
-    expect(ui.comments.createFromCapture({ target: { type: 'text' } }, { text: 'x' }).success).toBe(false);
-    expect(ui.comments.reply('c1', { text: 'x' }).success).toBe(false);
-    expect(ui.comments.edit('c1', { text: 'x' }).success).toBe(false);
-    expect(ui.comments.delete('c1').success).toBe(false);
+    expect(await ui.comments.createFromCapture({ target }, { text: 'x' })).toStrictEqual(readOnly);
+    expect(await ui.comments.reply('c1', { text: 'x' })).toStrictEqual(readOnly);
+    expect(await ui.comments.edit('c1', { text: 'x' })).toStrictEqual(readOnly);
+    expect(await ui.comments.delete('c1')).toStrictEqual(readOnly);
 
     expect(create).not.toHaveBeenCalled();
     expect(reply).not.toHaveBeenCalled();
@@ -101,27 +104,27 @@ describe('comment writes honor readOnly on every route', () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it('refuses createFromSelection before it asks for a selection', () => {
+  it('refuses createFromSelection before it asks for a selection', async () => {
     // The refusal has to win over `NO_SELECTION`: the policy answer must not
     // depend on whether something happens to be selected.
     const { ui, create } = mountWithWrites(true);
 
-    expect(ui.comments.createFromSelection({ text: 'x' }).success).toBe(false);
+    expect(await ui.comments.createFromSelection({ text: 'x' })).toStrictEqual(readOnly);
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('lets create, reply, edit, and delete through when the policy permits', () => {
+  it('lets create, reply, edit, and delete through when the policy permits', async () => {
     const { ui, create, reply, remove, patch } = mountWithWrites(false);
 
-    ui.comments.createFromCapture({ target: { type: 'text' } }, { text: 'x' });
-    ui.comments.reply('c1', { text: 'x' });
-    ui.comments.edit('c1', { text: 'x' });
-    ui.comments.delete('c1');
+    expect(await ui.comments.createFromCapture({ target }, { text: 'x' })).toStrictEqual(written);
+    expect(await ui.comments.reply('c1', { text: 'x' })).toStrictEqual(written);
+    expect(await ui.comments.edit('c1', { text: 'x' })).toStrictEqual(written);
+    expect(await ui.comments.delete('c1')).toStrictEqual(written);
 
-    expect(create).toHaveBeenCalled();
-    expect(reply).toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith({ target, text: 'x' });
+    expect(reply).toHaveBeenCalledWith({ parentCommentId: 'c1', text: 'x' });
     expect(patch).toHaveBeenCalledWith({ commentId: 'c1', text: 'x' });
-    expect(remove).toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledWith({ commentId: 'c1' });
   });
 });
 
@@ -132,10 +135,10 @@ describe('comment writes honor readOnly on every route', () => {
  */
 describe('comment writes stay available in viewing mode when comments are writable', () => {
   function mountViewingWritable() {
-    const create = vi.fn(async () => ({ ok: true }));
-    const reply = vi.fn(async () => ({ ok: true }));
-    const remove = vi.fn(async () => ({ ok: true }));
-    const patch = vi.fn(async () => ({ ok: true }));
+    const create = vi.fn(async () => written);
+    const reply = vi.fn(async () => written);
+    const remove = vi.fn(async () => written);
+    const patch = vi.fn(async () => written);
     const ui = createSuperDocUI({
       superdoc: {
         interactionConfig: { comments: { readOnly: false, allowResolve: true } },
@@ -146,32 +149,32 @@ describe('comment writes stay available in viewing mode when comments are writab
           doc: { comments: { create, reply, patch, delete: remove } },
         },
       } as never,
-    }) as unknown as {
-      comments: CommentWrites & {
-        createFromSelection: (input: unknown) => { success: boolean; reason?: string };
-        resolve: (id: string) => { success: boolean; reason?: string };
-      };
-    };
+    });
     return { ui, create, reply, remove, patch };
   }
 
-  it('does not refuse comment writes as DOCUMENT_READONLY merely because mode is viewing', () => {
+  it('does not refuse comment writes as DOCUMENT_READONLY merely because mode is viewing', async () => {
     const { ui, create, reply, remove, patch } = mountViewingWritable();
 
-    const fromSelection = ui.comments.createFromSelection({ text: 'viewing comment' });
     // Empty selection may still refuse with NO_SELECTION; viewing alone must not.
-    expect(fromSelection.reason).not.toBe('DOCUMENT_READONLY');
+    expect(await ui.comments.createFromSelection({ text: 'viewing comment' })).toMatchObject({
+      success: false,
+      failure: { code: 'NO_SELECTION' },
+    });
 
-    expect(ui.comments.createFromCapture({ target: { type: 'text' } }, { text: 'x' }).success).not.toBe(false);
-    expect(ui.comments.reply('c1', { text: 'reply' }).success).not.toBe(false);
-    expect(ui.comments.edit('c1', { text: 'edited' }).success).not.toBe(false);
-    expect(ui.comments.resolve('c1').success).not.toBe(false);
-    expect(ui.comments.delete('c1').success).not.toBe(false);
+    expect(await ui.comments.createFromCapture({ target }, { text: 'x' })).toStrictEqual(written);
+    expect(await ui.comments.reply('c1', { text: 'reply' })).toStrictEqual(written);
+    expect(await ui.comments.edit('c1', { text: 'edited' })).toStrictEqual(written);
+    expect(await ui.comments.resolve('c1')).toStrictEqual(written);
+    expect(await ui.comments.delete('c1')).toStrictEqual(written);
 
-    expect(create).toHaveBeenCalled();
-    expect(reply).toHaveBeenCalled();
-    expect(patch).toHaveBeenCalled();
-    expect(remove).toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith({ target, text: 'x' });
+    expect(reply).toHaveBeenCalledWith({ parentCommentId: 'c1', text: 'reply' });
+    expect(patch.mock.calls).toStrictEqual([
+      [{ commentId: 'c1', text: 'edited' }],
+      [{ commentId: 'c1', status: 'resolved' }],
+    ]);
+    expect(remove).toHaveBeenCalledWith({ commentId: 'c1' });
   });
 });
 
@@ -187,48 +190,49 @@ describe('comment writes stay available in viewing mode when comments are writab
  */
 describe('editing a comment body is independent of allowResolve', () => {
   function mountForEdit(allowResolve: boolean) {
-    const patch = vi.fn(async (_input: unknown) => ({ ok: true }));
+    const patch = vi.fn(async (_input: unknown) => written);
     const ui = createSuperDocUI({
       superdoc: {
         interactionConfig: { comments: { readOnly: false, allowResolve } },
         config: { modules: { comments: false } },
         activeEditor: { editorVersion: 2, doc: { comments: { patch } } },
       } as never,
-    }) as unknown as { comments: CommentWrites };
+    });
     return { ui, patch };
   }
 
-  it('edits the body while allowResolve is false, though resolve stays refused', () => {
+  it('edits the body while allowResolve is false, though resolve stays refused', async () => {
     const { ui, patch } = mountForEdit(false);
 
-    expect(ui.comments.edit('c1', { text: 'Corrected wording.' }).success).not.toBe(false);
+    expect(await ui.comments.edit('c1', { text: 'Corrected wording.' })).toStrictEqual(written);
     expect(patch).toHaveBeenCalledWith({ commentId: 'c1', text: 'Corrected wording.' });
 
     patch.mockClear();
-    expect((ui.comments as unknown as { resolve: (id: string) => { success: boolean } }).resolve('c1').success).toBe(
-      false,
-    );
+    expect(await ui.comments.resolve('c1')).toStrictEqual(resolveDisabled);
     expect(patch).not.toHaveBeenCalled();
   });
 
-  it('sends only the text field, so an edit never carries a status transition', () => {
+  it('sends only the text field, so an edit never carries a status transition', async () => {
     const { ui, patch } = mountForEdit(true);
 
-    ui.comments.edit('c1', { text: 'Corrected wording.' });
+    expect(await ui.comments.edit('c1', { text: 'Corrected wording.' })).toStrictEqual(written);
 
     expect(patch).toHaveBeenCalledWith({ commentId: 'c1', text: 'Corrected wording.' });
     expect(patch.mock.calls[0]?.[0]).not.toHaveProperty('status');
   });
 
-  it('fails closed when the host exposes no patch operation', () => {
+  it('fails closed when the host exposes no patch operation', async () => {
     const ui = createSuperDocUI({
       superdoc: {
         interactionConfig: { comments: { readOnly: false, allowResolve: true } },
         config: { modules: { comments: false } },
         activeEditor: { editorVersion: 2, doc: { comments: {} } },
       } as never,
-    }) as unknown as { comments: CommentWrites };
+    });
 
-    expect(ui.comments.edit('c1', { text: 'x' }).success).toBe(false);
+    expect(await ui.comments.edit('c1', { text: 'x' })).toMatchObject({
+      success: false,
+      failure: { code: 'CAPABILITY_UNAVAILABLE' },
+    });
   });
 });

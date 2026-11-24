@@ -1,0 +1,66 @@
+
+/* Ruler container */
+.superdoc-ruler {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: transparent;
+}
+
+/* Tick marks base styling */
+.superdoc-ruler-tick {
+  flex-shrink: 0;
+}
+
+/* Handle hover and active states */
+.superdoc-ruler-handle:hover {
+  background-color: rgba(37, 99, 235, 0.4) !important;
+}
+
+.superdoc-ruler-handle:active,
+.superdoc-ruler-handle[data-dragging="true"] {
+  background-color: rgba(37, 99, 235, 0.6) !important;
+  cursor: grabbing !important;
+}
+
+/* Vertical indicator animation */
+.superdoc-ruler-indicator {
+  transition: left 16ms linear;
+}
+
+/* Print mode: hide rulers */
+@media print {
+  .superdoc-ruler {
+    display: none !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .superdoc-ruler-tick {
+    background-color: #000 !important;
+  }
+
+  .superdoc-ruler-label {
+    color: #000 !important;
+  }
+
+  .superdoc-ruler-handle {
+    background-color: #666 !important;
+    border: 1px solid #000;
+  }
+
+  .superdoc-ruler-handle:hover,
+  .superdoc-ruler-handle:active {
+    background-color: #0066cc !important;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .superdoc-ruler-handle {
+    transition: none !important;
+  }
+
+  .superdoc-ruler-indicator {
+    transition: none !important;
+  }
+}

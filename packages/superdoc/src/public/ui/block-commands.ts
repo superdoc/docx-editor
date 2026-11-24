@@ -1,8 +1,6 @@
 import { readRecord, type LooseRecord } from './loose-record.js';
 import type { TableCommandSpec } from './commands.js';
 
-export const PARAGRAPH_INDENT_STEP_TWIPS = 720;
-
 export interface ResolvedTableContext {
   canMerge: boolean;
   tableNodeId: string;
@@ -59,7 +57,7 @@ export function buildTableCommandInput(
         start: { rowIndex, columnIndex },
         end: { rowIndex, columnIndex },
       };
-      return { nodeId, start: range.start, end: range.end };
+      return { nodeId, start: range.start, end: range.end, keepAllContent: true };
     }
     case 'split-cell':
       return cellNodeId ? { nodeId: cellNodeId, rows: 1, columns: 2 } : null;

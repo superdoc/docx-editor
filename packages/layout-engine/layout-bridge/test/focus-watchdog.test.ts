@@ -30,23 +30,31 @@ describe('FocusWatchdog', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
     watchdog.destroy();
     document.body.removeChild(element);
   });
 
-  describe('setExpectedFocus', () => {
-    it('should set the expected focus element', () => {
-      watchdog.setExpectedFocus(element);
-      expect(watchdog).toBeDefined();
-    });
-  });
+  const focusElsewhere = (): (() => void) => {
+    const other = document.createElement('input');
+    document.body.appendChild(other);
+    other.focus();
+    return () => document.body.removeChild(other);
+  };
 
   describe('start/stop', () => {
-    it('should start monitoring', () => {
+    it('should report drift to the element that took focus once started', () => {
+      vi.spyOn(console, 'log').mockImplementation(() => {});
       watchdog.setExpectedFocus(element);
+      const cleanup = focusElsewhere();
       watchdog.start();
-      expect(watchdog).toBeDefined();
+
+      vi.advanceTimersByTime(1000);
+      expect(onDrift).toHaveBeenCalledTimes(1);
+      expect(onDrift).toHaveBeenCalledWith(document.activeElement);
+
+      cleanup();
     });
 
     it('should not start without expected element', () => {
@@ -56,18 +64,30 @@ describe('FocusWatchdog', () => {
       consoleSpy.mockRestore();
     });
 
-    it('should stop monitoring', () => {
+    it('should stop reporting drift after stop', () => {
+      vi.spyOn(console, 'log').mockImplementation(() => {});
       watchdog.setExpectedFocus(element);
       watchdog.start();
       watchdog.stop();
-      expect(watchdog).toBeDefined();
+      const cleanup = focusElsewhere();
+
+      vi.advanceTimersByTime(3000);
+      expect(onDrift).not.toHaveBeenCalled();
+
+      cleanup();
     });
 
     it('should not start twice', () => {
+      vi.spyOn(console, 'log').mockImplementation(() => {});
       watchdog.setExpectedFocus(element);
       watchdog.start();
       watchdog.start(); // Second call should be ignored
-      expect(watchdog).toBeDefined();
+      const cleanup = focusElsewhere();
+
+      vi.advanceTimersByTime(1000);
+      expect(onDrift).toHaveBeenCalledTimes(1);
+
+      cleanup();
     });
   });
 
@@ -161,17 +181,21 @@ describe('FocusWatchdog', () => {
 
   describe('periodic checking', () => {
     it('should check focus at configured interval', () => {
+      vi.spyOn(console, 'log').mockImplementation(() => {});
       watchdog.setExpectedFocus(element);
-      const checkSpy = vi.spyOn(watchdog, 'check');
+      const cleanup = focusElsewhere();
       watchdog.start();
 
-      vi.advanceTimersByTime(1000);
-      expect(checkSpy).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(999);
+      expect(onDrift).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(onDrift).toHaveBeenCalledTimes(1);
 
       vi.advanceTimersByTime(1000);
-      expect(checkSpy).toHaveBeenCalledTimes(2);
+      expect(onDrift).toHaveBeenCalledTimes(2);
 
-      checkSpy.mockRestore();
+      cleanup();
     });
   });
 });

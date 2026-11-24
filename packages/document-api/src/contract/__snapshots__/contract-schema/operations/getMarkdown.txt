@@ -1,0 +1,51 @@
+{
+  "definition": {
+    "description": "Extract the document content as a Markdown string.",
+    "expectedResult": "Returns the full document content as a Markdown-formatted string.",
+    "intentAction": "markdown",
+    "intentGroup": "get_content",
+    "memberPath": "getMarkdown",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "get-markdown.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "reviewMode": {
+          "$ref": "#/$defs/SDProjectionReviewMode"
+        },
+        "scope": {
+          "$ref": "#/$defs/SDProjectionScope"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,85 @@
+before:
+
+store:
+{
+  "activeComment": "comment-owner",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    },
+    {
+      "commentId": "owner-reply",
+      "parentCommentId": "comment-owner",
+      "commentText": "Reply to delete"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-owner: comment: Original owner comment
+owner-reply: comment: Reply to delete
+reply pill
+
+action: choose Delete in the reply menu
+
+document calls:
+comments.delete {"commentId":"owner-reply"}
+
+comments-update events:
+[
+  {
+    "type": "deleted",
+    "comment": {
+      "commentId": "owner-reply",
+      "parentCommentId": "comment-owner",
+      "fileId": "doc-1",
+      "creatorId": "user-1",
+      "creatorEmail": "user@example.com",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Reply to delete",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    },
+    "changes": [
+      {
+        "key": "deleted",
+        "commentId": "owner-reply",
+        "fileId": "doc-1"
+      }
+    ]
+  }
+]
+
+superdoc.focus calls: []
+
+after:
+
+store:
+{
+  "activeComment": "comment-owner",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-owner: comment: Original owner comment
+reply pill

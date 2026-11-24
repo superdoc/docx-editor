@@ -1,0 +1,15 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "color": {
+      "$ref": "#/$defs/SDInboundColor"
+    },
+    "fill": {
+      "$ref": "#/$defs/SDInboundColor"
+    },
+    "pattern": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

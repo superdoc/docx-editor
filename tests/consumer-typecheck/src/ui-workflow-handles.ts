@@ -53,6 +53,10 @@ const comments: CommentsHandle = ui.comments;
 const _commentsList: AssertEqual<ReturnType<CommentsHandle['list']>, readonly CommentInfo[]> = true;
 const _commentGetById: AssertEqual<ReturnType<CommentsHandle['getById']>, CommentInfo | null> = true;
 const _createFromSelection: AssertEqual<ReturnType<CommentsHandle['createFromSelection']>, WorkflowReceipt> = true;
+const _openComposerParams: AssertEqual<Parameters<CommentsHandle['openComposer']>, []> = true;
+const _openComposer: AssertEqual<ReturnType<CommentsHandle['openComposer']>, Promise<WorkflowActionResult>> = true;
+const _closeComposerParams: AssertEqual<Parameters<CommentsHandle['closeComposer']>, []> = true;
+const _closeComposer: AssertEqual<ReturnType<CommentsHandle['closeComposer']>, void> = true;
 const _commentEdit: AssertEqual<
   Parameters<CommentsHandle['edit']>,
   [commentId: string, input: { text: string }]
@@ -67,6 +71,11 @@ void comments.list();
 void comments.getById('c-1');
 void comments.createFromCapture(minimalCapture, { text: 'note' });
 void comments.createFromSelection({ text: 'note' });
+void comments.openComposer().then((r) => {
+  r.ok satisfies boolean;
+  r.reason satisfies SuperDocUIReason | undefined;
+});
+comments.closeComposer();
 void comments.edit('c-1', { text: 'corrected note' });
 void comments.delete('c-1');
 const _commentsSetActiveAccepted: boolean = comments.setActive('c-1');
@@ -82,6 +91,7 @@ void comments.scrollTo('c-1').then((r) => {
 // ─── Track changes (row 748) ────────────────────────────────────────
 const trackChanges: TrackChangesHandle = ui.trackChanges;
 const _trackChangesList: AssertEqual<ReturnType<TrackChangesHandle['list']>, readonly TrackChangesItem[]> = true;
+const _trackChangesListLabel: AssertEqual<TrackChangesItem['listLabel'], string | undefined> = true;
 const _accept: AssertEqual<ReturnType<TrackChangesHandle['accept']>, CommandExecutionResult> = true;
 const _acceptAsync: AssertEqual<ReturnType<TrackChangesHandle['acceptAsync']>, Promise<CommandExecutionResult>> = true;
 const _reject: AssertEqual<ReturnType<TrackChangesHandle['reject']>, CommandExecutionResult> = true;
@@ -281,6 +291,10 @@ const _wfReason: WorkflowActionResult['reason'] = 'host-capability-unavailable';
 
 void [
   _createFromSelection,
+  _openComposerParams,
+  _openComposer,
+  _closeComposerParams,
+  _closeComposer,
   _commentEdit,
   _commentEditReturn,
   _delete,
@@ -291,6 +305,7 @@ void [
   _commentScrollAsV1,
   _commentActiveId,
   _trackChangesList,
+  _trackChangesListLabel,
   _acceptAll,
   _rejectAll,
   _next,

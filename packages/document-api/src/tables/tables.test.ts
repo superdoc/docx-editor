@@ -5,6 +5,7 @@ import {
   executeTablesSetBorders,
   executeTablesSetTableOptions,
   executeTablesSortOp,
+  normalizeInsertRowAtTableEdge,
   normalizeTablesSplitInput,
 } from './tables.js';
 import { DocumentApiValidationError } from '../errors.js';
@@ -270,6 +271,137 @@ describe('executeTablesSetBorders validation', () => {
         },
       } as any),
     ).not.toThrow();
+  });
+});
+
+describe('executeTablesSetBorders equivalent shapes', () => {
+  const line = { lineStyle: 'single', lineWeightPt: 0.5, color: '5B9BD5' };
+
+  it('treats an applyTo border with lineStyle "none" and weight 0 as the no-border value null', () => {
+    const adapter = mock((input: unknown) => input);
+    executeTablesSetBorders('tables.setBorders', adapter, {
+      nodeId,
+      mode: 'applyTo',
+      applyTo: 'inside',
+      border: { lineStyle: 'none', lineWeightPt: 0, color: '000000' },
+    });
+    expect(adapter.mock.calls[0]?.[0]).toEqual({ nodeId, mode: 'applyTo', applyTo: 'inside', border: null });
+  });
+
+  it('treats an edge with lineStyle "nil" and no weight as null', () => {
+    const adapter = mock((input: unknown) => input);
+    executeTablesSetBorders('tables.setBorders', adapter, {
+      nodeId,
+      mode: 'edges',
+      edges: { top: line, insideH: { lineStyle: 'NIL', color: '000000' } },
+    } as any);
+    expect(adapter.mock.calls[0]?.[0]).toEqual({ nodeId, mode: 'edges', edges: { top: line, insideH: null } });
+  });
+
+  it('gives every edge set to true the border passed beside edges', () => {
+    const adapter = mock((input: unknown) => input);
+    executeTablesSetBorders('tables.setBorders', adapter, {
+      nodeId,
+      mode: 'edges',
+      border: line,
+      edges: { top: true, bottom: true, insideH: null },
+    } as any);
+    expect(adapter.mock.calls[0]?.[0]).toMatchObject({ edges: { top: line, bottom: line, insideH: null } });
+  });
+
+  it('removes every edge set to true when the border passed beside edges is lineStyle "none" with weight 0 and no color', () => {
+    const adapter = mock((input: unknown) => input);
+    executeTablesSetBorders('tables.setBorders', adapter, {
+      nodeId,
+      mode: 'edges',
+      border: { lineStyle: 'none', lineWeightPt: 0 },
+      edges: { insideH: true, insideV: true },
+    } as any);
+    expect(adapter.mock.calls[0]?.[0]).toMatchObject({ edges: { insideH: null, insideV: null } });
+  });
+
+  it('still rejects an edge set to true without a border, naming the border shape', () => {
+    expect(() =>
+      executeTablesSetBorders('tables.setBorders', MOCK_ADAPTER, {
+        nodeId,
+        mode: 'edges',
+        edges: { top: true },
+      } as any),
+    ).toThrow('A border is {lineStyle:"single", lineWeightPt:0.5, color:"000000"}');
+  });
+
+  it('still rejects an edge set to false', () => {
+    expect(() =>
+      executeTablesSetBorders('tables.setBorders', MOCK_ADAPTER, {
+        nodeId,
+        mode: 'edges',
+        border: line,
+        edges: { top: false },
+      } as any),
+    ).toThrow('edges.top must be a border spec object or null');
+  });
+
+  it('rejects paragraph border keys with the expected keys and the keys received', () => {
+    expect(() =>
+      executeTablesSetBorders('tables.setBorders', MOCK_ADAPTER, {
+        nodeId,
+        mode: 'edges',
+        edges: { top: { style: 'single', size: 4, color: '5B9BD5' } },
+      } as any),
+    ).toThrow(
+      'edges.top.lineStyle must be a non-empty string. A border is {lineStyle:"single", lineWeightPt:0.5, color:"000000"} with lineWeightPt in points; null or lineStyle "none" removes the border. Received keys: style, size, color.',
+    );
+  });
+
+  it('names both modes when mode is unknown', () => {
+    expect(() =>
+      executeTablesSetBorders('tables.setBorders', MOCK_ADAPTER, {
+        nodeId,
+        mode: 'set',
+        applyTo: 'all',
+        border: line,
+      } as any),
+    ).toThrow('mode must be "applyTo" (with applyTo and border) or "edges"');
+  });
+});
+
+describe('normalizeInsertRowAtTableEdge', () => {
+  const target = { kind: 'block', nodeType: 'table', nodeId };
+
+  it('maps position "above" without rowIndex on a table target to the first row', () => {
+    expect(normalizeInsertRowAtTableEdge({ target, position: 'above', count: 3 })).toEqual({
+      target,
+      position: 'above',
+      count: 3,
+      rowIndex: 0,
+    });
+  });
+
+  it('maps position "below" without rowIndex on a table target to the append form', () => {
+    const input = normalizeInsertRowAtTableEdge({ target, position: 'below', count: 3 });
+    expect(input).toEqual({ target, position: undefined, count: 3 });
+    const adapter = mock((value: unknown) => value);
+    executeRowLocatorOp('tables.insertRow', adapter, input, undefined, { allowAppendShorthand: true });
+    expect(adapter).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves row targets, explicit row indexes, nodeId locators and other positions unchanged', () => {
+    const row = { target: { kind: 'block', nodeType: 'tableRow', nodeId: 'tr:1' }, position: 'above' };
+    const indexed = { target, rowIndex: 2, position: 'above' };
+    const byNodeId = { nodeId, position: 'above' };
+    const other = { target, position: 'after' };
+    for (const input of [row, indexed, byNodeId, other]) expect(normalizeInsertRowAtTableEdge(input)).toBe(input);
+  });
+});
+
+describe('row locator messages', () => {
+  it('tells how to address every row when a table target has no rowIndex', () => {
+    expect(() =>
+      executeRowLocatorOp('tables.setRowOptions', MOCK_ADAPTER, {
+        target: { kind: 'block', nodeType: 'table', nodeId },
+        allowBreakAcrossPages: false,
+      } as any),
+    ).toThrow('to change every row, make one call per row.');
   });
 });
 

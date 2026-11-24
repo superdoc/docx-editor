@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vite-plus/test';
+import type { ContentControlsListResult } from '@superdoc/document-api';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createContentControlsHandle, type ContentControlsHandleDeps } from './content-controls-handle.js';
+import { createSuperDocUI } from './create-super-doc-ui.js';
 import { SUPERDOC_UI_REASONS } from './reasons.js';
 import type {
   ContentControlInfo,
@@ -119,31 +121,9 @@ describe('content-controls handle', () => {
     expect(release).toHaveBeenCalledTimes(1);
   });
 
-  it('renews catalog demand from the directory selector only while a lease is held', () => {
-    const { deps, env, leased } = setup();
-    leased[0]?.get();
-    expect(deps.demandCatalog).not.toHaveBeenCalled();
-    env.leaseHeld = true;
-    leased[0]?.get();
-    expect(deps.demandCatalog).toHaveBeenCalledTimes(1);
-  });
-
-  it('reads the snapshot passively and demands the catalog for keyed reads', () => {
-    const { handle, deps } = setup();
-    expect(handle.get().items).toHaveLength(1);
-    expect(handle.observeActivePath(() => {})).toBeTypeOf('function');
-    expect(deps.demandCatalog).not.toHaveBeenCalled();
-    expect(handle.get({ id: 'cc-1' })?.id).toBe('cc-1');
-    expect(handle.get({ id: '' })).toBeNull();
-    expect(handle.getById('missing')).toBeNull();
-    expect(handle.list()).toHaveLength(1);
-    expect(deps.demandCatalog).toHaveBeenCalledTimes(4);
-  });
-
   it('resolves rects and scrolls through the control anchor, failing closed without one', async () => {
     const { handle, deps } = setup([control('cc-1'), control('cc-bare', { selectionTarget: null })]);
     expect(handle.getRect({ id: '' })).toMatchObject({ success: false, reason: 'unresolved' });
-    expect(deps.demandCatalog).not.toHaveBeenCalled();
     expect(handle.getRect({ id: 'missing' })).toMatchObject({ reason: 'unresolved' });
     expect(handle.getRect({ id: 'cc-bare' })).toMatchObject({ reason: 'unavailable' });
     expect(handle.getRect({ id: 'cc-1' })).toMatchObject({ success: true });
@@ -228,20 +208,25 @@ describe('content-controls handle', () => {
     expect(deps.rectOf).not.toHaveBeenCalled();
   });
 
-  it('reads the selection start once when collapsing the caret', async () => {
+  it('collapses the caret to the start it read first when the start getter changes', async () => {
+    const firstStart = caretless.start;
+    const laterStart = { kind: 'text' as const, blockId: 'p9', offset: 9 };
     let reads = 0;
     const target = {
       kind: 'selection' as const,
       end: caretless.end,
       get start() {
         reads += 1;
-        return caretless.start;
+        return reads === 1 ? firstStart : laterStart;
       },
     };
     const { handle, deps } = setup([control('cc-1', { selectionTarget: target })]);
     expect(await handle.focus({ id: 'cc-1' })).toEqual({ success: true });
-    expect(deps.applySelection).toHaveBeenCalledWith(expect.objectContaining({ end: caretless.start }));
-    expect(reads).toBe(2);
+    expect(deps.applySelection).toHaveBeenCalledExactlyOnceWith({
+      kind: 'selection',
+      start: firstStart,
+      end: firstStart,
+    });
   });
 
   it('reads whenPainted again when calling it, so a getter that drops it fails closed', async () => {
@@ -307,7 +292,6 @@ describe('content-controls handle', () => {
     };
     const single = setup(undefined, { items: [flaky] });
     expect(await single.handle.highlight({ id: 'cc-1' })).toEqual({ success: true });
-    expect(reads).toBe(1);
     expect(single.host.highlightContentControl).toHaveBeenCalledWith('cc-1', caretless);
     const { handle, deps, env } = setup();
     const listRead = vi.fn();
@@ -384,5 +368,120 @@ describe('content-controls handle', () => {
     env.editor = null;
     expect(await handle.focus({ id: 'cc-1' })).toEqual({ success: false, reason: 'not-ready' });
     expect(deps.activateChrome).not.toHaveBeenCalled();
+  });
+});
+
+function loadingUi() {
+  const reads: string[] = [];
+  const eventListeners = new Set<(event: Record<string, unknown>) => void>();
+  const catalog: ContentControlsListResult = {
+    items: [
+      {
+        nodeType: 'sdt',
+        kind: 'inline',
+        id: 'cc-1',
+        controlType: 'text',
+        lockMode: 'unlocked',
+        properties: {},
+        target: { kind: 'inline', nodeType: 'sdt', nodeId: 'cc-1' },
+      },
+    ],
+    total: 1,
+  };
+  const doc = {
+    selection: {
+      current: () => ({
+        empty: true,
+        target: null,
+        selectionTarget: null,
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+      }),
+    },
+    contentControls: {
+      list: () => {
+        reads.push('doc.contentControls.list()');
+        return catalog;
+      },
+      listInRange: (): ContentControlsListResult => ({ items: [], total: 0 }),
+    },
+  };
+  const host = {
+    getHandles: () => ({ editing: { selection: { subscribe: () => () => undefined } } }),
+    readLiveSelectionSyncSnapshot: () => ({ empty: true, target: null, selectionTarget: null }),
+    getDocumentLoadingSnapshot: () => ({ sourceStage: 'source-loading' }),
+    subscribeDocumentLoading: () => () => undefined,
+    events: {
+      subscribe: (listener: (event: Record<string, unknown>) => void) => {
+        eventListeners.add(listener);
+        return () => eventListeners.delete(listener);
+      },
+    },
+  };
+  const superdoc = { activeEditor: { doc, host }, config: { documentMode: 'editing' }, on: () => {}, off: () => {} };
+  const ui = createSuperDocUI({ superdoc });
+  return {
+    ui,
+    emitEdit: () => {
+      for (const listener of [...eventListeners]) listener({ type: 'mutation:committed', origin: 'command' });
+    },
+    async readsSince(): Promise<string> {
+      await vi.advanceTimersByTimeAsync(0);
+      for (let index = 0; index < 4; index += 1) await Promise.resolve();
+      return reads.length > 0 ? reads.splice(0).join(', ') : 'no reads';
+    },
+  };
+}
+
+describe('content-controls catalog demand through createSuperDocUI', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('reads the catalog for keyed and directory calls only, while the source is loading', async () => {
+    vi.useFakeTimers();
+    const calls: Array<[string, (ui: ReturnType<typeof loadingUi>['ui']) => unknown]> = [
+      ['get()', (ui) => ui.contentControls.get()],
+      ['getSnapshot()', (ui) => ui.contentControls.getSnapshot()],
+      ['observeActivePath(listener)', (ui) => ui.contentControls.observeActivePath(() => {})],
+      ["get({ id: 'cc-1' })", (ui) => ui.contentControls.get({ id: 'cc-1' })],
+      ["get({ id: '' })", (ui) => ui.contentControls.get({ id: '' })],
+      ["getById('cc-1')", (ui) => ui.contentControls.getById('cc-1')],
+      ['list()', (ui) => ui.contentControls.list()],
+      ["getRect({ id: '' })", (ui) => ui.contentControls.getRect({ id: '' })],
+      ["getRect({ id: 'cc-1' })", (ui) => ui.contentControls.getRect({ id: 'cc-1' })],
+      ['observe(listener)', (ui) => ui.contentControls.observe(() => {})],
+    ];
+    const lines: string[] = [];
+    for (const [label, call] of calls) {
+      const fake = loadingUi();
+      const atMount = await fake.readsSince();
+      call(fake.ui);
+      lines.push(`${label}: mount -> ${atMount}; call -> ${await fake.readsSince()}`);
+      fake.ui.destroy();
+    }
+    await expect(`${lines.join('\n')}\n`).toMatchFileSnapshot(
+      './__snapshots__/content-controls-handle/catalog-demand-per-call.txt',
+    );
+  });
+
+  it('renews catalog demand after an edit only while a directory observer is attached', async () => {
+    vi.useFakeTimers();
+    const fake = loadingUi();
+    const lines = [`mount: ${await fake.readsSince()}`];
+    const stop = fake.ui.contentControls.observe(() => {});
+    lines.push(`observe(listener): ${await fake.readsSince()}`);
+    fake.emitEdit();
+    lines.push(`edit while observed: ${await fake.readsSince()}`);
+    stop();
+    lines.push(`stop observing: ${await fake.readsSince()}`);
+    fake.emitEdit();
+    lines.push(`edit after stop: ${await fake.readsSince()}`);
+    lines.push(`snapshot: ${fake.ui.contentControls.getSnapshot().status}`);
+    fake.ui.destroy();
+    await expect(`${lines.join('\n')}\n`).toMatchFileSnapshot(
+      './__snapshots__/content-controls-handle/catalog-demand-while-observed.txt',
+    );
   });
 });

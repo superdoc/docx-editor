@@ -1,0 +1,150 @@
+{
+  "definition": {
+    "description": "List the hyperlinks of one story, with optional filtering by href, anchor, or display text. The body is listed by default; pass `in` with a footnote or endnote story to list that note.",
+    "expectedResult": "Returns a HyperlinksListResult with an array of hyperlink discovery items and pagination metadata. Addresses of links outside the body carry their story.",
+    "memberPath": "hyperlinks.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET",
+          "TARGET_NOT_FOUND"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "hyperlinks/list.mdx",
+    "referenceGroup": "hyperlinks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor": {
+          "type": "string"
+        },
+        "hrefPattern": {
+          "type": "string"
+        },
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "textPattern": {
+          "type": "string"
+        },
+        "within": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "additionalProperties": false,
+                "properties": {
+                  "anchor": {
+                    "$ref": "#/$defs/InlineAnchor"
+                  },
+                  "kind": {
+                    "const": "inline"
+                  },
+                  "nodeType": {
+                    "const": "hyperlink"
+                  },
+                  "story": {
+                    "$ref": "#/$defs/StoryLocator"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "nodeType",
+                  "anchor"
+                ],
+                "type": "object"
+              },
+              "handle": {
+                "$ref": "#/$defs/ResolvedHandle"
+              },
+              "id": {
+                "type": "string"
+              },
+              "properties": {
+                "additionalProperties": false,
+                "properties": {
+                  "anchor": {
+                    "type": "string"
+                  },
+                  "docLocation": {
+                    "type": "string"
+                  },
+                  "href": {
+                    "type": "string"
+                  },
+                  "rel": {
+                    "description": "Browser relationship tokens for the current editing session. Not restored from DOCX.",
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "tooltip": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "handle",
+              "address",
+              "properties"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "$ref": "#/$defs/PageInfo"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "total",
+        "items",
+        "page"
+      ],
+      "type": "object"
+    }
+  }
+}

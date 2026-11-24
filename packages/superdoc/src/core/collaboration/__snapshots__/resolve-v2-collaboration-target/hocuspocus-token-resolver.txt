@@ -1,0 +1,21 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "hocuspocus",
+    "documentId": "fieldguide-report",
+    "serverUrl": "wss://collaboration.example.test",
+    "token": "[Function resolveToken]"
+  }
+}
+
+result:
+{
+  "ok": true,
+  "target": {
+    "providerFamily": "hocuspocus",
+    "documentId": "fieldguide-report",
+    "roomMode": "join",
+    "serverUrl": "wss://collaboration.example.test",
+    "token": "[Function resolveToken]"
+  }
+}

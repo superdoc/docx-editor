@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "run"
+    },
+    "run": {
+      "additionalProperties": false,
+      "properties": {
+        "props": {
+          "$ref": "#/$defs/SDInboundRunProps"
+        },
+        "styleRef": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "run"
+  ],
+  "type": "object"
+}

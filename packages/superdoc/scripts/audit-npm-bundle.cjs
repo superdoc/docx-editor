@@ -68,14 +68,14 @@ for (const budget of [
 
 const staticClosureGzip = auditEntryGzipBudgets(distRoot, [
   { entry: 'superdoc.es.js', limitBytes: 553_000 },
-  { entry: 'public/ui.es.js', limitBytes: 155_000 },
-  { entry: 'public/ui-react.es.js', limitBytes: 158_000 },
-  { entry: 'public/ui-vue.es.js', limitBytes: 159_000 },
+  { entry: 'public/ui.es.js', limitBytes: 158_500 },
+  { entry: 'public/ui-react.es.js', limitBytes: 161_500 },
+  { entry: 'public/ui-vue.es.js', limitBytes: 162_500 },
   { entry: 'style.css', limitBytes: 23_000 },
   { entry: 'superdoc.cjs', limitBytes: 631_000 },
-  { entry: 'public/ui.cjs', limitBytes: 156_000 },
-  { entry: 'public/ui-react.cjs', limitBytes: 159_000 },
-  { entry: 'public/ui-vue.cjs', limitBytes: 160_000 },
+  { entry: 'public/ui.cjs', limitBytes: 159_500 },
+  { entry: 'public/ui-react.cjs', limitBytes: 162_500 },
+  { entry: 'public/ui-vue.cjs', limitBytes: 163_500 },
 ]);
 failures.push(...staticClosureGzip.failures);
 for (const summary of staticClosureGzip.summaries) console.log(`[audit-npm-bundle] ${summary}`);

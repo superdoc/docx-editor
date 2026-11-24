@@ -1,7 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { beforeEach, describe, expect, it } from 'vite-plus/test';
 import { renderTableRow } from './renderTableRow.js';
-
-const renderTableCellMock = vi.fn(() => ({ cellElement: document.createElement('div') }));
+import { describeChildren } from '../test-utils/describe-element.js';
 
 const makeParagraph = (trackedChangesMode?: string, trackedChangesEnabled?: boolean) => ({
   kind: 'paragraph',
@@ -10,12 +9,15 @@ const makeParagraph = (trackedChangesMode?: string, trackedChangesEnabled?: bool
   attrs: { trackedChangesMode, trackedChangesEnabled },
 });
 
-vi.mock('./renderTableCell.js', () => ({
-  renderTableCell: (args: unknown) => renderTableCellMock(args),
-  renderTableCellWork: function* (args: unknown) {
-    return renderTableCellMock(args);
-  },
-}));
+const LAYOUT_ONLY_STYLES = new Set(['position', 'box-sizing', 'overflow', 'pointer-events', 'z-index']);
+const OVERLAY_BOX_STYLES = new Set(['left', 'top', 'width', 'height']);
+const isThinDoubleOverlay = (element: Element) => element.classList.contains('superdoc-thin-double-border-overlay');
+const PAINTED_BORDERS = {
+  keepStyle: (property: string, element: Element) =>
+    isThinDoubleOverlay(element) ? OVERLAY_BOX_STYLES.has(property) : !LAYOUT_ONLY_STYLES.has(property),
+  skipChildren: (element: Element) =>
+    element.hasAttribute('data-superdoc-table-row-role') || isThinDoubleOverlay(element),
+};
 
 describe('renderTableRow', () => {
   let doc: Document;
@@ -24,7 +26,6 @@ describe('renderTableRow', () => {
   beforeEach(() => {
     doc = document.implementation.createHTMLDocument('table-row');
     container = doc.createElement('div');
-    renderTableCellMock.mockClear();
   });
 
   const createDeps = (overrides: Record<string, unknown> = {}) => ({
@@ -59,12 +60,17 @@ describe('renderTableRow', () => {
     ...overrides,
   });
 
-  const getRenderedCellCall = (): { borders?: { top?: unknown; right?: unknown; bottom?: unknown; left?: unknown } } =>
-    renderTableCellMock.mock.calls[0][0] as {
-      borders?: { top?: unknown; right?: unknown; bottom?: unknown; left?: unknown };
-    };
+  const takePaintedRow = (): string => {
+    const painted = describeChildren(container, PAINTED_BORDERS);
+    container.replaceChildren();
+    return painted;
+  };
 
-  it('carries a diagonal-only cell border through row resolution into paint', () => {
+  const expectPaintedRows = async (name: string, ...rows: string[]): Promise<void> => {
+    await expect(rows.join('--- next row ---\n')).toMatchFileSnapshot(`./__snapshots__/renderTableRow/${name}.txt`);
+  };
+
+  it('carries a diagonal-only cell border through row resolution into paint', async () => {
     const tl2br = { style: 'single', width: 4 / 3, color: '#000080' };
     renderTableRow(
       createDeps({
@@ -72,12 +78,10 @@ describe('renderTableRow', () => {
         row: { id: 'row-1', cells: [{ id: 'cell-1', attrs: { borders: { tl2br } }, blocks: [] }] },
       }) as never,
     );
-
-    expect((renderTableCellMock.mock.calls[0][0] as { borders: { tl2br: unknown } }).borders.tl2br).toEqual(tl2br);
-    expect(container.querySelector('[data-side="tl2br"]')).not.toBeNull();
+    await expectPaintedRows('diagonal-only-cell', takePaintedRow());
   });
 
-  it('keeps table top, insideH, and bottom borders when RTL cells define only diagonals', () => {
+  it('keeps table top, insideH, and bottom borders when RTL cells define only diagonals', async () => {
     const outer = { style: 'single' as const, width: 2 / 3, color: '#000000' };
     const redDivider = { style: 'single' as const, width: 4, color: '#FF0000' };
     const diagonal = { style: 'single' as const, width: 2 / 3, color: '#000000' };
@@ -105,9 +109,7 @@ describe('renderTableRow', () => {
         nextRowMeasure: rowMeasure,
       }) as never,
     );
-    expect(getRenderedCellCall().borders?.top).toEqual(outer);
-
-    renderTableCellMock.mockClear();
+    const upperRow = takePaintedRow();
     renderTableRow(
       createDeps({
         rowIndex: 1,
@@ -121,29 +123,20 @@ describe('renderTableRow', () => {
         prevRowMeasure: rowMeasure,
       }) as never,
     );
-    expect(getRenderedCellCall().borders?.top).toEqual(redDivider);
-    expect(getRenderedCellCall().borders?.bottom).toEqual(outer);
+    await expectPaintedRows('rtl-diagonal-cells-keep-table-edges', upperRow, takePaintedRow());
   });
 
-  it('does not draw insideH on top edge for continuation fragments with cell spacing', () => {
+  it('does not draw insideH on top edge for continuation fragments with cell spacing', async () => {
     renderTableRow(createDeps({ continuesFromPrev: true }) as never);
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(1);
-    const call = getRenderedCellCall();
-    expect(call.borders?.top).toBeUndefined();
-    expect(call.borders?.bottom).toBeDefined();
+    await expectPaintedRows('continuation-from-previous-with-spacing', takePaintedRow());
   });
 
-  it('does not draw insideH on bottom edge before continuation with cell spacing', () => {
+  it('does not draw insideH on bottom edge before continuation with cell spacing', async () => {
     renderTableRow(createDeps({ continuesOnNext: true }) as never);
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(1);
-    const call = getRenderedCellCall();
-    expect(call.borders?.top).toBeDefined();
-    expect(call.borders?.bottom).toBeUndefined();
+    await expectPaintedRows('continues-on-next-with-spacing', takePaintedRow());
   });
 
-  it('applies the table right border to a merged cell that spans the final column in collapsed mode', () => {
+  it('applies the table right border to a merged cell that spans the final column in collapsed mode', async () => {
     renderTableRow(
       createDeps({
         rowIndex: 0,
@@ -156,14 +149,10 @@ describe('renderTableRow', () => {
         },
       }) as never,
     );
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(1);
-    const call = getRenderedCellCall();
-    expect(call.borders?.right).toBeDefined();
-    expect(call.borders?.left).toBeDefined();
+    await expectPaintedRows('merged-cell-spans-final-column', takePaintedRow());
   });
 
-  it('falls back to the table right border when an explicit-border cell spans the final column', () => {
+  it('falls back to the table right border when an explicit-border cell spans the final column', async () => {
     renderTableRow(
       createDeps({
         rowIndex: 0,
@@ -190,11 +179,7 @@ describe('renderTableRow', () => {
         },
       }) as never,
     );
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(1);
-    const call = getRenderedCellCall();
-    expect(call.borders?.top).toBeDefined();
-    expect(call.borders?.right).toBeDefined();
+    await expectPaintedRows('explicit-border-cell-spans-final-column', takePaintedRow());
   });
 
   // SD-3028: a tblPrEx override on the row BELOW that suppresses the shared horizontal edge
@@ -225,24 +210,17 @@ describe('renderTableRow', () => {
     cells: [{ id: 'cell-next', blocks: [{ kind: 'paragraph', id: 'pn', runs: [] }] }],
   };
 
-  it('closes the grid by drawing its own bottom when the next row suppresses the shared edge (tblPrEx none)', () => {
+  it('closes the grid by drawing its own bottom when the next row suppresses the shared edge (tblPrEx none)', async () => {
     renderTableRow(collapsedStyleRow({ nextRow: allNoneOverride }) as never);
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(1);
-    const call = getRenderedCellCall();
-    expect(call.borders?.bottom).toBeDefined();
-    expect((call.borders?.bottom as { style?: string })?.style).toBe('single');
+    await expectPaintedRows('next-row-tblprex-none-closes-grid', takePaintedRow());
   });
 
-  it('does not draw an interior bottom when the next row has no override (lower cell owns it, no doubling)', () => {
+  it('does not draw an interior bottom when the next row has no override (lower cell owns it, no doubling)', async () => {
     renderTableRow(collapsedStyleRow() as never);
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(1);
-    const call = getRenderedCellCall();
-    expect(call.borders?.bottom).toBeUndefined();
+    await expectPaintedRows('next-row-without-override', takePaintedRow());
   });
 
-  it('does not draw an interior bottom when the next row override keeps a present shared edge', () => {
+  it('does not draw an interior bottom when the next row override keeps a present shared edge', async () => {
     renderTableRow(
       collapsedStyleRow({
         nextRow: {
@@ -252,10 +230,7 @@ describe('renderTableRow', () => {
         },
       }) as never,
     );
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(1);
-    const call = getRenderedCellCall();
-    expect(call.borders?.bottom).toBeUndefined();
+    await expectPaintedRows('next-row-override-keeps-shared-edge', takePaintedRow());
   });
 
   // SD-3028: "some borders" tables set a cell's shared vertical edge to w:val="nil" on BOTH
@@ -290,24 +265,18 @@ describe('renderTableRow', () => {
     left: noneSpec,
   };
 
-  it('suppresses an interior vertical divider when BOTH adjacent cells set the shared edge to nil', () => {
+  it('suppresses an interior vertical divider when BOTH adjacent cells set the shared edge to nil', async () => {
     renderTableRow(twoCellRow(bottomOnly, bottomOnly) as never);
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(2);
-    const secondCall = renderTableCellMock.mock.calls[1][0] as { borders?: { left?: unknown } };
-    expect(secondCall.borders?.left).toBeUndefined();
+    await expectPaintedRows('both-cells-nil-shared-vertical-edge', takePaintedRow());
   });
 
-  it('still inherits the table insideV divider when only ONE side is explicitly nil (the other is unset)', () => {
+  it('still inherits the table insideV divider when only ONE side is explicitly nil (the other is unset)', async () => {
     // cell-2 left = nil, cell-1 right = unset (inherits insideV, present) -> §17.4.66 present wins.
     renderTableRow(twoCellRow({ bottom: { style: 'single', width: 1, color: '#000000' } }, bottomOnly) as never);
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(2);
-    const secondCall = renderTableCellMock.mock.calls[1][0] as { borders?: { left?: unknown } };
-    expect(secondCall.borders?.left).toBeDefined();
+    await expectPaintedRows('one-cell-nil-shared-vertical-edge', takePaintedRow());
   });
 
-  it('keeps a uniform double-border rectangle on one cell so its corners can join', () => {
+  it('keeps a uniform double-border rectangle on one cell so its corners can join', async () => {
     const redDouble = { style: 'double' as const, width: 2, color: '#C00000' };
     const ring = { top: redDouble, right: redDouble, bottom: redDouble, left: redDouble };
     renderTableRow(
@@ -336,14 +305,10 @@ describe('renderTableRow', () => {
         },
       }) as never,
     );
-
-    const firstCall = renderTableCellMock.mock.calls[0][0] as { borders?: typeof ring };
-    const secondCall = renderTableCellMock.mock.calls[1][0] as { borders?: typeof ring };
-    expect(firstCall.borders).toMatchObject(ring);
-    expect(secondCall.borders?.left).toBeUndefined();
+    await expectPaintedRows('double-ring-keeps-corners', takePaintedRow());
   });
 
-  it('defers a mirrored top edge to the complete double-border cell above', () => {
+  it('defers a mirrored top edge to the complete double-border cell above', async () => {
     const redDouble = { style: 'double' as const, width: 2, color: '#C00000' };
     const ring = { top: redDouble, right: redDouble, bottom: redDouble, left: redDouble };
     renderTableRow(
@@ -371,8 +336,7 @@ describe('renderTableRow', () => {
         },
       }) as never,
     );
-
-    expect(getRenderedCellCall().borders?.top).toBeUndefined();
+    await expectPaintedRows('top-defers-to-double-ring-above', takePaintedRow());
   });
 
   // SD-1797: a single row's measure only lists cells that START in it, so on a w:vMerge
@@ -391,17 +355,14 @@ describe('renderTableRow', () => {
       ...overrides,
     });
 
-  it('does not draw a right border on a leftmost cell of a rowspan-continuation row', () => {
+  it('does not draw a right border on a leftmost cell of a rowspan-continuation row', async () => {
     // Columns 1-3 are covered by a vMerge cell spanning from above (rowOccupiedRightCol = 4),
     // so this leftmost cell is NOT the rightmost column and must not draw insideV as its right.
     renderTableRow(sparseRow({ rowOccupiedRightCol: 4 }) as never);
-
-    const call = getRenderedCellCall();
-    expect(call.borders?.right).toBeUndefined();
-    expect(call.borders?.left).toBeDefined();
+    await expectPaintedRows('rowspan-continuation-leftmost-cell', takePaintedRow());
   });
 
-  it('does not treat a rowspan-covered column below a spanning cell as a gridAfter gap', () => {
+  it('does not treat a rowspan-covered column below a spanning cell as a gridAfter gap', async () => {
     // A cell spanning all 4 columns; the row below is fully covered (occupancy 4) -> no gap,
     // so the spanning cell does NOT draw its own bottom (the cell below owns the shared edge).
     renderTableRow(
@@ -410,12 +371,10 @@ describe('renderTableRow', () => {
         nextRowOccupiedRightCol: 4,
       }) as never,
     );
-
-    const call = getRenderedCellCall();
-    expect(call.borders?.bottom).toBeUndefined();
+    await expectPaintedRows('rowspan-covered-column-is-not-grid-after', takePaintedRow());
   });
 
-  it('still treats a genuine gridAfter gap as a bottom boundary (SD-3345 preserved)', () => {
+  it('still treats a genuine gridAfter gap as a bottom boundary (SD-3345 preserved)', async () => {
     // The cell spans all 4 columns but the row below only reaches column 2 (real gridAfter gap),
     // so the spanning cell must draw its own bottom across the uncovered span.
     renderTableRow(
@@ -424,12 +383,10 @@ describe('renderTableRow', () => {
         nextRowOccupiedRightCol: 2,
       }) as never,
     );
-
-    const call = getRenderedCellCall();
-    expect(call.borders?.bottom).toBeDefined();
+    await expectPaintedRows('grid-after-gap-is-bottom-boundary', takePaintedRow());
   });
 
-  it('applies the table bottom border to a rowspan cell that reaches the final row', () => {
+  it('applies the table bottom border to a rowspan cell that reaches the final row', async () => {
     renderTableRow(
       createDeps({
         rowIndex: 3,
@@ -442,17 +399,14 @@ describe('renderTableRow', () => {
         },
       }) as never,
     );
-
-    expect(renderTableCellMock).toHaveBeenCalledTimes(1);
-    const call = getRenderedCellCall();
-    expect(call.borders?.bottom).toBeDefined();
+    await expectPaintedRows('rowspan-cell-reaches-final-row', takePaintedRow());
   });
 
   describe('row-level border override (w:tblPrEx)', () => {
     const D9 = { style: 'single' as const, width: 1, color: '#D9D9D9' };
     const rowBorderOverride = { top: D9, right: D9, bottom: D9, left: D9, insideH: D9, insideV: D9 };
 
-    it('applies the row border override over the table borders for that row', () => {
+    it('applies the row border override over the table borders for that row', async () => {
       renderTableRow(
         createDeps({
           rowIndex: 0,
@@ -470,17 +424,10 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-
-      const call = getRenderedCellCall();
-      // Single cell touches all edges; the row override (#D9D9D9) wins over the
-      // default table borders (#000000) on every side.
-      expect(call.borders?.top).toEqual(D9);
-      expect(call.borders?.right).toEqual(D9);
-      expect(call.borders?.bottom).toEqual(D9);
-      expect(call.borders?.left).toEqual(D9);
+      await expectPaintedRows('row-override-over-table-borders', takePaintedRow());
     });
 
-    it('draws the row override even when the table borders are explicitly none (FWC form rows)', () => {
+    it('draws the row override even when the table borders are explicitly none (FWC form rows)', async () => {
       const none = { none: true as const };
       renderTableRow(
         createDeps({
@@ -500,15 +447,10 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-
-      const call = getRenderedCellCall();
-      // Table says borderless, but this row's tblPrEx draws #D9D9D9. Top is an
-      // interior edge (row 1 of 3) → resolves from the override's insideH.
-      expect(call.borders?.top).toEqual(D9);
-      expect(call.borders?.left).toEqual(D9);
+      await expectPaintedRows('row-override-over-none-table-borders', takePaintedRow());
     });
 
-    it('leaves table borders unchanged for a row without an override (callout row)', () => {
+    it('leaves table borders unchanged for a row without an override (callout row)', async () => {
       renderTableRow(
         createDeps({
           rowIndex: 0,
@@ -526,16 +468,12 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-
-      const call = getRenderedCellCall();
-      // Regression guard: absent a row override, the cell still paints the table
-      // border (#000000), not the #D9D9D9 override from the other tests.
-      expect(call.borders?.top).toEqual({ style: 'single', width: 1, color: '#000000' });
+      await expectPaintedRows('row-without-override', takePaintedRow());
     });
   });
 
   describe('trailing gridAfter columns (w:gridAfter)', () => {
-    it('draws the right border on the rightmost real cell when gridAfter pads the grid', () => {
+    it('draws the right border on the rightmost real cell when gridAfter pads the grid', async () => {
       // FWC form pattern: two content columns + one trailing gridAfter spacer column.
       // The rightmost real cell (col 1) does not reach totalCols (3), but it is the
       // row's right edge, so it must own the table/row right border (Word behaviour).
@@ -561,12 +499,7 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-
-      expect(renderTableCellMock).toHaveBeenCalledTimes(2);
-      const rightCell = renderTableCellMock.mock.calls[1][0] as { borders?: { right?: unknown } };
-      // The default table borders include a single right border; the rightmost
-      // real cell now owns it despite the trailing gridAfter column.
-      expect(rightCell.borders?.right).toBeDefined();
+      await expectPaintedRows('grid-after-rightmost-real-cell', takePaintedRow());
     });
   });
 
@@ -574,7 +507,7 @@ describe('renderTableRow', () => {
     const B = { style: 'single' as const, width: 1.333, color: '#BDD7EE' };
     const allSides = { top: B, right: B, bottom: B, left: B };
 
-    it('gives the shared edge below a double ring to a higher-weight dot-dash border', () => {
+    it('gives the shared edge below a double ring to a higher-weight dot-dash border', async () => {
       const double = { style: 'double' as const, width: 1, color: '#1F3864' };
       const dotDash = { style: 'dotDash' as const, width: 1, color: '#E55A2A' };
       const measure = { height: 20, cells: [{ width: 100, height: 20, gridColumnStart: 0, colSpan: 1, rowSpan: 1 }] };
@@ -602,9 +535,7 @@ describe('renderTableRow', () => {
           nextRowMeasure: measure,
         }) as never,
       );
-      expect(getRenderedCellCall().borders?.bottom).toBeUndefined();
-
-      renderTableCellMock.mockClear();
+      const upperRow = takePaintedRow();
       renderTableRow(
         createDeps({
           rowIndex: 1,
@@ -617,10 +548,10 @@ describe('renderTableRow', () => {
           prevRowMeasure: measure,
         }) as never,
       );
-      expect(getRenderedCellCall().borders?.top).toEqual(dotDash);
+      await expectPaintedRows('dot-dash-wins-below-double-ring', upperRow, takePaintedRow());
     });
 
-    it('keeps an authored dashSmallGap top above E.2 P when the preceding cell has a single bottom', () => {
+    it('keeps an authored dashSmallGap top above E.2 P when the preceding cell has a single bottom', async () => {
       const single = { style: 'single' as const, width: 2 / 3, color: '#000000' };
       const smallGap = { style: 'dashSmallGap' as const, width: 2 / 3, color: '#000000' };
       const measure = { height: 20, cells: [{ width: 100, height: 20, gridColumnStart: 0, colSpan: 1, rowSpan: 1 }] };
@@ -638,10 +569,10 @@ describe('renderTableRow', () => {
           prevRowMeasure: measure,
         }) as never,
       );
-      expect(getRenderedCellCall().borders?.top).toEqual(smallGap);
+      await expectPaintedRows('dash-small-gap-top-over-single-bottom', takePaintedRow());
     });
 
-    it('resolves a merged double-ring bottom across both lower cells', () => {
+    it('resolves a merged double-ring bottom across both lower cells', async () => {
       const double = { style: 'double' as const, width: 1, color: '#1F3864' };
       const dotDash = { style: 'dotDash' as const, width: 1, color: '#E55A2A' };
       const single = { style: 'single' as const, width: 1, color: '#000000' };
@@ -683,9 +614,7 @@ describe('renderTableRow', () => {
           nextRowMeasure: lowerMeasure,
         }) as never,
       );
-      expect(getRenderedCellCall().borders?.bottom).toBeUndefined();
-
-      renderTableCellMock.mockClear();
+      const upperRow = takePaintedRow();
       renderTableRow(
         createDeps({
           rowIndex: 1,
@@ -699,11 +628,10 @@ describe('renderTableRow', () => {
           prevRowMeasure: upperMeasure,
         }) as never,
       );
-      expect((renderTableCellMock.mock.calls[0][0] as { borders: { top: unknown } }).borders.top).toEqual(dotDash);
-      expect((renderTableCellMock.mock.calls[1][0] as { borders: { top: unknown } }).borders.top).toEqual(double);
+      await expectPaintedRows('merged-double-ring-over-two-cells', upperRow, takePaintedRow());
     });
 
-    it('draws a shared interior vertical edge once (no doubling) for adjacent cells with identical borders', () => {
+    it('draws a shared interior vertical edge once (no doubling) for adjacent cells with identical borders', async () => {
       // The M&A checklist case: no table-level borders, every cell has all 4 sides.
       renderTableRow(
         createDeps({
@@ -728,15 +656,10 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-      const left = renderTableCellMock.mock.calls[0][0] as { borders?: { right?: unknown } };
-      const right = renderTableCellMock.mock.calls[1][0] as { borders?: { left?: unknown } };
-      // Single-owner: the left cell's interior RIGHT is suppressed; the right cell draws
-      // the shared edge as its LEFT (the §17.4.66 winner). So the edge is drawn exactly once.
-      expect(left.borders?.right).toBeUndefined();
-      expect(right.borders?.left).toBeDefined();
+      await expectPaintedRows('shared-vertical-edge-drawn-once', takePaintedRow());
     });
 
-    it('keeps BOTH side borders on a cell whose neighbors are borderless (SD-3345 RTL start/end)', () => {
+    it('keeps BOTH side borders on a cell whose neighbors are borderless (SD-3345 RTL start/end)', async () => {
       // The RTL tcBorders fixture in logical space: the first cell declares left (start) AND
       // right (end) borders; the other cells are borderless. Both must stay on that cell —
       // after the downstream RTL swap they become visual-right (start) and visual-left (end),
@@ -773,12 +696,10 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-      const c0 = renderTableCellMock.mock.calls[0][0] as { borders?: { left?: unknown; right?: unknown } };
-      expect(c0.borders?.left).toMatchObject({ color: '#FF0000' });
-      expect(c0.borders?.right).toMatchObject({ color: '#0000FF' });
+      await expectPaintedRows('borderless-neighbors-keep-side-borders', takePaintedRow());
     });
 
-    it('keeps the above cell bottom border when this cell has no top (asymmetric → no dropped line)', () => {
+    it('keeps the above cell bottom border when this cell has no top (asymmetric → no dropped line)', async () => {
       // The it1007 regression case: header has a bottom border, the body cell below has no top.
       const black = { style: 'single' as const, width: 1, color: '#000000' };
       renderTableRow(
@@ -816,13 +737,10 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-      const cell = renderTableCellMock.mock.calls[0][0] as { borders?: { top?: unknown } };
-      // This cell has no top border, but the cell above has a bottom border → §17.4.66
-      // rule 1 keeps the present border, drawn here as this cell's top.
-      expect(cell.borders?.top).toMatchObject({ style: 'single', color: '#000000' });
+      await expectPaintedRows('above-bottom-when-no-top', takePaintedRow());
     });
 
-    it('paints the above cell bottom border on a fully BORDERLESS row below it (SD-2969 clause-header)', () => {
+    it('paints the above cell bottom border on a fully BORDERLESS row below it (SD-2969 clause-header)', async () => {
       // The SD-2969 case: a clause-header row has top+bottom borders; the row directly
       // below it has NO border attribute at all. Single-owner gives the shared edge to
       // the lower cell, so without the §17.4.66 fallback the header's bottom border is
@@ -858,11 +776,10 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-      const cell = renderTableCellMock.mock.calls[0][0] as { borders?: { top?: unknown } };
-      expect(cell.borders?.top).toMatchObject({ style: 'single', color: '#000000' });
+      await expectPaintedRows('above-bottom-on-borderless-row', takePaintedRow());
     });
 
-    it('draws its own bottom border when the next row leaves a gridAfter gap under it (SD-3345 callout corner)', () => {
+    it('draws its own bottom border when the next row leaves a gridAfter gap under it (SD-3345 callout corner)', async () => {
       // SD-3345 23_notification: the callout cell spans the full grid (gridSpan), but the
       // row below has a gridAfter so its real cells do not reach the callout's rightmost
       // column. Single-owner would defer the callout's bottom to the row below, which then
@@ -895,11 +812,10 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-      const cell = renderTableCellMock.mock.calls[0][0] as { borders?: { bottom?: unknown } };
-      expect(cell.borders?.bottom).toMatchObject({ style: 'single', color: '#342D8C' });
+      await expectPaintedRows('callout-bottom-over-grid-after-gap', takePaintedRow());
     });
 
-    it('suppresses this row top border when the cell above spans past it (gridAfter) so the edge is drawn once', () => {
+    it('suppresses this row top border when the cell above spans past it (gridAfter) so the edge is drawn once', async () => {
       // The companion to the case above: when the spanning cell owns the shared bottom edge,
       // the narrower row below must NOT also draw its top, or the two adjacent cell divs stack
       // into a doubled line (this painter has no border-collapse). (SD-3345 callout)
@@ -934,13 +850,12 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-      const cell = renderTableCellMock.mock.calls[0][0] as { borders?: { top?: unknown } } | undefined;
-      expect(cell?.borders?.top).toBeUndefined();
+      await expectPaintedRows('top-suppressed-under-spanning-callout', takePaintedRow());
     });
   });
 
   describe('RTL table (isRtl)', () => {
-    it('mirrors cell x positions so first logical column is on the right', () => {
+    it('mirrors cell x positions so first logical column is on the right', async () => {
       renderTableRow(
         createDeps({
           isRtl: true,
@@ -966,35 +881,29 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-
-      expect(renderTableCellMock).toHaveBeenCalledTimes(3);
-      const calls = renderTableCellMock.mock.calls.map((c: unknown[]) => c[0] as { x: number; cellWidth: number });
-      // Total = 100+150+200 = 450. Col 0 (w=100): x = 450-0-100 = 350
-      expect(calls[0].x).toBe(350);
-      // Col 1 (w=150): x = 450-100-150 = 200
-      expect(calls[1].x).toBe(200);
-      // Col 2 (w=200): x = 450-250-200 = 0
-      expect(calls[2].x).toBe(0);
+      await expectPaintedRows('rtl-mirrors-cell-positions', takePaintedRow());
     });
 
-    it('passes isRtl to renderTableCell', () => {
+    it('swaps cell padding left↔right for RTL cells', async () => {
       renderTableRow(
         createDeps({
           isRtl: true,
           cellSpacingPx: 0,
           columnWidths: [100],
+          row: {
+            id: 'row-1',
+            cells: [{ id: 'cell-1', attrs: { padding: { top: 1, right: 10, bottom: 3, left: 2 } }, blocks: [] }],
+          },
           rowMeasure: {
             height: 20,
             cells: [{ width: 100, height: 20, gridColumnStart: 0, colSpan: 1, rowSpan: 1 }],
           },
         }) as never,
       );
-
-      const call = renderTableCellMock.mock.calls[0][0] as { isRtl: boolean };
-      expect(call.isRtl).toBe(true);
+      await expectPaintedRows('rtl-swaps-cell-padding', takePaintedRow());
     });
 
-    it('swaps resolved border left↔right for RTL cells', () => {
+    it('swaps resolved border left↔right for RTL cells', async () => {
       renderTableRow(
         createDeps({
           isRtl: true,
@@ -1014,15 +923,10 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-
-      const call = getRenderedCellCall();
-      // Single cell touches both edges. Resolver: left=table.left(blue), right=table.right(red).
-      // After RTL swap: CSS left=red, CSS right=blue
-      expect(call.borders?.right).toEqual({ style: 'single', width: 3, color: '#0000FF' });
-      expect(call.borders?.left).toEqual({ style: 'single', width: 0.5, color: '#FF0000' });
+      await expectPaintedRows('rtl-swaps-side-borders', takePaintedRow());
     });
 
-    it('mirrors correctly with non-zero cellSpacing and colspan', () => {
+    it('mirrors correctly with non-zero cellSpacing and colspan', async () => {
       renderTableRow(
         createDeps({
           isRtl: true,
@@ -1046,14 +950,7 @@ describe('renderTableRow', () => {
           },
         }) as never,
       );
-
-      expect(renderTableCellMock).toHaveBeenCalledTimes(2);
-      const calls = renderTableCellMock.mock.calls.map((c: unknown[]) => c[0] as { x: number; cellWidth: number });
-      // totalWidth = 4 + 100 + 4 + 100 + 4 + 100 + 4 = 316
-      // Col 0 (colspan=2, w=200): ltrX = 4, rtlX = 316 - 4 - 200 = 112
-      expect(calls[0].x).toBe(112);
-      // Col 2 (w=100): ltrX = 4+100+4+100+4 = 212, rtlX = 316 - 212 - 100 = 4
-      expect(calls[1].x).toBe(4);
+      await expectPaintedRows('rtl-mirrors-with-spacing-and-colspan', takePaintedRow());
     });
   });
 

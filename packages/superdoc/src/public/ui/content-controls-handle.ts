@@ -64,7 +64,7 @@ function collapseToCaret(target: SelectionTarget): SelectionTarget | null {
   if (target.kind !== 'selection') return target;
   const start = target.start;
   if (!isObjectRecord(start)) return null;
-  return { ...target, end: start };
+  return { ...target, start, end: start };
 }
 
 function hasId(row: unknown, id: string): boolean {

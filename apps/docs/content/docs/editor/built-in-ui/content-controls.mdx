@@ -1,7 +1,7 @@
 ---
 title: Show content-control chrome
 navTitle: Content controls
-description: Show or hide content-control chrome and respond when someone clicks a structured field in the DOCX.
+description: Show or hide content-control chrome, style fields by tag, and respond when someone clicks a structured field in the DOCX.
 ---
 
 Content controls are structured fields stored in a DOCX. Their IDs, aliases, tags, types, and content travel with the
@@ -52,6 +52,74 @@ Click a control. The status should show the field's alias, tag, and type from `o
 
 Set `ui.contentControls: false` when your application should hide only SuperDoc's chrome. The content controls remain
 part of the document, and the click callback continues to work.
+
+## Style controls by tag
+
+Give some content controls a chip look by matching the start of their tag. Pass an object to `ui.contentControls`:
+
+```ts
+const config = {
+  ui: {
+    contentControls: {
+      enabled: false,
+      presentations: [
+        {
+          match: { tagPrefix: 'binding:' },
+          inlineBox: {
+            layout: { paddingInline: 6, paddingBlock: 3, borderWidth: 1 },
+            appearance: { borderColor: '#1355ff', borderRadius: 4, backgroundColor: '#eef3ff' },
+            icon: { src: '/icons/link.svg', size: 12, gap: 4 },
+            className: 'binding-chip',
+          },
+          blockBox: {
+            layout: { paddingInline: 8, paddingBlock: 3, borderWidth: 1 },
+            appearance: { borderColor: '#1355ff', borderRadius: 4, backgroundColor: '#eef3ff' },
+            className: 'binding-frame',
+          },
+        },
+      ],
+    },
+  },
+};
+```
+
+Every inline control whose tag starts with `binding:` gets the `inlineBox` chip, and every block control gets the
+`blockBox` frame. Other controls keep the default chrome, or none when
+`enabled` is `false`. `enabled: false` hides only the default chrome; presentations still apply.
+
+Layout reserves the padding and border, so text around the chip moves aside instead of overlapping it. A chip that
+wraps across lines gets its full padding and border on each line. Tabs inside the control stay inside the same chip on that line.
+
+A block control's frame wraps all of its paragraphs. Layout reserves the padding and border above the first paragraph,
+below the last, and at both sides, so neighboring paragraphs stay outside the frame. When a control crosses a page
+break, each page shows a closed frame with its own top and bottom padding.
+
+`icon` draws an image at the start of the chip, after the start padding. Layout reserves `size` plus `gap` pixels for it,
+and every wrapped piece shows it. The icon is centered vertically and cut off at the chip's edge, so keep `size` at or
+below the text height. `src` is any image URL, including a `data:` URL, without quotes or backslashes.
+
+The match runs every time SuperDoc lays out the document. Chips follow typing, undo, redo, and edits from
+collaborators without any call from your application. Rename a tag so it no longer matches, and the chip goes away.
+
+Measured presentations are opt-in editor visuals and can change wrapping and pagination relative to Microsoft Word.
+
+Presentations are local to this Editor. They are not saved in the DOCX, and they do not change the control's text, tag,
+ID, or lock. When several presentations match a tag, the first one in the list with a box for that kind of control
+wins.
+
+`layout` values are whole CSS pixels of zero or more. SuperDoc drops an invalid value and logs a console warning.
+`paddingInline` and `paddingBlock` accept one number or `{ start, end }`. Use `className` and `data` to style the chip
+from your own CSS. The control's wrapper, and each paragraph of a framed block control, also carries
+`data-sdt-presentation="measured"`.
+
+Presentations do not apply to:
+
+- tables inside a block control, and block controls inside a table cell or text box
+- block controls in headers and footers
+- checkbox controls and hidden controls
+- paragraphs that contain right-to-left text
+- paragraphs that SuperDoc lays out again to fit around a floating object
+- paragraphs in unequal-width columns that do not fit in the current column or may reflow, including those with note references or page and column breaks
 
 ## Choose the next layer
 

@@ -1,113 +1,19 @@
-/**
- * SD-2986/B1: drift-detection parity test.
- *
- * `v1 layout-adapter/footnote-formatting.ts` deliberately inlines its number-format
- * switch instead of reusing layout-engine's `formatPageNumber` — the package
- * graph forbids the adapter from importing layout-engine at runtime (Guard C in
- * `architecture-boundaries.test.ts`). To keep the shared semantics in sync we
- * assert here that they agree on formats with the same expected rendering.
- *
- * If you add a new shared-semantics format to one helper, this test should fail
- * until you add the matching case in the other helper. Helper-specific formats
- * are pinned by direct-string assertions below.
- */
-
 import { describe, it, expect } from 'vite-plus/test';
 import { formatPageNumber } from '@superdoc/layout-engine';
 
-const SHARED_FORMATS = ['decimal', 'upperRoman', 'lowerRoman'] as const;
-
-function toRoman(value: number): string {
-  const pairs: Array<[number, string]> = [
-    [1000, 'M'],
-    [900, 'CM'],
-    [500, 'D'],
-    [400, 'CD'],
-    [100, 'C'],
-    [90, 'XC'],
-    [50, 'L'],
-    [40, 'XL'],
-    [10, 'X'],
-    [9, 'IX'],
-    [5, 'V'],
-    [4, 'IV'],
-    [1, 'I'],
-  ];
-  let remaining = Math.max(1, Math.floor(value));
-  if (remaining >= 4000) return String(remaining);
-  let out = '';
-  for (const [unit, glyph] of pairs) {
-    while (remaining >= unit) {
-      out += glyph;
-      remaining -= unit;
-    }
-  }
-  return out;
-}
-
-function toSpreadsheetLetters(value: number, uppercase: boolean): string {
-  let remaining = Math.max(1, Math.floor(value));
-  let out = '';
-  while (remaining > 0) {
-    remaining -= 1;
-    out = String.fromCharCode((remaining % 26) + (uppercase ? 65 : 97)) + out;
-    remaining = Math.floor(remaining / 26);
-  }
-  return out;
-}
-
-function formatFootnoteCardinal(value: number, format?: string): string {
-  const normalized = Math.max(1, Math.floor(value));
-  switch (format) {
-    case 'upperRoman':
-      return toRoman(normalized);
-    case 'lowerRoman':
-      return toRoman(normalized).toLowerCase();
-    case 'upperLetter':
-      return toSpreadsheetLetters(normalized, true);
-    case 'lowerLetter':
-      return toSpreadsheetLetters(normalized, false);
-    case 'numberInDash':
-      return `-${normalized}-`;
-    case 'decimal':
-    default:
-      return String(normalized);
-  }
-}
-
-describe('SD-2986/B1: footnote formatter parity with formatPageNumber', () => {
-  for (const fmt of SHARED_FORMATS) {
-    it(`agrees with formatPageNumber for ${fmt} on 1..100`, () => {
-      for (let n = 1; n <= 100; n += 1) {
-        expect(formatFootnoteCardinal(n, fmt)).toBe(formatPageNumber(n, fmt));
-      }
-    });
-  }
-
-  it('falls back to decimal for an unknown format string (matches expectations only — formatPageNumber rejects unknowns at the type level)', () => {
-    expect(formatFootnoteCardinal(7, 'chickenLetters')).toBe('7');
-    expect(formatFootnoteCardinal(7, undefined)).toBe('7');
+describe('SD-2986/B1: formatPageNumber formats', () => {
+  it('clamps cardinals < 1 to 1', () => {
+    expect(formatPageNumber(0, 'decimal')).toBe('1');
+    expect(formatPageNumber(-3, 'upperRoman')).toBe('I');
   });
 
-  it('clamps cardinals < 1 to 1 in both helpers', () => {
-    expect(formatFootnoteCardinal(0, 'decimal')).toBe(formatPageNumber(0, 'decimal'));
-    expect(formatFootnoteCardinal(-3, 'upperRoman')).toBe(formatPageNumber(-3, 'upperRoman'));
-  });
-
-  it('formats numberInDash according to each helper contract', () => {
+  it('formats numberInDash with spaces around the number', () => {
     for (const n of [1, 5, 12, 99]) {
-      expect(formatFootnoteCardinal(n, 'numberInDash')).toBe(`-${n}-`);
       expect(formatPageNumber(n, 'numberInDash')).toBe(`- ${n} -`);
     }
   });
 
-  it('formats upperRoman correctly in both helpers', () => {
-    // Roman numerals are a common source of off-by-one or 9-vs-IX style bugs.
-    expect(formatFootnoteCardinal(1, 'upperRoman')).toBe('I');
-    expect(formatFootnoteCardinal(4, 'upperRoman')).toBe('IV');
-    expect(formatFootnoteCardinal(9, 'upperRoman')).toBe('IX');
-    expect(formatFootnoteCardinal(40, 'upperRoman')).toBe('XL');
-    expect(formatFootnoteCardinal(90, 'upperRoman')).toBe('XC');
+  it('formats upperRoman', () => {
     expect(formatPageNumber(1, 'upperRoman')).toBe('I');
     expect(formatPageNumber(4, 'upperRoman')).toBe('IV');
     expect(formatPageNumber(9, 'upperRoman')).toBe('IX');
@@ -115,24 +21,10 @@ describe('SD-2986/B1: footnote formatter parity with formatPageNumber', () => {
     expect(formatPageNumber(90, 'upperRoman')).toBe('XC');
   });
 
-  it('formats lowerRoman correctly in both helpers', () => {
-    expect(formatFootnoteCardinal(1, 'lowerRoman')).toBe('i');
-    expect(formatFootnoteCardinal(4, 'lowerRoman')).toBe('iv');
-    expect(formatFootnoteCardinal(9, 'lowerRoman')).toBe('ix');
+  it('formats lowerRoman', () => {
     expect(formatPageNumber(1, 'lowerRoman')).toBe('i');
     expect(formatPageNumber(4, 'lowerRoman')).toBe('iv');
     expect(formatPageNumber(9, 'lowerRoman')).toBe('ix');
-  });
-
-  it('formats footnote upperLetter / lowerLetter using spreadsheet-style letters', () => {
-    expect(formatFootnoteCardinal(1, 'upperLetter')).toBe('A');
-    expect(formatFootnoteCardinal(26, 'upperLetter')).toBe('Z');
-    expect(formatFootnoteCardinal(27, 'upperLetter')).toBe('AA');
-    expect(formatFootnoteCardinal(28, 'upperLetter')).toBe('AB');
-    expect(formatFootnoteCardinal(1, 'lowerLetter')).toBe('a');
-    expect(formatFootnoteCardinal(26, 'lowerLetter')).toBe('z');
-    expect(formatFootnoteCardinal(27, 'lowerLetter')).toBe('aa');
-    expect(formatFootnoteCardinal(28, 'lowerLetter')).toBe('ab');
   });
 
   it('formats page upperLetter / lowerLetter using repeated letters', () => {
@@ -144,5 +36,15 @@ describe('SD-2986/B1: footnote formatter parity with formatPageNumber', () => {
     expect(formatPageNumber(26, 'lowerLetter')).toBe('z');
     expect(formatPageNumber(27, 'lowerLetter')).toBe('aa');
     expect(formatPageNumber(28, 'lowerLetter')).toBe('bb');
+  });
+
+  it('formats every page from 1 to 100 in each roman and letter format', async () => {
+    const formats = ['upperRoman', 'lowerRoman', 'upperLetter', 'lowerLetter'] as const;
+    const rows = Array.from({ length: 100 }, (_, index) =>
+      [String(index + 1), ...formats.map((format) => formatPageNumber(index + 1, format))].join(' '),
+    );
+    await expect(`page ${formats.join(' ')}\n${rows.join('\n')}\n`).toMatchFileSnapshot(
+      './__snapshots__/footnote-formatter-parity/roman-and-letter-pages.txt',
+    );
   });
 });

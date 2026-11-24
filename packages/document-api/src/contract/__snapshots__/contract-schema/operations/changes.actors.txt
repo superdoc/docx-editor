@@ -1,0 +1,83 @@
+{
+  "definition": {
+    "batchable": false,
+    "description": "List the identities that collaboration clients declared for this document. Identities and claims are declared by each client and are not verified by SuperDoc.",
+    "expectedResult": "Returns a ChangesActorsResult with one item per declared client binding: client id, actor id, optional name, email and claim, session id and declaration time.",
+    "memberPath": "changes.actors",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "returnsPromise": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "changes/actors.mdx",
+    "referenceGroup": "changes",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "actorId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "claim": {
+                "type": "string"
+              },
+              "clientId": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "declaredAt": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "clientId",
+              "actorId",
+              "sessionId",
+              "declaredAt"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    }
+  }
+}

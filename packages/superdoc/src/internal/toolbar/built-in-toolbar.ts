@@ -953,14 +953,10 @@ export class BuiltInToolbar extends EventEmitter {
     highlightItem.nestedOptions.value = options;
   }
 
-  #isFontSizeMixedState(commandState: CommandState | undefined): boolean {
-    return Boolean(commandState?.active) && commandState?.value == null;
-  }
-
   // Inline font-family marks never report `active` (the descriptor has no
   // `activeMark`), so a selection spanning multiple families surfaces as an
   // enabled command with no resolved value. Treat that as the mixed state.
-  #isFontFamilyMixedState(commandState: CommandState | undefined): boolean {
+  #isFontPickerMixedState(commandState: CommandState | undefined): boolean {
     return Boolean(commandState) && commandState?.disabled === false && commandState?.value == null;
   }
 
@@ -1085,7 +1081,7 @@ export class BuiltInToolbar extends EventEmitter {
           item.activate({ fontFamily: commandState.value });
           return;
         }
-        if (this.#isFontFamilyMixedState(commandState)) {
+        if (this.#isFontPickerMixedState(commandState)) {
           item.activate({}, true);
           return;
         }
@@ -1096,7 +1092,7 @@ export class BuiltInToolbar extends EventEmitter {
           item.activate({ fontSize: commandState.value });
           return;
         }
-        if (this.#isFontSizeMixedState(commandState)) {
+        if (this.#isFontPickerMixedState(commandState)) {
           item.activate({}, true);
           return;
         }

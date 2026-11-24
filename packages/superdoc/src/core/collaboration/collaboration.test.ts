@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite-plus/test';
 import { initCollaborationComments, loadCommentsFromYdoc, syncCommentsToClients } from './helpers.js';
-import * as commentsModule from './collaboration-comments.js';
-const { addYComment, updateYComment, deleteYComment, getCommentIndex } = commentsModule;
+import { addYComment, updateYComment, deleteYComment, getCommentIndex } from './collaboration-comments.js';
 import { SuperDoc } from '../SuperDoc.js';
 import { PERMISSIONS, isAllowed, createTrackedChangePermissionResolver } from './permissions.js';
-import * as permissionsModule from './permissions.js';
 
 var MockYMap;
 var MockYArray;
@@ -72,19 +70,30 @@ vi.mock('yjs', () => {
   };
 });
 
-var useCommentMock;
-vi.mock('../../components/CommentsLayer/use-comment', () => {
-  useCommentMock = vi.fn((comment) => ({ normalized: comment.commentId }));
-  return { default: useCommentMock };
-});
+const CREATED_TIME = 1767225600000;
+
+const yComment = (fields) => new MockYMap(Object.entries({ createdTime: CREATED_TIME, ...fields }));
+
+function record(value) {
+  return JSON.stringify(value, (_key, field) => (typeof field === 'function' ? `[Function ${field.name}]` : field), 2);
+}
+
+const storeValues = (superdoc) =>
+  superdoc.commentsStore.commentsList.map((comment) =>
+    typeof comment.getValues === 'function' ? comment.getValues() : comment,
+  );
+
+const storeSummary = (superdoc) =>
+  storeValues(superdoc)
+    .map((comment) => `${comment.commentId}: ${comment.commentText}`)
+    .join('\n') || '(empty)';
+
+const recordLoad = (commentsArray, superdoc) =>
+  `yjs comments:\n${record(commentsArray.toJSON())}\n\nstore:\n${record(storeValues(superdoc))}\n`;
 
 beforeAll(() => {
   globalThis.superdoc = { user: { name: 'Global User', email: 'global@example.com' } };
   globalThis.__IS_DEBUG__ = false;
-});
-
-beforeEach(() => {
-  useCommentMock?.mockClear();
 });
 
 afterEach(() => {
@@ -119,7 +128,7 @@ describe('collaboration helpers', () => {
     };
   });
 
-  it('initCollaborationComments wires provider sync and deduplicates updates', () => {
+  it('initCollaborationComments wires provider sync and deduplicates updates', async () => {
     initCollaborationComments(superdoc);
 
     expect(superdoc.provider.on).toHaveBeenCalledWith('synced', expect.any(Function));
@@ -130,62 +139,59 @@ describe('collaboration helpers', () => {
     expect(superdoc.commentsStore.hasSyncedCollaborationComments).toBe(true);
     expect(superdoc.provider.off).toHaveBeenCalledWith('synced', syncedHandler);
 
-    commentsArray.items = [
-      new MockYMap(Object.entries({ commentId: 'c1', text: 'Hello' })),
-      new MockYMap(Object.entries({ commentId: 'c1', text: 'Duplicate' })),
-      new MockYMap(Object.entries({ commentId: 'c2', text: 'Another' })),
-    ];
-
-    const event = {
-      transaction: { origin: { user: { name: 'Other', email: 'other@example.com' } } },
+    const steps = [];
+    const step = (label, origin) => {
+      commentsArray.emit({ transaction: { origin } });
+      steps.push(`${label}\nstore:\n${storeSummary(superdoc)}`);
     };
-    commentsArray.emit(event);
 
-    expect(useCommentMock).toHaveBeenCalledTimes(2);
-    expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'c1' }, { normalized: 'c2' }]);
-
-    commentsArray.emit({ transaction: { origin: { user: superdoc.config.user } } });
-    expect(useCommentMock).toHaveBeenCalledTimes(2);
-
-    commentsArray.emit({
-      transaction: { origin: { user: { id: 'other-id', name: 'Other', email: superdoc.config.user.email } } },
+    commentsArray.items = [
+      yComment({ commentId: 'c1', commentText: 'Hello' }),
+      yComment({ commentId: 'c1', commentText: 'Duplicate' }),
+      yComment({ commentId: 'c2', commentText: 'Another' }),
+    ];
+    step('peer Other <other@example.com> writes c1, a duplicate c1 and c2', {
+      user: { name: 'Other', email: 'other@example.com' },
     });
-    expect(useCommentMock).toHaveBeenCalledTimes(4);
+
+    commentsArray.items.push(yComment({ commentId: 'c3', commentText: 'Own echo' }));
+    step('the current user writes c3', { user: superdoc.config.user });
+
+    step('peer other-id, who shares the current user email, writes', {
+      user: { id: 'other-id', name: 'Other', email: superdoc.config.user.email },
+    });
+
+    await expect(`${steps.join('\n\n')}\n`).toMatchFileSnapshot('./__snapshots__/collaboration/sync-updates.txt');
   });
 
-  it('initCollaborationComments loads existing comments from ydoc on init', () => {
+  it('initCollaborationComments loads existing comments from ydoc on init', async () => {
     commentsArray.items = [
-      new MockYMap(Object.entries({ commentId: 'c1', text: 'Hello' })),
-      new MockYMap(Object.entries({ commentId: 'c1', text: 'Duplicate' })),
-      new MockYMap(Object.entries({ commentId: 'c2', text: 'Another' })),
+      yComment({ commentId: 'c1', commentText: 'Hello', creatorName: 'Alice', creatorEmail: 'alice@example.com' }),
+      yComment({ commentId: 'c1', commentText: 'Duplicate', creatorName: 'Bob', creatorEmail: 'bob@example.com' }),
+      yComment({ commentId: 'c2', commentText: 'Another', parentCommentId: 'c1', isInternal: false }),
     ];
 
     initCollaborationComments(superdoc);
 
-    expect(useCommentMock).toHaveBeenCalledTimes(2);
-    expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'c1' }, { normalized: 'c2' }]);
+    await expect(recordLoad(commentsArray, superdoc)).toMatchFileSnapshot(
+      './__snapshots__/collaboration/load-on-init.txt',
+    );
   });
 
-  it('loadCommentsFromYdoc hydrates comments from importedId and deduplicates by stable key', () => {
+  it('loadCommentsFromYdoc hydrates comments from importedId and deduplicates by stable key', async () => {
     commentsArray.items = [
-      new MockYMap(Object.entries({ importedId: 'legacy-1', text: 'legacy without commentId' })),
-      new MockYMap(Object.entries({ importedId: 'legacy-1', text: 'duplicate legacy' })),
-      new MockYMap(Object.entries({ commentId: 'c2', text: 'normal comment' })),
-      new MockYMap(Object.entries({ commentId: 'c2', text: 'duplicate normal comment' })),
+      yComment({ importedId: 'legacy-1', commentText: 'legacy without commentId' }),
+      yComment({ importedId: 'legacy-1', commentText: 'duplicate legacy' }),
+      yComment({ commentId: 'c2', commentText: 'normal comment' }),
+      yComment({ commentId: 'c2', commentText: 'duplicate normal comment' }),
     ];
     superdoc.provider.synced = true;
 
-    const loaded = loadCommentsFromYdoc(superdoc);
-
-    expect(loaded).toBe(true);
-    expect(useCommentMock).toHaveBeenCalledTimes(2);
-    expect(useCommentMock).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ importedId: 'legacy-1', commentId: 'legacy-1' }),
-    );
-    expect(useCommentMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ commentId: 'c2' }));
-    expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'legacy-1' }, { normalized: 'c2' }]);
+    expect(loadCommentsFromYdoc(superdoc)).toBe(true);
     expect(superdoc.commentsStore.hasSyncedCollaborationComments).toBe(true);
+    await expect(recordLoad(commentsArray, superdoc)).toMatchFileSnapshot(
+      './__snapshots__/collaboration/load-imported-id.txt',
+    );
   });
 
   it('loadCommentsFromYdoc preserves local v2 tracked-change rows when room comments are empty', () => {
@@ -205,7 +211,6 @@ describe('collaboration helpers', () => {
     const loaded = loadCommentsFromYdoc(superdoc);
 
     expect(loaded).toBe(true);
-    expect(useCommentMock).not.toHaveBeenCalled();
     expect(superdoc.commentsStore.commentsList).toEqual([trackedRow]);
     expect(superdoc.commentsStore.hasSyncedCollaborationComments).toBe(true);
   });
@@ -228,29 +233,29 @@ describe('collaboration helpers', () => {
   });
 
   it('initCollaborationComments re-hydrates store on repeated init without duplicating listeners', () => {
-    commentsArray.items = [new MockYMap(Object.entries({ commentId: 'c1', text: 'first' }))];
+    commentsArray.items = [yComment({ commentId: 'c1', commentText: 'first' })];
 
     initCollaborationComments(superdoc);
     expect(commentsArray._observers.size).toBe(1);
     expect(superdoc.provider.on).toHaveBeenCalledTimes(1);
-    expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'c1' }]);
+    expect(storeSummary(superdoc)).toBe('c1: first');
 
-    // Simulate store reset after mount; second init should re-hydrate but not add listeners again.
     superdoc.commentsStore.commentsList = [];
     initCollaborationComments(superdoc);
 
     expect(commentsArray._observers.size).toBe(1);
     expect(superdoc.provider.on).toHaveBeenCalledTimes(1);
-    expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'c1' }]);
+    expect(storeSummary(superdoc)).toBe('c1: first');
   });
 
-  it('skips non-object entries in the Yjs comments array', () => {
-    commentsArray.items = [null, 'not-a-comment', 42, new MockYMap(Object.entries({ commentId: 'c1', text: 'Hello' }))];
+  it('skips non-object entries in the Yjs comments array', async () => {
+    commentsArray.items = [null, 'not-a-comment', 42, yComment({ commentId: 'c1', commentText: 'Hello' })];
 
     expect(loadCommentsFromYdoc(superdoc)).toBe(true);
 
-    expect(useCommentMock).toHaveBeenCalledTimes(1);
-    expect(superdoc.commentsStore.commentsList).toEqual([{ normalized: 'c1' }]);
+    await expect(recordLoad(commentsArray, superdoc)).toMatchFileSnapshot(
+      './__snapshots__/collaboration/load-skips-non-objects.txt',
+    );
   });
 
   it.each([
@@ -259,12 +264,11 @@ describe('collaboration helpers', () => {
     ['an origin without a user', { client: 7 }],
   ])('reloads comments for a transaction with %s', (_label, origin) => {
     initCollaborationComments(superdoc);
-    useCommentMock.mockClear();
-    commentsArray.items = [new MockYMap(Object.entries({ commentId: 'c1', text: 'Hello' }))];
+    commentsArray.items = [yComment({ commentId: 'c1', commentText: 'Hello' })];
 
     commentsArray.emit({ transaction: { origin } });
 
-    expect(useCommentMock).toHaveBeenCalledTimes(1);
+    expect(storeSummary(superdoc)).toBe('c1: Hello');
   });
 
   it('initCollaborationComments skips when module disabled', () => {
@@ -305,9 +309,6 @@ describe('collaboration comments primitives', () => {
 
 describe('syncCommentsToClients routing', () => {
   let superdoc;
-  let addSpy;
-  let updateSpy;
-  let deleteSpy;
 
   beforeEach(() => {
     const ydoc = new MockYDoc();
@@ -319,42 +320,44 @@ describe('syncCommentsToClients routing', () => {
         modules: { comments: true },
       },
     };
-
-    addSpy = vi.spyOn(commentsModule, 'addYComment');
-    updateSpy = vi.spyOn(commentsModule, 'updateYComment');
-    deleteSpy = vi.spyOn(commentsModule, 'deleteYComment');
   });
 
-  afterEach(() => {
-    addSpy.mockRestore();
-    updateSpy.mockRestore();
-    deleteSpy.mockRestore();
-  });
+  it('routes events to the correct helpers', async () => {
+    const events = [
+      { type: 'add', comment: { commentId: 'a', commentText: 'First', createdTime: CREATED_TIME } },
+      { type: 'add', comment: { commentId: 'b', commentText: 'Second', createdTime: CREATED_TIME } },
+      { type: 'update', comment: { commentId: 'a', commentText: 'First, edited', createdTime: CREATED_TIME } },
+      {
+        type: 'resolved',
+        comment: { commentId: 'b', commentText: 'Second', createdTime: CREATED_TIME, resolvedTime: CREATED_TIME + 1 },
+      },
+      { type: 'update', comment: { commentId: 'missing', commentText: 'Never added' } },
+      { type: 'deleted', comment: { commentId: 'missing' } },
+      { type: 'deleted', comment: { commentId: 'a' } },
+    ];
+    const steps = events.map((event) => {
+      superdoc.ydoc._lastMeta = null;
+      syncCommentsToClients(superdoc, event);
+      return [
+        `event: ${JSON.stringify(event)}`,
+        `transaction origin: ${superdoc.ydoc._lastMeta ? JSON.stringify(superdoc.ydoc._lastMeta) : '(no transaction)'}`,
+        `yjs comments:\n${record(superdoc.ydoc.getArray('comments').toJSON())}`,
+      ].join('\n');
+    });
 
-  it('routes events to the correct helpers', () => {
-    syncCommentsToClients(superdoc, { type: 'add', comment: { commentId: 'a' } });
-    expect(addSpy).toHaveBeenCalled();
-
-    syncCommentsToClients(superdoc, { type: 'update', comment: { commentId: 'a' } });
-    expect(updateSpy).toHaveBeenCalledTimes(1);
-
-    syncCommentsToClients(superdoc, { type: 'resolved', comment: { commentId: 'a' } });
-    expect(updateSpy).toHaveBeenCalledTimes(2);
-
-    syncCommentsToClients(superdoc, { type: 'deleted', comment: { commentId: 'a' } });
-    expect(deleteSpy).toHaveBeenCalled();
+    await expect(`${steps.join('\n\n')}\n`).toMatchFileSnapshot('./__snapshots__/collaboration/sync-to-clients.txt');
   });
 
   it('ignores events when collaboration disabled', () => {
     superdoc.isCollaborative = false;
-    syncCommentsToClients(superdoc, { type: 'add', comment: {} });
-    expect(addSpy).not.toHaveBeenCalled();
+    syncCommentsToClients(superdoc, { type: 'add', comment: { commentId: 'a' } });
+    expect(superdoc.ydoc.getArray('comments').toJSON()).toEqual([]);
   });
 
   it('ignores events when comments module disabled', () => {
     superdoc.config.modules.comments = false;
-    syncCommentsToClients(superdoc, { type: 'add', comment: {} });
-    expect(addSpy).not.toHaveBeenCalled();
+    syncCommentsToClients(superdoc, { type: 'add', comment: { commentId: 'a' } });
+    expect(superdoc.ydoc.getArray('comments').toJSON()).toEqual([]);
   });
 });
 
@@ -513,12 +516,7 @@ describe('permissions', () => {
   });
 
   it('canPerformPermission resolves tracked-change comments via store', () => {
-    const originalIsAllowed = permissionsModule.isAllowed;
-    const resolver = vi.fn(({ comment }) => {
-      expect(comment).toEqual({ commentId: 'change-1', text: 'hello' });
-      return true;
-    });
-
+    const resolver = vi.fn(() => true);
     const superdoc = {
       config: {
         role: 'editor',
@@ -531,34 +529,29 @@ describe('permissions', () => {
         },
       },
       commentsStore: {
-        getComment: vi.fn(() => ({
-          getValues: () => ({ commentId: 'change-1', text: 'hello' }),
-        })),
+        getComment: vi.fn((id) =>
+          id === 'change-1' ? { getValues: () => ({ commentId: 'change-1', text: 'hello' }) } : null,
+        ),
       },
     };
-
-    const isAllowedSpy = vi
-      .spyOn(permissionsModule, 'isAllowed')
-      .mockImplementation((permission, role, isInternal, ctx) => {
-        expect(ctx.comment).toEqual({ commentId: 'change-1', text: 'hello' });
-        return originalIsAllowed(permission, role, isInternal, ctx);
-      });
+    const trackedChange = { id: 'change-1', attrs: { authorEmail: 'editor@example.com' } };
 
     const result = SuperDoc.prototype.canPerformPermission.call(superdoc, {
       permission: PERMISSIONS.RESOLVE_OWN,
-      trackedChange: { id: 'change-1', attrs: { authorEmail: 'editor@example.com' } },
+      trackedChange,
     });
 
     expect(result).toBe(true);
-    expect(superdoc.commentsStore.getComment).toHaveBeenCalledWith('change-1');
-    expect(resolver).toHaveBeenCalled();
-    expect(isAllowedSpy).toHaveBeenCalledWith(
-      PERMISSIONS.RESOLVE_OWN,
-      'editor',
-      true,
-      expect.objectContaining({ trackedChange: expect.objectContaining({ id: 'change-1' }) }),
-    );
-
-    isAllowedSpy.mockRestore();
+    expect(resolver).toHaveBeenCalledOnce();
+    expect(resolver).toHaveBeenCalledWith({
+      permission: PERMISSIONS.RESOLVE_OWN,
+      role: 'editor',
+      isInternal: true,
+      defaultDecision: true,
+      comment: { commentId: 'change-1', text: 'hello' },
+      currentUser: superdoc.config.user,
+      superdoc,
+      trackedChange,
+    });
   });
 });

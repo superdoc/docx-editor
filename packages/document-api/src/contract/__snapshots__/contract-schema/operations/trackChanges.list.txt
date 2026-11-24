@@ -1,0 +1,1435 @@
+{
+  "definition": {
+    "description": "List tracked changes in the document. Body-only by default; pass `in: <StoryLocator>` or `in: \"all\"` to widen scope.",
+    "expectedResult": "Returns a TrackChangesListResult of logical tracked-change entries with SuperDoc ids, semantic type/subtype, author/date/excerpt, revisionGroupId, flat projection fields (`grouping`, `insertedText`, `deletedText`, `formattingDeltaSummary`, `origin`, `imported`, `canonicalizationKind`, `addressKind`, `resolvableById`), optional overlap metadata, and source provenance via `sourceIds` / `wordRevisionIds`. Structural whole-table changes surface subtypes such as `table-insert` and `table-delete`.",
+    "intentAction": "list",
+    "intentGroup": "track_changes",
+    "memberPath": "trackChanges.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "track-changes/list.mdx",
+    "referenceGroup": "trackChanges",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "description": "Story scope. Omit for body only, pass a StoryLocator for a single story, or 'all' for body + every revision-capable non-body story.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StoryLocator"
+            },
+            {
+              "const": "all"
+            }
+          ]
+        },
+        "limit": {
+          "description": "Maximum number of tracked changes to return.",
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Number of tracked changes to skip for pagination.",
+          "type": "integer"
+        },
+        "type": {
+          "description": "Filter by change type. Canonical values: 'insertion', 'deletion', 'replacement', 'formatting', 'move', 'structural'. Legacy aliases 'insert', 'delete', and 'format' remain accepted during migration.",
+          "enum": [
+            "insertion",
+            "deletion",
+            "replacement",
+            "formatting",
+            "move",
+            "structural",
+            "insert",
+            "delete",
+            "format"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "addressKind": {
+                "enum": [
+                  "entity",
+                  "story-entity",
+                  "unknown"
+                ]
+              },
+              "author": {
+                "type": "string"
+              },
+              "authorEmail": {
+                "type": "string"
+              },
+              "authorImage": {
+                "type": "string"
+              },
+              "canonicalizationKind": {
+                "enum": [
+                  "single-word-revision",
+                  "paired-word-revision",
+                  "generated-runtime-id",
+                  "unknown"
+                ]
+              },
+              "customAttributes": {
+                "description": "Unknown extension attributes in document order; exact duplicates are removed and conflicting values are retained.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "localName": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "namespaceUri": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "namespaceUri",
+                    "localName",
+                    "value"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "date": {
+                "type": "string"
+              },
+              "deletedText": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "excerpt": {
+                "type": "string"
+              },
+              "formattingDeltaSummary": {
+                "description": "Human-readable formatting delta summary for formatting changes; null otherwise.",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "grouping": {
+                "enum": [
+                  "standalone",
+                  "replacement-pair",
+                  "unknown"
+                ]
+              },
+              "handle": {
+                "$ref": "#/$defs/ResolvedHandle"
+              },
+              "id": {
+                "type": "string"
+              },
+              "imagePreview": {
+                "additionalProperties": false,
+                "properties": {
+                  "alt": {
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "height": {
+                    "type": "number"
+                  },
+                  "partUri": {
+                    "type": "string"
+                  },
+                  "relationshipId": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "deleted",
+                      "inserted",
+                      "before",
+                      "after"
+                    ]
+                  },
+                  "src": {
+                    "type": "string"
+                  },
+                  "width": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "src",
+                  "contentType",
+                  "role"
+                ],
+                "type": "object"
+              },
+              "imported": {
+                "type": "boolean"
+              },
+              "initials": {
+                "type": "string"
+              },
+              "insertedText": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "linkedComments": {
+                "additionalProperties": false,
+                "properties": {
+                  "commentIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "count": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "count"
+                ],
+                "type": "object"
+              },
+              "listActionKind": {
+                "description": "Stable presentation fact on the merge-owner deletion change (spec TC-LIST-005).",
+                "enum": [
+                  "merge-items"
+                ]
+              },
+              "listDeltaSummary": {
+                "additionalProperties": false,
+                "properties": {
+                  "counts": {
+                    "additionalProperties": false,
+                    "description": "Non-zero member counts per delta kind.",
+                    "properties": {
+                      "indent": {
+                        "type": "number"
+                      },
+                      "list-add": {
+                        "type": "number"
+                      },
+                      "list-level": {
+                        "type": "number"
+                      },
+                      "list-remove": {
+                        "type": "number"
+                      },
+                      "list-restart": {
+                        "type": "number"
+                      },
+                      "list-style": {
+                        "type": "number"
+                      },
+                      "other-format": {
+                        "type": "number"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "uniformKind": {
+                    "description": "The single delta kind shared by every member, or null for mixed groups.",
+                    "oneOf": [
+                      {
+                        "enum": [
+                          "list-add",
+                          "list-remove",
+                          "list-level",
+                          "list-style",
+                          "list-restart",
+                          "indent",
+                          "other-format"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "uniformKind",
+                  "counts"
+                ],
+                "type": "object"
+              },
+              "listDeltas": {
+                "description": "Structured per-member list semantic deltas for tracked list formatting changes (spec TC-LIST-003/004); absent for non-list changes.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "hasNumPr": {
+                          "description": "Explicit numPr element present in the property block on this side.",
+                          "type": "boolean"
+                        },
+                        "ilvl": {
+                          "description": "Explicit ilvl value; null when the source omitted it (effective level 0).",
+                          "oneOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "numId": {
+                          "description": "Effective list membership numId; non-positive numIds normalize to null.",
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "styleKind": {
+                          "description": "Resolved visual style kind via the numbering model; null when unresolvable.",
+                          "oneOf": [
+                            {
+                              "enum": [
+                                "bullet",
+                                "number",
+                                "letter",
+                                "roman",
+                                "other"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "hasNumPr",
+                        "numId",
+                        "ilvl",
+                        "styleKind"
+                      ],
+                      "type": "object"
+                    },
+                    "kind": {
+                      "description": "Semantic list-delta classification for this member (spec TC-LIST-004).",
+                      "enum": [
+                        "list-add",
+                        "list-remove",
+                        "list-level",
+                        "list-style",
+                        "list-restart",
+                        "indent",
+                        "other-format"
+                      ]
+                    },
+                    "levelDirection": {
+                      "description": "Direction of a list-level change.",
+                      "enum": [
+                        "indent",
+                        "outdent"
+                      ]
+                    },
+                    "restartAt": {
+                      "description": "Restart value for a list-restart change (numbering-model derived).",
+                      "type": "number"
+                    },
+                    "to": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "hasNumPr": {
+                          "description": "Explicit numPr element present in the property block on this side.",
+                          "type": "boolean"
+                        },
+                        "ilvl": {
+                          "description": "Explicit ilvl value; null when the source omitted it (effective level 0).",
+                          "oneOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "numId": {
+                          "description": "Effective list membership numId; non-positive numIds normalize to null.",
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "styleKind": {
+                          "description": "Resolved visual style kind via the numbering model; null when unresolvable.",
+                          "oneOf": [
+                            {
+                              "enum": [
+                                "bullet",
+                                "number",
+                                "letter",
+                                "roman",
+                                "other"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "hasNumPr",
+                        "numId",
+                        "ilvl",
+                        "styleKind"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "from",
+                    "to"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "move": {
+                "additionalProperties": false,
+                "properties": {
+                  "destination": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "excerpt": {
+                            "description": "Visible text excerpt on this side.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "Stable SuperDoc-internal side id.",
+                            "type": "string"
+                          },
+                          "wordId": {
+                            "description": "Raw Word `w:id` for this side, when known.",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "excerpt"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pairId": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "excerpt": {
+                            "description": "Visible text excerpt on this side.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "Stable SuperDoc-internal side id.",
+                            "type": "string"
+                          },
+                          "wordId": {
+                            "description": "Raw Word `w:id` for this side, when known.",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "excerpt"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "destination"
+                ],
+                "type": "object"
+              },
+              "moveDirection": {
+                "enum": [
+                  "up",
+                  "down"
+                ]
+              },
+              "navigationTarget": {
+                "additionalProperties": false,
+                "properties": {
+                  "blockId": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "block"
+                  },
+                  "role": {
+                    "enum": [
+                      "primary",
+                      "move-source",
+                      "move-destination",
+                      "formatting-carrier",
+                      "structural-carrier"
+                    ]
+                  },
+                  "story": {
+                    "$ref": "#/$defs/StoryLocator"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "story",
+                  "blockId",
+                  "role"
+                ],
+                "type": "object"
+              },
+              "origin": {
+                "enum": [
+                  "word",
+                  "google-docs",
+                  "superdoc",
+                  "unknown"
+                ]
+              },
+              "overlap": {
+                "additionalProperties": false,
+                "properties": {
+                  "parentId": {
+                    "description": "Parent logical tracked-change id when this change is an overlap child.",
+                    "type": "string"
+                  },
+                  "preferredContextTarget": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "description": "SuperDoc logical tracked-change id for this overlap layer.",
+                        "type": "string"
+                      },
+                      "relationship": {
+                        "enum": [
+                          "parent",
+                          "child",
+                          "standalone"
+                        ]
+                      },
+                      "type": {
+                        "description": "Canonical broad tracked-change type for this layer.",
+                        "enum": [
+                          "insertion",
+                          "deletion",
+                          "replacement",
+                          "formatting",
+                          "move",
+                          "structural",
+                          "insert",
+                          "delete",
+                          "format"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "type",
+                      "relationship"
+                    ],
+                    "type": "object"
+                  },
+                  "preferredContextTargetId": {
+                    "description": "Preferred child tracked-change id for context-menu/comment targeting.",
+                    "type": "string"
+                  },
+                  "relationship": {
+                    "enum": [
+                      "parent",
+                      "child",
+                      "standalone"
+                    ]
+                  },
+                  "visualLayers": {
+                    "description": "Ordered overlap layers, with the parent surface first and child layers after it.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "description": "SuperDoc logical tracked-change id for this overlap layer.",
+                          "type": "string"
+                        },
+                        "relationship": {
+                          "enum": [
+                            "parent",
+                            "child",
+                            "standalone"
+                          ]
+                        },
+                        "type": {
+                          "description": "Canonical broad tracked-change type for this layer.",
+                          "enum": [
+                            "insertion",
+                            "deletion",
+                            "replacement",
+                            "formatting",
+                            "move",
+                            "structural",
+                            "insert",
+                            "delete",
+                            "format"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "type",
+                        "relationship"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "pairedWithChangeId": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "resolvableById": {
+                "type": "boolean"
+              },
+              "reviewGroup": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "childChangeIds": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "groupOrigin": {
+                        "const": "authored-operation"
+                      },
+                      "kind": {
+                        "const": "text-rewrite"
+                      },
+                      "members": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "sourceIds": {
+                              "additionalProperties": false,
+                              "description": "Canonical multi-side source provenance. Provenance metadata only; never the canonical SuperDoc tracked-change id.",
+                              "properties": {
+                                "rsids": {
+                                  "description": "Word revision-save ids (`w:rsidR` / `w:rsidDel`) seen on contributing wrappers.",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "wordIdDelete": {
+                                  "description": "Word `w:id` value from the deletion side of this logical change.",
+                                  "type": "string"
+                                },
+                                "wordIdInsert": {
+                                  "description": "Word `w:id` value from the insertion side of this logical change.",
+                                  "type": "string"
+                                },
+                                "wordIdOther": {
+                                  "description": "Word `w:id` values from other wrappers (for example moveFrom/moveTo).",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "subtype": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "enum": [
+                                "insertion",
+                                "deletion",
+                                "replacement",
+                                "formatting",
+                                "move",
+                                "structural",
+                                "insert",
+                                "delete",
+                                "format"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "type",
+                            "subtype",
+                            "sourceIds"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "parentId": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "enum": [
+                          "parent",
+                          "child"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "groupOrigin",
+                      "role",
+                      "childChangeIds",
+                      "members"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "childChangeIds": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "groupOrigin": {
+                        "const": "comparison-hunk"
+                      },
+                      "kind": {
+                        "const": "comparison-hunk"
+                      },
+                      "members": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "sourceIds": {
+                              "additionalProperties": false,
+                              "description": "Canonical multi-side source provenance. Provenance metadata only; never the canonical SuperDoc tracked-change id.",
+                              "properties": {
+                                "rsids": {
+                                  "description": "Word revision-save ids (`w:rsidR` / `w:rsidDel`) seen on contributing wrappers.",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "wordIdDelete": {
+                                  "description": "Word `w:id` value from the deletion side of this logical change.",
+                                  "type": "string"
+                                },
+                                "wordIdInsert": {
+                                  "description": "Word `w:id` value from the insertion side of this logical change.",
+                                  "type": "string"
+                                },
+                                "wordIdOther": {
+                                  "description": "Word `w:id` values from other wrappers (for example moveFrom/moveTo).",
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "subtype": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "enum": [
+                                "insertion",
+                                "deletion",
+                                "replacement",
+                                "formatting",
+                                "move",
+                                "structural",
+                                "insert",
+                                "delete",
+                                "format"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "type",
+                            "subtype",
+                            "sourceIds"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "parentId": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "enum": [
+                          "parent",
+                          "child"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "groupOrigin",
+                      "role",
+                      "childChangeIds",
+                      "members"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "revisionGroupId": {
+                "type": "string"
+              },
+              "sourceIds": {
+                "additionalProperties": false,
+                "description": "Canonical multi-side source provenance. Provenance metadata only; never the canonical SuperDoc tracked-change id.",
+                "properties": {
+                  "rsids": {
+                    "description": "Word revision-save ids (`w:rsidR` / `w:rsidDel`) seen on contributing wrappers.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "wordIdDelete": {
+                    "description": "Word `w:id` value from the deletion side of this logical change.",
+                    "type": "string"
+                  },
+                  "wordIdInsert": {
+                    "description": "Word `w:id` value from the insertion side of this logical change.",
+                    "type": "string"
+                  },
+                  "wordIdOther": {
+                    "description": "Word `w:id` values from other wrappers (for example moveFrom/moveTo).",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "splitFromId": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "enum": [
+                  "open",
+                  "accepted",
+                  "rejected"
+                ]
+              },
+              "storyLocator": {
+                "$ref": "#/$defs/StoryLocator"
+              },
+              "structuralDescriptor": {
+                "additionalProperties": false,
+                "properties": {
+                  "affectedStories": {
+                    "items": {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    "type": "array"
+                  },
+                  "after": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "innerXml": {
+                        "type": "string"
+                      },
+                      "markerXml": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "structuralKind": {
+                        "type": "string"
+                      },
+                      "targetKind": {
+                        "enum": [
+                          "paragraph",
+                          "paragraph-mark",
+                          "list-item",
+                          "table",
+                          "row",
+                          "column",
+                          "cell",
+                          "image",
+                          "drawing",
+                          "field",
+                          "content-control",
+                          "section-break",
+                          "footnote",
+                          "endnote",
+                          "note-story"
+                        ]
+                      },
+                      "xml": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "targetKind",
+                      "structuralKind",
+                      "state",
+                      "xml"
+                    ],
+                    "type": "object"
+                  },
+                  "before": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "innerXml": {
+                        "type": "string"
+                      },
+                      "markerXml": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "enum": [
+                          "present",
+                          "absent"
+                        ]
+                      },
+                      "structuralKind": {
+                        "type": "string"
+                      },
+                      "targetKind": {
+                        "enum": [
+                          "paragraph",
+                          "paragraph-mark",
+                          "list-item",
+                          "table",
+                          "row",
+                          "column",
+                          "cell",
+                          "image",
+                          "drawing",
+                          "field",
+                          "content-control",
+                          "section-break",
+                          "footnote",
+                          "endnote",
+                          "note-story"
+                        ]
+                      },
+                      "xml": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "targetKind",
+                      "structuralKind",
+                      "state",
+                      "xml"
+                    ],
+                    "type": "object"
+                  },
+                  "childOwnership": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "childChangeIds": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "duplicateDisplayPolicy": {
+                        "enum": [
+                          "subsumed",
+                          "child-addressable"
+                        ]
+                      },
+                      "ownsContainedInlineChanges": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "ownsContainedInlineChanges",
+                      "childChangeIds",
+                      "duplicateDisplayPolicy"
+                    ],
+                    "type": "object"
+                  },
+                  "decisionPolicy": {
+                    "enum": [
+                      "atomic",
+                      "range-divisible",
+                      "child-addressable",
+                      "unsupported-fail-closed"
+                    ]
+                  },
+                  "exportCarrier": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "granularity": {
+                    "enum": [
+                      "whole-object",
+                      "range",
+                      "story-part"
+                    ]
+                  },
+                  "operation": {
+                    "enum": [
+                      "insert",
+                      "delete",
+                      "replace",
+                      "split",
+                      "merge",
+                      "move",
+                      "story-edit"
+                    ]
+                  },
+                  "sourceIds": {
+                    "additionalProperties": false,
+                    "description": "Canonical multi-side source provenance. Provenance metadata only; never the canonical SuperDoc tracked-change id.",
+                    "properties": {
+                      "rsids": {
+                        "description": "Word revision-save ids (`w:rsidR` / `w:rsidDel`) seen on contributing wrappers.",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "wordIdDelete": {
+                        "description": "Word `w:id` value from the deletion side of this logical change.",
+                        "type": "string"
+                      },
+                      "wordIdInsert": {
+                        "description": "Word `w:id` value from the insertion side of this logical change.",
+                        "type": "string"
+                      },
+                      "wordIdOther": {
+                        "description": "Word `w:id` values from other wrappers (for example moveFrom/moveTo).",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "operation",
+                  "granularity",
+                  "decisionPolicy",
+                  "before",
+                  "after",
+                  "affectedStories",
+                  "sourceIds",
+                  "exportCarrier"
+                ],
+                "type": "object"
+              },
+              "subtype": {
+                "type": "string"
+              },
+              "target": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "address": {
+                        "$ref": "#/$defs/TrackedChangeAddress"
+                      },
+                      "coordinateSpace": {
+                        "$ref": "#/$defs/TextCoordinateSpace"
+                      },
+                      "kind": {
+                        "enum": [
+                          "text"
+                        ]
+                      },
+                      "segments": {
+                        "items": {
+                          "$ref": "#/$defs/TextSegment"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "story": {
+                        "$ref": "#/$defs/StoryLocator"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "address"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "address": {
+                        "$ref": "#/$defs/TrackedChangeAddress"
+                      },
+                      "coordinateSpace": {
+                        "$ref": "#/$defs/TextCoordinateSpace"
+                      },
+                      "kind": {
+                        "enum": [
+                          "replacement"
+                        ]
+                      },
+                      "segments": {
+                        "items": {
+                          "$ref": "#/$defs/TextSegment"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "story": {
+                        "$ref": "#/$defs/StoryLocator"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "address"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "address": {
+                        "$ref": "#/$defs/TrackedChangeAddress"
+                      },
+                      "carriers": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "changedKeys": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "coordinateSpace": {
+                        "$ref": "#/$defs/TextCoordinateSpace"
+                      },
+                      "kind": {
+                        "enum": [
+                          "formatting"
+                        ]
+                      },
+                      "segments": {
+                        "items": {
+                          "$ref": "#/$defs/TextSegment"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "semanticSubtype": {
+                        "type": "string"
+                      },
+                      "story": {
+                        "$ref": "#/$defs/StoryLocator"
+                      },
+                      "subtype": {
+                        "enum": [
+                          "run",
+                          "paragraph",
+                          "list",
+                          "table",
+                          "row",
+                          "cell",
+                          "section",
+                          "content-control",
+                          "image"
+                        ]
+                      },
+                      "targetKind": {
+                        "enum": [
+                          "run",
+                          "paragraph",
+                          "list-item",
+                          "table",
+                          "row",
+                          "cell",
+                          "section",
+                          "content-control"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "address",
+                      "subtype"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "address": {
+                        "$ref": "#/$defs/TrackedChangeAddress"
+                      },
+                      "kind": {
+                        "const": "structural"
+                      },
+                      "semanticSubtype": {
+                        "type": "string"
+                      },
+                      "targetKind": {
+                        "enum": [
+                          "paragraph",
+                          "paragraph-mark",
+                          "list-item",
+                          "table",
+                          "row",
+                          "column",
+                          "cell",
+                          "image",
+                          "drawing",
+                          "field",
+                          "content-control",
+                          "section-break",
+                          "footnote",
+                          "endnote",
+                          "note-story"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "address",
+                      "targetKind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "address": {
+                        "$ref": "#/$defs/TrackedChangeAddress"
+                      },
+                      "destination": {
+                        "oneOf": [
+                          {
+                            "$ref": "#/$defs/TextTarget"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "kind": {
+                        "const": "move"
+                      },
+                      "source": {
+                        "oneOf": [
+                          {
+                            "$ref": "#/$defs/TextTarget"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "address",
+                      "source",
+                      "destination"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "targetIsListItem": {
+                "description": "For paragraph-mark structural changes: whether the target paragraph is a direct-numbered list item.",
+                "type": "boolean"
+              },
+              "type": {
+                "enum": [
+                  "insertion",
+                  "deletion",
+                  "replacement",
+                  "formatting",
+                  "move",
+                  "structural",
+                  "insert",
+                  "delete",
+                  "format"
+                ]
+              },
+              "wordRevisionIds": {
+                "additionalProperties": false,
+                "description": "Raw imported Word OOXML revision IDs (`w:id`) from the source document when available. This is provenance metadata, not the canonical SuperDoc tracked-change ID. Replacements may include both `insert` and `delete` IDs.",
+                "properties": {
+                  "delete": {
+                    "description": "Raw imported Word OOXML revision ID (`w:id`) from a `<w:del>` element when this logical change includes a deletion.",
+                    "type": "string"
+                  },
+                  "format": {
+                    "description": "Raw imported Word OOXML revision ID (`w:id`) from a `<w:rPrChange>` element when this logical change includes a formatting revision.",
+                    "type": "string"
+                  },
+                  "insert": {
+                    "description": "Raw imported Word OOXML revision ID (`w:id`) from a `<w:ins>` element when this logical change includes an insertion.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "handle",
+              "address",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "$ref": "#/$defs/PageInfo"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "total",
+        "items",
+        "page"
+      ],
+      "type": "object"
+    }
+  }
+}

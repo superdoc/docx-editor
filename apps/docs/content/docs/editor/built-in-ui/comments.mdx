@@ -4,7 +4,8 @@ navTitle: Comments
 description: Let people create, reply to, and resolve comments that stay in the DOCX.
 ---
 
-Comments are enabled by default. Provide the current user so new comments keep the correct author, then choose how the
+Comments are enabled by default. Provide the current user so new comments keep the correct author; without one, they
+are credited to `Default SuperDoc user` (see [Set the user](/editor/configuration#set-the-user)). Then choose how the
 comments UI adapts to the Editor width. For the thread lifecycle and what gets saved, start with
 [Comments](/editor/comments).
 
@@ -62,6 +63,30 @@ permissions in a trusted backend.
 
 For the decision path across comment levels, `permissionResolver`, and backend checks, see
 [Interaction and permissions](/editor/interaction-permissions).
+
+## Open the composer from your toolbar
+
+An **Add comment** button in your own toolbar can open the same composer as SuperDoc's floating comment tool. Call
+`superdoc.ui.comments.openComposer()` with text selected. The comment is created only when the person submits it.
+
+```ts
+const button = document.querySelector<HTMLButtonElement>('#add-comment')!;
+// Keep the document selection when the button is pressed.
+button.addEventListener('mousedown', (event) => event.preventDefault());
+button.addEventListener('click', async () => {
+  const result = await superdoc.ui.comments.openComposer();
+  if (!result.ok) console.warn('Could not open the comment composer:', result.reason);
+});
+```
+
+`openComposer()` resolves `{ ok: false, reason }` without opening anything when nothing is selected
+(`range-selection-required`), comments are read-only (`document-readonly`), the built-in comments UI is off
+(`operation-unavailable`), or the Editor is not ready (`not-ready`). Call `superdoc.ui.comments.closeComposer()` to
+discard an unsaved draft; it is safe when no composer is open. Calling it while `openComposer()` is still pending
+cancels the open, which then resolves `{ ok: false, reason: 'operation-unavailable' }`.
+
+To create the comment from your own text field instead, use `ui.comments.createFromSelection()` or
+`createFromCapture()` from the [custom comments guide](/editor/custom-ui/comments).
 
 ## Verify the round trip
 

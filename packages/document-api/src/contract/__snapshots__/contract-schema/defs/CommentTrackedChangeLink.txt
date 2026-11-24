@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "deletedText": {
+      "type": "string"
+    },
+    "insertedText": {
+      "type": "string"
+    },
+    "side": {
+      "enum": [
+        "inserted",
+        "deleted",
+        "source",
+        "destination"
+      ]
+    },
+    "trackedChange": {
+      "const": true
+    },
+    "trackedChangeAnchorKey": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "trackedChangeDisplayType": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "trackedChangeId": {
+      "type": "string"
+    },
+    "trackedChangeStory": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "trackedChangeText": {
+      "type": "string"
+    },
+    "trackedChangeType": {
+      "enum": [
+        "insertion",
+        "deletion",
+        "replacement",
+        "formatting",
+        "move",
+        "structural",
+        "insert",
+        "delete",
+        "format"
+      ]
+    }
+  },
+  "required": [
+    "trackedChange",
+    "trackedChangeId",
+    "trackedChangeType"
+  ],
+  "type": "object"
+}

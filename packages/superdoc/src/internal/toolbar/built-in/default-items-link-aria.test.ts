@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vite-plus/test';
+import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
+import { afterEach, describe, expect, it } from 'vite-plus/test';
+import ToolbarButton from './ToolbarButton.vue';
 import { makeDefaultItems } from './default-items.js';
 import { toolbarIcons } from './toolbarIcons.js';
 import { toolbarTexts } from './toolbarTexts.js';
@@ -13,14 +16,13 @@ import { toolbarTexts } from './toolbarTexts.js';
  * accessible name on the first refresh and never recovered: `ToolbarButton.vue`
  * renders `` `${attributes.ariaLabel} ${active ? 'selected' : 'unset'}` `` into
  * an `aria-live` region, so screen readers announced "undefined unset".
- *
- * These evaluate that template expression against the item's live attributes
- * rather than mounting the component, so they pin the data the template reads,
- * not the rendered DOM. That is the layer the bug lived at: the original item
- * configuration already declared a correct label, and asserting the config
- * would not have caught it being destroyed at runtime.
  */
 describe('built-in toolbar — link accessible name', () => {
+  const mounted: Array<{ unmount: () => void }> = [];
+  afterEach(() => {
+    for (const wrapper of mounted.splice(0)) wrapper.unmount();
+  });
+
   const findLink = () => {
     const items = makeDefaultItems({
       superToolbar: { config: {}, ui: {} },
@@ -32,42 +34,50 @@ describe('built-in toolbar — link accessible name', () => {
     return link;
   };
 
-  /**
-   * The template expression `ToolbarButton.vue` puts in the item's live region.
-   * Evaluated here against the item's attributes rather than a mounted component.
-   */
-  const announced = (item) => `${item.attributes.value?.ariaLabel} ${item.active?.value ? 'selected' : 'unset'}`;
+  const mountLink = (link) => {
+    const wrapper = mount(ToolbarButton, { props: { toolbarItem: link } });
+    mounted.push(wrapper);
+    return async () => {
+      await nextTick();
+      const root = wrapper.find('[data-sd-part="toolbar-item"]');
+      return { name: root.attributes('aria-label'), live: wrapper.find('[aria-live="polite"]').text() };
+    };
+  };
 
-  it('announces a real name before any interaction', () => {
+  it('announces a real name before any interaction', async () => {
     const link = findLink();
+    const announced = mountLink(link);
     expect(link.attributes.value.ariaLabel).toBe('Link dropdown');
-    expect(announced(link)).not.toContain('undefined');
+    expect(await announced()).toEqual({ name: 'Link dropdown', live: 'Link dropdown unset' });
   });
 
-  it('keeps the name when activated with an href', () => {
+  it('keeps the name when activated with an href', async () => {
     const link = findLink();
-    link.onActivate({ href: 'https://example.com' });
+    const announced = mountLink(link);
+    link.activate({ href: 'https://example.com' });
     expect(link.attributes.value.ariaLabel).toBe('Link dropdown');
     expect(link.attributes.value.href).toBe('https://example.com');
-    expect(announced(link)).not.toContain('undefined');
+    expect(await announced()).toEqual({ name: 'Link dropdown', live: 'Link dropdown selected' });
   });
 
-  it('keeps the name when activated without an href', () => {
+  it('keeps the name when activated without an href', async () => {
     const link = findLink();
-    link.onActivate({});
+    const announced = mountLink(link);
+    link.activate({});
     expect(link.attributes.value.ariaLabel).toBe('Link dropdown');
     expect(link.attributes.value.href).toBeUndefined();
-    expect(announced(link)).not.toContain('undefined');
+    expect(await announced()).toEqual({ name: 'Link dropdown', live: 'Link dropdown selected' });
   });
 
-  it('keeps the name across deactivation — the toolbar sync path that broke it', () => {
+  it('keeps the name across deactivation — the toolbar sync path that broke it', async () => {
     const link = findLink();
-    link.onActivate({ href: 'https://example.com' });
-    link.onDeactivate();
+    const announced = mountLink(link);
+    link.activate({ href: 'https://example.com' });
+    link.deactivate();
     expect(link.attributes.value.ariaLabel).toBe('Link dropdown');
     // The href must still clear; preserving the label must not pin a stale link.
     expect(link.attributes.value.href).toBeUndefined();
-    expect(announced(link)).toBe('Link dropdown unset');
+    expect(await announced()).toEqual({ name: 'Link dropdown', live: 'Link dropdown unset' });
   });
 
   // The handlers must carry the whole attributes object forward, not re-list the
@@ -78,22 +88,24 @@ describe('built-in toolbar — link accessible name', () => {
     const link = findLink();
     link.attributes.value = { ...link.attributes.value, dataTestSentinel: 'keep-me' };
 
-    link.onActivate({ href: 'https://example.com' });
+    link.activate({ href: 'https://example.com' });
     expect(link.attributes.value.dataTestSentinel, 'activation must not drop unrelated attributes').toBe('keep-me');
     expect(link.attributes.value.href).toBe('https://example.com');
 
-    link.onDeactivate();
+    link.deactivate();
     expect(link.attributes.value.dataTestSentinel, 'deactivation must not drop unrelated attributes').toBe('keep-me');
     expect(link.attributes.value.ariaLabel).toBe('Link dropdown');
     expect(link.attributes.value.href).toBeUndefined();
   });
 
-  it('survives repeated toolbar state syncs', () => {
+  it('survives repeated toolbar state syncs', async () => {
     const link = findLink();
+    const announced = mountLink(link);
     for (let i = 0; i < 5; i += 1) {
-      link.onActivate({ href: `https://example.com/${i}` });
-      link.onDeactivate();
+      link.activate({ href: `https://example.com/${i}` });
+      expect(await announced()).toEqual({ name: 'Link dropdown', live: 'Link dropdown selected' });
+      link.deactivate();
+      expect(await announced()).toEqual({ name: 'Link dropdown', live: 'Link dropdown unset' });
     }
-    expect(announced(link)).toBe('Link dropdown unset');
   });
 });

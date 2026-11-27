@@ -1,0 +1,93 @@
+before:
+
+store:
+{
+  "activeComment": "tc|main%3A%2Fword%2Fdocument.xml|del|sd%3Amain%3A%2Fword%2Fdocument.xml%7Cdel%7CSuperdoc%20User%7C2024-12-20T04%3A20%3A00Z%7C0%7CwId%3A0",
+  "editingCommentId": null,
+  "draft": "<p>tracked-change sidecar reply proof</p>",
+  "pendingComment": "pending-new-comment",
+  "rows": [
+    {
+      "commentId": "tc|main%3A%2Fword%2Fdocument.xml|del|sd%3Amain%3A%2Fword%2Fdocument.xml%7Cdel%7CSuperdoc%20User%7C2024-12-20T04%3A20%3A00Z%7C0%7CwId%3A0",
+      "trackedChange": true,
+      "trackedChangeCanonicalId": "tc|main%3A%2Fword%2Fdocument.xml|del|coalesced|0"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+tc|main%3A%2Fword%2Fdocument.xml|del|sd%3Amain%3A%2Fword%2Fdocument.xml%7Cdel%7CSuperdoc%20User%7C2024-12-20T04%3A20%3A00Z%7C0%7CwId%3A0: tracked change: Deleted " DOCX"
+reply pill
+
+action: open the reply composer and click Reply
+
+document calls:
+comments.reply {"parentCommentId":"tc|main%3A%2Fword%2Fdocument.xml|del|coalesced|0","text":"tracked-change sidecar reply proof","mentions":[{"id":"reviewer-1","name":"Internal Reviewer","email":"reviewer@example.com"}]}
+comments.commitPendingComment {"text":"tracked-change sidecar reply proof","target":{"kind":"trackedChange","trackedChangeId":"tc|main%3A%2Fword%2Fdocument.xml|del|coalesced|0","story":{"kind":"story","storyType":"body"}},"mentions":[{"id":"reviewer-1","name":"Internal Reviewer","email":"reviewer@example.com"}]}
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "tracked-change-sidecar-reply",
+      "trackedChangeThreadParentId": "tc|main%3A%2Fword%2Fdocument.xml|del|coalesced|0",
+      "fileId": "doc-1",
+      "mentions": [
+        {
+          "id": "reviewer-1",
+          "name": "Internal Reviewer",
+          "email": "reviewer@example.com"
+        }
+      ],
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "tracked-change sidecar reply proof",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+superdoc.focus calls: []
+
+after:
+
+store:
+{
+  "activeComment": "tc|main%3A%2Fword%2Fdocument.xml|del|sd%3Amain%3A%2Fword%2Fdocument.xml%7Cdel%7CSuperdoc%20User%7C2024-12-20T04%3A20%3A00Z%7C0%7CwId%3A0",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": "pending-new-comment",
+  "rows": [
+    {
+      "commentId": "tc|main%3A%2Fword%2Fdocument.xml|del|sd%3Amain%3A%2Fword%2Fdocument.xml%7Cdel%7CSuperdoc%20User%7C2024-12-20T04%3A20%3A00Z%7C0%7CwId%3A0",
+      "trackedChange": true,
+      "trackedChangeCanonicalId": "tc|main%3A%2Fword%2Fdocument.xml|del|coalesced|0"
+    },
+    {
+      "commentId": "tracked-change-sidecar-reply",
+      "commentText": "tracked-change sidecar reply proof",
+      "mentions": [
+        {
+          "id": "reviewer-1",
+          "name": "Internal Reviewer",
+          "email": "reviewer@example.com"
+        }
+      ],
+      "trackedChangeThreadParentId": "tc|main%3A%2Fword%2Fdocument.xml|del|coalesced|0"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+tc|main%3A%2Fword%2Fdocument.xml|del|sd%3Amain%3A%2Fword%2Fdocument.xml%7Cdel%7CSuperdoc%20User%7C2024-12-20T04%3A20%3A00Z%7C0%7CwId%3A0: tracked change: Deleted " DOCX"
+tracked-change-sidecar-reply: comment: tracked-change sidecar reply proof
+reply pill

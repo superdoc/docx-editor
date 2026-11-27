@@ -271,12 +271,16 @@ export interface SDPasteTableCell {
   vMerge?: 'restart' | 'continue';
   /** Direct cell shading fill as canonical hex RRGGBB. */
   shadingColor?: string;
+  shadingTheme?: { theme: string; tint?: number; shade?: number };
+  noWrap?: boolean;
   /** Direct cell padding in points. At least one side must be present. */
   padding?: {
     topPt?: number;
     rightPt?: number;
     bottomPt?: number;
     leftPt?: number;
+    startPt?: number;
+    endPt?: number;
   };
   /** Direct vertical cell alignment. */
   verticalAlign?: 'top' | 'center' | 'bottom';

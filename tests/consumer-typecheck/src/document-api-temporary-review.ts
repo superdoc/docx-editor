@@ -54,6 +54,46 @@ async function temporaryReview() {
 }
 void temporaryReview;
 
+async function temporaryBlockPreview() {
+  const control = { kind: 'block', nodeType: 'sdt', nodeId: 'clause-control' } as const;
+  const paragraph = { kind: 'block', nodeType: 'paragraph', nodeId: 'clause' } as const;
+  const receipt = await browserDoc.mutations.beginTemporary({
+    tag: 'agent-draft',
+    operations: [
+      {
+        operation: 'insert',
+        input: {
+          target: control,
+          placement: 'after',
+          content: [{ kind: 'paragraph', paragraph: { inlines: [{ kind: 'run', run: { text: 'Drafted clause.' } }] } }],
+        },
+        options: { changeMode: 'tracked' },
+      },
+      {
+        operation: 'insert',
+        input: { target: paragraph, placement: 'before', type: 'markdown', value: 'First.\n\nSecond.' },
+      },
+    ],
+  });
+  if (!receipt.success) return receipt.failure.code;
+  await doc.mutations.replaceTemporary({
+    previewId: receipt.temporary.id,
+    tag: receipt.temporary.tag,
+    operations: [
+      { operation: 'insert', input: { target: control, type: 'html', value: '<p>Drafted.</p><p>More.</p>' } },
+    ],
+  });
+  const inside = { target: control, placement: 'insideStart', type: 'markdown', value: 'Inside.' } as const;
+  // @ts-expect-error Temporary block previews go before or after a block, never inside it.
+  doc.mutations.beginTemporary({ tag: 'inside-control', operations: [{ operation: 'insert', input: inside }] });
+  doc.mutations.beginTemporary({
+    tag: 'rich-at-caret',
+    // @ts-expect-error Rich temporary content needs a block target; a text selection takes plain text only.
+    operations: [{ operation: 'insert', input: { target, type: 'html', value: '<p>Split</p>' } }],
+  });
+}
+void temporaryBlockPreview;
+
 async function counterRedline() {
   const at = { kind: 'text', blockId: 'clause', offset: 0 } as const;
   await browserDoc.mutations.beginTemporary({

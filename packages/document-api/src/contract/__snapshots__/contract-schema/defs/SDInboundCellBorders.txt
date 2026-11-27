@@ -1,0 +1,18 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "bottom": {
+      "type": "string"
+    },
+    "left": {
+      "type": "string"
+    },
+    "right": {
+      "type": "string"
+    },
+    "top": {
+      "type": "string"
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,90 @@
+{
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "blockId": {
+          "type": "string"
+        },
+        "changeIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "commentIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "identity": {
+          "const": "public"
+        },
+        "kind": {
+          "const": "synthetic"
+        },
+        "output": {
+          "$ref": "#/$defs/Range"
+        },
+        "role": {
+          "enum": [
+            "listLabel",
+            "placeholder"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "output",
+        "role",
+        "identity",
+        "blockId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "changeIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "commentIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "identity": {
+          "const": "unavailable"
+        },
+        "identityUnavailableReason": {
+          "const": "positionDerivedFallback"
+        },
+        "kind": {
+          "const": "synthetic"
+        },
+        "output": {
+          "$ref": "#/$defs/Range"
+        },
+        "role": {
+          "enum": [
+            "listLabel",
+            "placeholder"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "output",
+        "role",
+        "identity",
+        "identityUnavailableReason"
+      ],
+      "type": "object"
+    }
+  ]
+}

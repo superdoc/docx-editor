@@ -1,0 +1,202 @@
+{
+  "definition": {
+    "description": "Remove a caption paragraph from the document.",
+    "expectedResult": "Returns a CaptionMutationResult indicating success or a failure.",
+    "memberPath": "captions.remove",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "captions/remove.mdx",
+    "referenceGroup": "captions",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "block"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "paragraph"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "caption": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "block"
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "nodeType": {
+                  "const": "paragraph"
+                }
+              },
+              "required": [
+                "kind",
+                "nodeType",
+                "nodeId"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "caption"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "caption": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "block"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "paragraph"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "caption"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -15,7 +15,11 @@ export type V2CommentMutationOutcome = {
   committed?: boolean;
   complete?: boolean;
   visibleWindowSource?: string;
-  threadLifecycle?: { commentId: string; status: 'open' | 'resolved' };
+  threadLifecycle?: {
+    commentId: string;
+    status: 'open' | 'resolved';
+    resolution?: Pick<CommentInputParams, 'resolvedTime' | 'resolvedById' | 'resolvedByEmail' | 'resolvedByName'>;
+  };
   removedCommentIds?: string[];
   createdCommentId?: string;
   mutationPath?: string;

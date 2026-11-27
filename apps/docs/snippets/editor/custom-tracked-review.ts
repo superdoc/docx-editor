@@ -130,7 +130,12 @@ const superdoc = new SuperDoc({
         const accept = document.createElement('button');
         const reject = document.createElement('button');
         const detail =
-          change.excerpt ?? change.insertedText ?? change.deletedText ?? change.formattingDeltaSummary ?? change.type;
+          change.listLabel ??
+          change.excerpt ??
+          change.insertedText ??
+          change.deletedText ??
+          change.formattingDeltaSummary ??
+          change.type;
 
         summary.textContent = `${detail}${change.author ? ` by ${change.author}` : ''}`;
 

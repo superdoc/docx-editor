@@ -1,0 +1,49 @@
+before:
+
+store:
+{
+  "activeComment": "pending-viewing-mode-comment",
+  "editingCommentId": null,
+  "draft": "<p>New viewing-mode comment</p>",
+  "pendingComment": "pending-viewing-mode-comment",
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+new comment composer
+
+action: click Comment on the pending comment
+
+document calls:
+(none)
+
+comments-update events:
+[]
+
+superdoc.focus calls: []
+
+after:
+
+store:
+{
+  "activeComment": "pending-viewing-mode-comment",
+  "editingCommentId": null,
+  "draft": "<p>New viewing-mode comment</p>",
+  "pendingComment": "pending-viewing-mode-comment",
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+new comment composer

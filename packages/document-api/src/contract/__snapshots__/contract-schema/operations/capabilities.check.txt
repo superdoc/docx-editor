@@ -1,0 +1,1271 @@
+{
+  "definition": {
+    "description": "Check an exact HTML or Markdown insert, replace, or detailed projection against the current document without mutating it.",
+    "expectedResult": "Returns a Promise resolving to structured support, fidelity outcome, diagnostics, and a revision-bound guard for supported writes.",
+    "intentAction": "check_support",
+    "intentGroup": "edit",
+    "memberPath": "capabilities.check",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "returnsPromise": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "capabilities/check.mdx",
+    "referenceGroup": "capabilities",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    "placement": {
+                      "enum": [
+                        "before",
+                        "after",
+                        "insideStart",
+                        "insideEnd"
+                      ]
+                    },
+                    "target": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/$defs/SelectionTarget"
+                        },
+                        {
+                          "$ref": "#/$defs/BlockNodeAddress"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "enum": [
+                        "html",
+                        "markdown"
+                      ]
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "value",
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    "placement": {
+                      "enum": [
+                        "before",
+                        "after",
+                        "insideStart",
+                        "insideEnd"
+                      ]
+                    },
+                    "ref": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "html",
+                        "markdown"
+                      ]
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "value",
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    "placement": {
+                      "enum": [
+                        "before",
+                        "after",
+                        "insideStart",
+                        "insideEnd"
+                      ]
+                    },
+                    "type": {
+                      "enum": [
+                        "html",
+                        "markdown"
+                      ]
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "type"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "operation": {
+              "const": "insert"
+            },
+            "options": {
+              "additionalProperties": false,
+              "properties": {
+                "changeMode": {
+                  "enum": [
+                    "direct",
+                    "tracked"
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "operation",
+            "input"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    "nestingPolicy": {
+                      "additionalProperties": false,
+                      "description": "Controls nesting behavior. tables: 'allow' permits inserting tables inside other tables.",
+                      "properties": {
+                        "tables": {
+                          "enum": [
+                            "forbid",
+                            "allow"
+                          ]
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "target": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/$defs/SelectionTarget"
+                        },
+                        {
+                          "$ref": "#/$defs/BlockNodeAddress"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "enum": [
+                        "html",
+                        "markdown"
+                      ]
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "value",
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "in": {
+                      "$ref": "#/$defs/StoryLocator"
+                    },
+                    "nestingPolicy": {
+                      "additionalProperties": false,
+                      "description": "Controls nesting behavior. tables: 'allow' permits inserting tables inside other tables.",
+                      "properties": {
+                        "tables": {
+                          "enum": [
+                            "forbid",
+                            "allow"
+                          ]
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "ref": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "html",
+                        "markdown"
+                      ]
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "value",
+                    "type"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "operation": {
+              "const": "replace"
+            },
+            "options": {
+              "additionalProperties": false,
+              "properties": {
+                "changeMode": {
+                  "enum": [
+                    "direct",
+                    "tracked"
+                  ]
+                },
+                "expectedSnapshotId": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "replaceMode": {
+                  "const": "contents"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "operation",
+            "input"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "includeSourceMap": {
+                  "type": "boolean"
+                },
+                "reviewMode": {
+                  "$ref": "#/$defs/SDProjectionReviewMode"
+                },
+                "scope": {
+                  "$ref": "#/$defs/SDProjectionScope"
+                }
+              },
+              "type": "object"
+            },
+            "operation": {
+              "const": "projectHtml"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "in": {
+                  "$ref": "#/$defs/StoryLocator"
+                },
+                "includeSourceMap": {
+                  "type": "boolean"
+                },
+                "reviewMode": {
+                  "$ref": "#/$defs/SDProjectionReviewMode"
+                },
+                "scope": {
+                  "$ref": "#/$defs/SDProjectionScope"
+                }
+              },
+              "type": "object"
+            },
+            "operation": {
+              "const": "projectMarkdown"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "conversion": {
+              "additionalProperties": false,
+              "properties": {
+                "diagnostics": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "conversion-normalized-construct",
+                          "conversion-unsupported-construct",
+                          "conversion-dropped-style",
+                          "conversion-unsafe-content",
+                          "conversion-unsafe-url",
+                          "conversion-source-limit-exceeded",
+                          "conversion-depth-limit-exceeded",
+                          "conversion-malformed-input",
+                          "conversion-empty-result"
+                        ]
+                      },
+                      "construct": {
+                        "enum": [
+                          "document",
+                          "source",
+                          "text",
+                          "paragraph",
+                          "emptyParagraph",
+                          "softBreak",
+                          "lineBreak",
+                          "heading",
+                          "bold",
+                          "italic",
+                          "underline",
+                          "strike",
+                          "hyperlink",
+                          "list",
+                          "table",
+                          "tableHeader",
+                          "colSpan",
+                          "rowSpan",
+                          "horizontalRule",
+                          "inlineCode",
+                          "codeBlock",
+                          "blockquote",
+                          "taskList",
+                          "image",
+                          "footnote",
+                          "rawHtml",
+                          "unknownWrapper",
+                          "script",
+                          "style",
+                          "eventHandler"
+                        ]
+                      },
+                      "disposition": {
+                        "enum": [
+                          "preserved",
+                          "normalized",
+                          "downgraded",
+                          "dropped",
+                          "rejected"
+                        ]
+                      },
+                      "lossy": {
+                        "type": "boolean"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "type": "array"
+                      },
+                      "severity": {
+                        "enum": [
+                          "error",
+                          "warning",
+                          "info"
+                        ]
+                      },
+                      "source": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "format": {
+                            "enum": [
+                              "html",
+                              "markdown"
+                            ]
+                          },
+                          "range": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "endColumn": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "endLine": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "endOffset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "startColumn": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "startLine": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "startOffset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "startOffset",
+                              "endOffset"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "format"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "severity",
+                      "message",
+                      "construct",
+                      "disposition",
+                      "lossy",
+                      "source"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "format": {
+                  "enum": [
+                    "html",
+                    "markdown"
+                  ]
+                },
+                "lossy": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "format",
+                "lossy",
+                "diagnostics"
+              ],
+              "type": "object"
+            },
+            "evaluatedRevision": {
+              "type": "string"
+            },
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                },
+                "path": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/BlockNodeAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/TextAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/SelectionTarget"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "format": {
+              "enum": [
+                "html",
+                "markdown"
+              ]
+            },
+            "guard": {
+              "additionalProperties": false,
+              "properties": {
+                "analysisSha256": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "evaluatedRevision": {
+                  "type": "string"
+                },
+                "operation": {
+                  "enum": [
+                    "insert",
+                    "replace"
+                  ]
+                },
+                "requestSha256": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "version": {
+                  "const": "sd-html-markdown-check/1"
+                }
+              },
+              "required": [
+                "version",
+                "operation",
+                "evaluatedRevision",
+                "requestSha256",
+                "analysisSha256"
+              ],
+              "type": "object"
+            },
+            "operation": {
+              "enum": [
+                "insert",
+                "replace"
+              ]
+            },
+            "outcome": {
+              "enum": [
+                "preserved",
+                "preserved-with-warnings",
+                "simplified",
+                "rejected",
+                "no-op",
+                "invalid-target",
+                "outdated"
+              ]
+            },
+            "plan": {
+              "additionalProperties": false,
+              "properties": {
+                "atomic": {
+                  "const": true
+                },
+                "changeMode": {
+                  "enum": [
+                    "direct",
+                    "tracked"
+                  ]
+                },
+                "fragment": {
+                  "oneOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "paragraph"
+                            },
+                            "paragraph": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "inlines": {
+                                  "items": {
+                                    "$ref": "#/$defs/SDInboundInlineNode"
+                                  },
+                                  "type": "array"
+                                },
+                                "props": {
+                                  "$ref": "#/$defs/SDInboundParagraphProps"
+                                },
+                                "styleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "inlines"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "paragraph"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "heading": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "inlines": {
+                                  "items": {
+                                    "$ref": "#/$defs/SDInboundInlineNode"
+                                  },
+                                  "type": "array"
+                                },
+                                "level": {
+                                  "maximum": 9,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "props": {
+                                  "$ref": "#/$defs/SDInboundParagraphProps"
+                                },
+                                "styleRef": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "level",
+                                "inlines"
+                              ],
+                              "type": "object"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "heading"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "heading"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "list"
+                            },
+                            "list": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "items": {
+                                  "items": {
+                                    "$ref": "#/$defs/SDInboundListItem"
+                                  },
+                                  "minItems": 1,
+                                  "type": "array"
+                                },
+                                "levels": {
+                                  "items": {
+                                    "$ref": "#/$defs/SDInboundListLevel"
+                                  },
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "items"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "list"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "table"
+                            },
+                            "table": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "rows": {
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "cells": {
+                                        "items": {
+                                          "additionalProperties": false,
+                                          "properties": {
+                                            "colSpan": {
+                                              "minimum": 1,
+                                              "type": "integer"
+                                            },
+                                            "content": {
+                                              "items": {
+                                                "$ref": "#/$defs/SDInboundContentNode"
+                                              },
+                                              "minItems": 1,
+                                              "type": "array"
+                                            },
+                                            "header": {
+                                              "type": "boolean"
+                                            },
+                                            "id": {
+                                              "type": "string"
+                                            },
+                                            "props": {
+                                              "$ref": "#/$defs/SDInboundCellProps"
+                                            },
+                                            "rowSpan": {
+                                              "minimum": 1,
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "content"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "type": "array"
+                                      },
+                                      "id": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "cells"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "minItems": 1,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "rows"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "table"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "horizontalRule": {
+                              "additionalProperties": false,
+                              "properties": {},
+                              "type": "object"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "const": "horizontalRule"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "horizontalRule"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "paragraph"
+                              },
+                              "paragraph": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "inlines": {
+                                    "items": {
+                                      "$ref": "#/$defs/SDInboundInlineNode"
+                                    },
+                                    "type": "array"
+                                  },
+                                  "props": {
+                                    "$ref": "#/$defs/SDInboundParagraphProps"
+                                  },
+                                  "styleRef": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "inlines"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "paragraph"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "heading": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "inlines": {
+                                    "items": {
+                                      "$ref": "#/$defs/SDInboundInlineNode"
+                                    },
+                                    "type": "array"
+                                  },
+                                  "level": {
+                                    "maximum": 9,
+                                    "minimum": 1,
+                                    "type": "integer"
+                                  },
+                                  "props": {
+                                    "$ref": "#/$defs/SDInboundParagraphProps"
+                                  },
+                                  "styleRef": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "level",
+                                  "inlines"
+                                ],
+                                "type": "object"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "heading"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "heading"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "list"
+                              },
+                              "list": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "items": {
+                                    "items": {
+                                      "$ref": "#/$defs/SDInboundListItem"
+                                    },
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "levels": {
+                                    "items": {
+                                      "$ref": "#/$defs/SDInboundListLevel"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "items"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "list"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "table"
+                              },
+                              "table": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "rows": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "cells": {
+                                          "items": {
+                                            "additionalProperties": false,
+                                            "properties": {
+                                              "colSpan": {
+                                                "minimum": 1,
+                                                "type": "integer"
+                                              },
+                                              "content": {
+                                                "items": {
+                                                  "$ref": "#/$defs/SDInboundContentNode"
+                                                },
+                                                "minItems": 1,
+                                                "type": "array"
+                                              },
+                                              "header": {
+                                                "type": "boolean"
+                                              },
+                                              "id": {
+                                                "type": "string"
+                                              },
+                                              "props": {
+                                                "$ref": "#/$defs/SDInboundCellProps"
+                                              },
+                                              "rowSpan": {
+                                                "minimum": 1,
+                                                "type": "integer"
+                                              }
+                                            },
+                                            "required": [
+                                              "content"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "type": "array"
+                                        },
+                                        "id": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "cells"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "minItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "rows"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "table"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "horizontalRule": {
+                                "additionalProperties": false,
+                                "properties": {},
+                                "type": "object"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "horizontalRule"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "horizontalRule"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  ]
+                },
+                "resolution": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "range": {
+                      "$ref": "#/$defs/TextMutationRange"
+                    },
+                    "selectionTarget": {
+                      "$ref": "#/$defs/SelectionTarget"
+                    },
+                    "target": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/$defs/TextAddress"
+                        },
+                        {
+                          "$ref": "#/$defs/BlockNodeAddress"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "const": "story"
+                            },
+                            "storyType": {
+                              "const": "body"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "storyType"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "target",
+                    "range"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "fragment",
+                "resolution",
+                "changeMode",
+                "atomic"
+              ],
+              "type": "object"
+            },
+            "supported": {
+              "type": "boolean"
+            },
+            "wouldChange": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operation",
+            "format",
+            "supported",
+            "outcome",
+            "evaluatedRevision",
+            "wouldChange",
+            "conversion"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "evaluatedRevision": {
+              "type": "string"
+            },
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                },
+                "path": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/BlockNodeAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/TextAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/SelectionTarget"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "format": {
+              "enum": [
+                "html",
+                "markdown"
+              ]
+            },
+            "operation": {
+              "enum": [
+                "projectHtml",
+                "projectMarkdown"
+              ]
+            },
+            "outcome": {
+              "enum": [
+                "preserved",
+                "preserved-with-warnings",
+                "simplified",
+                "rejected",
+                "no-op",
+                "invalid-target",
+                "outdated"
+              ]
+            },
+            "plan": {
+              "additionalProperties": false,
+              "properties": {
+                "includeSourceMap": {
+                  "type": "boolean"
+                },
+                "reviewMode": {
+                  "$ref": "#/$defs/SDProjectionReviewMode"
+                },
+                "scope": {
+                  "$ref": "#/$defs/SDResolvedProjectionScope"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "reviewMode",
+                "story",
+                "scope",
+                "includeSourceMap"
+              ],
+              "type": "object"
+            },
+            "projection": {
+              "$ref": "#/$defs/SDContentProjectionResult"
+            },
+            "supported": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operation",
+            "format",
+            "supported",
+            "outcome",
+            "evaluatedRevision"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  }
+}

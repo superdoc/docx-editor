@@ -2473,6 +2473,7 @@ export type DropCapDescriptor = {
 export type WordLayoutMarker = {
   /** The text content of the marker (e.g., "1.", "a)", "•"). */
   markerText?: string;
+  originalMarkerLength?: number;
   /** Horizontal alignment of the marker within its allocated space. */
   justification?: 'left' | 'right' | 'center';
   /** Spacing between marker text and paragraph content in pixels. */
@@ -4024,3 +4025,6 @@ export {
 } from './incremental-dependency.js';
 
 export * as Engines from './engines/index.js';
+
+export { trackedChangeListPresentation } from './tracked-change-list-presentation.js';
+export type { ListReviewDetailLine, ListReviewPresentation } from './tracked-change-list-presentation.js';

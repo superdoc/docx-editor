@@ -26,13 +26,20 @@ describe('executeGetHtml', () => {
   });
 
   it('passes review and scope options while preserving the string return', () => {
-    const adapter: GetHtmlAdapter = { getHtml: mock(() => '<p>old</p>') };
+    const getHtml = mock(() => '<p>old</p>');
+    const adapter: GetHtmlAdapter = { getHtml };
     const input = {
+      styling: 'inline',
       reviewMode: 'original',
       scope: { kind: 'block', nodeType: 'paragraph', nodeId: 'P1' },
     } as const;
     expect(executeGetHtml(adapter, input)).toBe('<p>old</p>');
     expect(adapter.getHtml).toHaveBeenCalledWith(input);
+    getHtml.mockClear();
+    const unsupported = { styling: 'inline' as const };
+    Object.assign(unsupported, { styling: 'external' });
+    expect(() => executeGetHtml(adapter, unsupported)).toThrow(/styling/);
+    expect(adapter.getHtml).not.toHaveBeenCalled();
   });
 
   it('rejects invalid story locator', () => {

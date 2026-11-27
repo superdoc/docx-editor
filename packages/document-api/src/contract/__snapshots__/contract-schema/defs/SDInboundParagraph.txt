@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "paragraph"
+    },
+    "paragraph": {
+      "additionalProperties": false,
+      "properties": {
+        "inlines": {
+          "items": {
+            "$ref": "#/$defs/SDInboundInlineNode"
+          },
+          "type": "array"
+        },
+        "props": {
+          "$ref": "#/$defs/SDInboundParagraphProps"
+        },
+        "styleRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "inlines"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "paragraph"
+  ],
+  "type": "object"
+}

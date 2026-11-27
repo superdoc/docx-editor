@@ -1,0 +1,61 @@
+{
+  "definition": {
+    "batchable": false,
+    "description": "Finish the matching editor-local group. Call in finally after awaiting each write. A stale handle returns closed false when no group is active; a mismatched handle cannot close another active group. Successful writes become one Undo and one Redo without rolling back failed writes.",
+    "expectedResult": "Returns the supplied groupId and closed, indicating whether this call closed an active group.",
+    "memberPath": "history.endGroup",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "PRECONDITION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "history/end-group.mdx",
+    "referenceGroup": "history",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "groupId": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "type": "string"
+        }
+      },
+      "required": [
+        "groupId"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "closed": {
+          "type": "boolean"
+        },
+        "groupId": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "groupId",
+        "closed"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,105 @@
+event: {"type":"add","comment":{"commentId":"a","commentText":"First","createdTime":1767225600000}}
+transaction origin: {"user":{"name":"Test User","email":"test@example.com"}}
+yjs comments:
+[
+  {
+    "commentId": "a",
+    "commentText": "First",
+    "createdTime": 1767225600000
+  }
+]
+
+event: {"type":"add","comment":{"commentId":"b","commentText":"Second","createdTime":1767225600000}}
+transaction origin: {"user":{"name":"Test User","email":"test@example.com"}}
+yjs comments:
+[
+  {
+    "commentId": "a",
+    "commentText": "First",
+    "createdTime": 1767225600000
+  },
+  {
+    "commentId": "b",
+    "commentText": "Second",
+    "createdTime": 1767225600000
+  }
+]
+
+event: {"type":"update","comment":{"commentId":"a","commentText":"First, edited","createdTime":1767225600000}}
+transaction origin: {"user":{"name":"Test User","email":"test@example.com"}}
+yjs comments:
+[
+  {
+    "commentId": "a",
+    "commentText": "First, edited",
+    "createdTime": 1767225600000
+  },
+  {
+    "commentId": "b",
+    "commentText": "Second",
+    "createdTime": 1767225600000
+  }
+]
+
+event: {"type":"resolved","comment":{"commentId":"b","commentText":"Second","createdTime":1767225600000,"resolvedTime":1767225600001}}
+transaction origin: {"user":{"name":"Test User","email":"test@example.com"}}
+yjs comments:
+[
+  {
+    "commentId": "a",
+    "commentText": "First, edited",
+    "createdTime": 1767225600000
+  },
+  {
+    "commentId": "b",
+    "commentText": "Second",
+    "createdTime": 1767225600000,
+    "resolvedTime": 1767225600001
+  }
+]
+
+event: {"type":"update","comment":{"commentId":"missing","commentText":"Never added"}}
+transaction origin: (no transaction)
+yjs comments:
+[
+  {
+    "commentId": "a",
+    "commentText": "First, edited",
+    "createdTime": 1767225600000
+  },
+  {
+    "commentId": "b",
+    "commentText": "Second",
+    "createdTime": 1767225600000,
+    "resolvedTime": 1767225600001
+  }
+]
+
+event: {"type":"deleted","comment":{"commentId":"missing"}}
+transaction origin: (no transaction)
+yjs comments:
+[
+  {
+    "commentId": "a",
+    "commentText": "First, edited",
+    "createdTime": 1767225600000
+  },
+  {
+    "commentId": "b",
+    "commentText": "Second",
+    "createdTime": 1767225600000,
+    "resolvedTime": 1767225600001
+  }
+]
+
+event: {"type":"deleted","comment":{"commentId":"a"}}
+transaction origin: {"user":{"name":"Test User","email":"test@example.com"}}
+yjs comments:
+[
+  {
+    "commentId": "b",
+    "commentText": "Second",
+    "createdTime": 1767225600000,
+    "resolvedTime": 1767225600001
+  }
+]

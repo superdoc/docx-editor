@@ -1,14 +1,37 @@
 ---
 title: Tools and presets
 navTitle: Tools
-description: Understand the action surface a model sees, and narrow it when a workflow should not reach every operation.
+description: Compare the full, core, and legacy tool surfaces a model sees, and narrow one when a workflow should not reach every operation.
 ---
 
-A preset is the tool surface a model sees: the tool definitions, the system prompt describing them, and the dispatcher that runs them. The SDK ships `core`, `full`, and `legacy`.
+A preset is the tool surface a model sees: the tool definitions, the system prompt describing them, and the dispatcher that runs them. The SDK ships `full`, `core`, and `legacy`.
+
+## The full preset
+
+`preset: 'full'` gives the model the whole Document API through four tools:
+
+| Tool                      | Purpose                                                            |
+| ------------------------- | ------------------------------------------------------------------ |
+| `superdoc_inspect`        | Read-only snapshots of current document state                      |
+| `superdoc_perform_action` | One named, statically validated edit verb from the action registry |
+| `superdoc_api_search`     | Search the Document API and read an operation's parameters         |
+| `superdoc_api_call`       | Run one Document API operation, or several in order as one batch   |
+
+Named actions handle common edits in one call. For anything else, such as [Word table styles](/document-api/table-styles), page setup, or headers and footers, the model searches the API and calls the operation it finds. `full` also adds four helper actions to `superdoc_perform_action`: `insert_image`, `insert_footnote`, `shade_cells`, and `compare_with_file`.
+
+```ts
+import { createAgentToolkit } from '@superdoc/sdk';
+
+const { tools, systemPrompt, dispatch } = await createAgentToolkit({ provider: 'openai', preset: 'full' });
+```
+
+Pin the SDK version, because the preset's tools and prompt can change between releases. The Node.js, Python, and Rust SDKs and the CLI offer it. The MCP server does not.
+
+[Full preset](/agents/build/full-preset) covers the helper actions, batches, results, tracked-only mode, and what a custom loop must handle.
 
 ## The core preset
 
-`preset: 'core'` advertises two tools:
+`preset: 'core'` advertises only the first two of those tools, with no search or call tool and no helper actions:
 
 | Tool                      | Purpose                                                            |
 | ------------------------- | ------------------------------------------------------------------ |
@@ -18,6 +41,16 @@ A preset is the tool surface a model sees: the tool definitions, the system prom
 Every edit runs through the second tool with an `action` argument naming what to do. The actions are grouped by what they touch: text and structure, lists and numbering, comments, tracked-change review, formatting, tables, and history. The [action reference](/agents/build/actions) lists each one with its arguments.
 
 Two tools instead of one per action keeps the advertised surface small while the action enum stays explicit. The model picks a verb by name rather than assembling an operation, and an unknown verb is rejected before anything touches the document.
+
+## The legacy preset
+
+`preset: 'legacy'` is the older surface: ten grouped intent tools, each taking an `action` argument, generated from the Document API contract.
+
+It remains the default when `preset` is omitted, so code written before presets existed keeps working. One consequence is worth knowing:
+
+- A `createAgentToolkit()` call with no `preset` gets legacy, not full or core.
+
+Build new integrations on `full` or `core`. Use `legacy` when you already have one running on it, and see [Legacy tools](/agents/build/legacy-tools) for what it advertises and how to move.
 
 ## Narrow the surface
 
@@ -33,7 +66,7 @@ const { tools, systemPrompt, dispatch } = await createAgentToolkit({
 });
 ```
 
-An agent that proposes edits but never resolves them is a common shape: it can suggest, and a person still decides.
+An agent that proposes edits but never resolves them is a common shape: it can suggest, and a person still decides. Under `full`, exclusions remove named actions only, and the same edit stays reachable through `superdoc_api_call`. Use [tracked-only mode](/agents/build/full-preset#tracked-only-mode) there instead.
 
 Exclusions apply to all three pieces at once. The action leaves the tool enum, its documentation leaves the system prompt, and `dispatch` refuses it even if the model guesses the name. An unknown action name throws immediately rather than silently doing nothing, so a typo in an exclusion list surfaces at startup instead of in production.
 
@@ -48,43 +81,12 @@ import { createAgentToolkit } from '@superdoc/sdk';
 
 const { tools, meta } = await createAgentToolkit({
   provider: 'anthropic',
-  preset: 'core',
+  preset: 'full',
   cache: true,
 });
 ```
 
 `meta.cacheStrategy` reports what actually happened. Anthropic marks the tool block explicitly and reports `explicit`. OpenAI caches long prompts on its own and reports `automatic`. Vercel and generic providers pass through and report `unsupported`, because caching depends on the model underneath.
-
-## The legacy preset
-
-`preset: 'legacy'` is the older surface: ten grouped intent tools, each taking an `action` argument, generated from the Document API contract.
-
-It remains the default when `preset` is omitted, so code written before presets existed keeps working. One consequence is worth knowing:
-
-- A `createAgentToolkit()` call with no `preset` gets legacy, not core.
-
-Build new integrations on `core`. Use `legacy` when you already have one running on it, and see [Legacy tools](/agents/build/legacy-tools) for what it advertises and how to move.
-
-## The full preset
-
-`preset: 'full'` keeps the two core tools and adds two, so the model can reach the whole Document API:
-
-| Tool                  | Purpose                                                          |
-| --------------------- | ---------------------------------------------------------------- |
-| `superdoc_api_search` | Search the Document API and read an operation's parameters       |
-| `superdoc_api_call`   | Run one Document API operation, or several in order as one batch |
-
-To switch an existing toolkit, change `preset: 'core'` to `preset: 'full'`. Use the returned `tools`, `systemPrompt`, and `dispatch` together; the toolkit updates all three. If you configure them separately, select `full` for each.
-
-```ts
-import { createAgentToolkit } from '@superdoc/sdk';
-
-const { tools, systemPrompt, dispatch } = await createAgentToolkit({ provider: 'openai', preset: 'full' });
-```
-
-Use it when a workflow needs operations the core actions do not cover, such as [Word table styles](/document-api/table-styles), page setup, or headers and footers. Pin the SDK version because its tools and prompt can change between releases. The Node.js and Python SDKs offer it. The MCP server does not.
-
-Custom loops must accept `superdoc_api_search` and `superdoc_api_call` and handle their results. The [Build an agent](/agents/build/build-an-agent#the-loop) example includes core-specific tool checks that need adapting.
 
 ## Replay a call without the model
 
@@ -93,8 +95,7 @@ Any tool call the model makes is an ordinary SDK operation underneath. When outp
 ```ts
 const receipt = await dispatch(doc, 'superdoc_perform_action', {
   action: 'replace_text',
-  find: 'termination',
-  replaceWith: 'cancellation',
+  edits: [{ find: 'termination', replace: 'cancellation' }],
   changeMode: 'tracked',
 });
 ```

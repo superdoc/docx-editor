@@ -154,7 +154,12 @@ function ReviewPanel({ loadError }: { loadError: string | null }) {
       <ul>
         {changes.items.map((change) => {
           const detail =
-            change.excerpt ?? change.insertedText ?? change.deletedText ?? change.formattingDeltaSummary ?? change.type;
+            change.listLabel ??
+            change.excerpt ??
+            change.insertedText ??
+            change.deletedText ??
+            change.formattingDeltaSummary ??
+            change.type;
           const active = isActiveRow(change, changes.activeId, activeRow);
           const pending = pendingKey === rowKey(change) ? pendingDecision : null;
 

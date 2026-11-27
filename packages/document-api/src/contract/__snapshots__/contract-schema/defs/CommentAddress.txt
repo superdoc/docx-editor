@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "entityId": {
+      "type": "string"
+    },
+    "entityType": {
+      "const": "comment"
+    },
+    "kind": {
+      "const": "entity"
+    }
+  },
+  "required": [
+    "kind",
+    "entityType",
+    "entityId"
+  ],
+  "type": "object"
+}

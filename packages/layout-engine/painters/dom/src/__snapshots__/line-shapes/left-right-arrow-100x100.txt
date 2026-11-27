@@ -1,0 +1,27 @@
+<div class="superdoc-vector-shape">
+  style height: 100%
+  style overflow: hidden
+  style position: relative
+  style width: 100%
+  <div>
+    style height: 100px
+    style left: 0px
+    style position: absolute
+    style top: 0px
+    style width: 100px
+    <svg>
+      height="100%"
+      preserveAspectRatio="none"
+      viewBox="0 0 100 100"
+      width="100%"
+      xmlns="http://www.w3.org/2000/svg"
+      style display: block
+      style left: 0px
+      style pointer-events: none
+      style position: absolute
+      style top: 0px
+      style z-index: 0
+      <path>
+        d="M 0 50 L 50 0 L 50 25 L 50 25 L 50 0 L 100 50 L 50 100 L 50 75 L 50 75 L 50 100 Z"
+        fill="#5b9bd5"
+        stroke="none"

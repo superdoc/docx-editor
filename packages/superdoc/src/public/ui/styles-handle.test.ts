@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
+import { isObjectRecord } from '../../helpers/object-guards.js';
 import type { AsyncReadEntry } from './async-read-cache.js';
+import { createSuperDocUI } from './create-super-doc-ui.js';
 import type { LooseRecord } from './loose-record.js';
 import {
   createStyleReads,
@@ -64,8 +66,6 @@ function setupReads(
   const getCatalog = vi.fn(options.catalog ?? ((input: unknown) => catalogResult({ input })));
   const stylesApi: LooseRecord = { getCatalog };
   const doc: LooseRecord = { styles: stylesApi };
-  const readKeys: string[] = [];
-  const readTokens: string[] = [];
   const readNodeById = vi.fn(
     (_doc: LooseRecord | null, blockId: string): ReturnType<StyleReadsDeps['readNodeById']> => {
       if (!(blockId in blocks)) return { value: null, status: 'ready' as const };
@@ -80,35 +80,39 @@ function setupReads(
     hasEditor: () => options.noEditor !== true,
     getDoc: () => (options.noDoc ? null : doc),
     contentToken: () => 'token-1',
-    readAsync: <T>(key: string, token: string, run: () => unknown, normalize: (raw: unknown) => T | null) => {
-      readKeys.push(key);
-      readTokens.push(token);
-      return { value: normalize(run()), status: 'ready' as const };
-    },
+    readAsync: <T>(_key: string, _token: string, run: () => unknown, normalize: (raw: unknown) => T | null) => ({
+      value: normalize(run()),
+      status: 'ready' as const,
+    }),
     readNodeById,
   };
-  return { reads: createStyleReads(deps), getCatalog, readKeys, readTokens, readNodeById, doc, stylesApi };
+  return { reads: createStyleReads(deps), getCatalog, readNodeById, doc, stylesApi };
 }
 
 describe('style catalogue reads', () => {
-  it('keys each catalogue read by its input', () => {
-    expect(styleCatalogReadKey()).toBe('styles:catalog:{}');
-    expect(styleCatalogReadKey({ includePreview: true })).toBe('styles:catalog:{"includePreview":true}');
-  });
-
-  it('reads the full and quick-gallery views with previews, calling getCatalog on its owner', () => {
-    const { reads, getCatalog, readKeys, readTokens, doc } = setupReads();
+  it('reads the full and quick-gallery views with previews, calling getCatalog on its owner', async () => {
+    const { reads, getCatalog, doc } = setupReads({
+      catalog: (input) =>
+        isObjectRecord(input) && input.view === 'quickGallery'
+          ? catalogResult({ view: 'quickGallery', items: [style('Heading1')] })
+          : catalogResult(),
+    });
     const { cache } = reads.catalog();
-    expect(readKeys).toEqual([
-      styleCatalogReadKey({ includePreview: true }),
-      styleCatalogReadKey({ view: 'quickGallery', includePreview: true }),
-    ]);
-    expect(readTokens).toEqual(['token-1', 'token-1']);
-    expect(getCatalog).toHaveBeenNthCalledWith(1, { includePreview: true });
-    expect(getCatalog).toHaveBeenNthCalledWith(2, { view: 'quickGallery', includePreview: true });
     expect(getCatalog.mock.contexts[0]).toBe(doc.styles);
-    expect(cache?.quickGallery.map((item) => item.id)).toEqual(['Normal', 'Heading1']);
-    expect(cache?.byId.get('Quote')?.name).toBe('Quote name');
+    const recording = [
+      'doc.styles.getCatalog calls:',
+      ...getCatalog.mock.calls.map(([input]) => `  ${JSON.stringify(input)}`),
+      '',
+      'quickGallery:',
+      ...(cache?.quickGallery ?? []).map((item) => `  ${item.id}: ${item.name}`),
+      '',
+      'byId:',
+      ...[...(cache?.byId ?? [])].map(
+        ([id, item]) => `  ${id}: ${item.name} (quickGallery ${item.visibility.quickGallery})`,
+      ),
+      '',
+    ].join('\n');
+    await expect(recording).toMatchFileSnapshot('./__snapshots__/styles-handle/catalog.txt');
   });
 
   it('falls back to the visibility flag when the quick-gallery view is unreadable', () => {
@@ -126,9 +130,9 @@ describe('style catalogue reads', () => {
   });
 
   it('reports a ready null catalogue when the styles surface is missing, without reading', () => {
-    const { reads, readKeys } = setupReads({ noDoc: true });
+    const { reads, getCatalog } = setupReads({ noDoc: true });
     expect(reads.readCatalog()).toEqual({ value: null, status: 'ready' });
-    expect(readKeys).toEqual([]);
+    expect(getCatalog).not.toHaveBeenCalled();
   });
 
   it('uses Word Normal when the catalogue names no default paragraph style', () => {
@@ -205,11 +209,11 @@ describe('active paragraph style', () => {
 
 describe('styles slice', () => {
   it('is the not-ready empty slice before an editor exists', () => {
-    const { reads, readKeys } = setupReads({ noEditor: true });
+    const { reads, getCatalog } = setupReads({ noEditor: true });
     const slice = reads.computeSlice(selectionOf(['P1']));
     expect(slice.ready).toBe(false);
     expect(slice).toBe(reads.computeSlice(selectionOf(['P1'])));
-    expect(readKeys).toEqual([]);
+    expect(getCatalog).not.toHaveBeenCalled();
   });
 
   it('reuses the catalogue diagnostics array when the active style adds none', () => {
@@ -294,17 +298,54 @@ function setupHandle(
 }
 
 describe('styles handle', () => {
-  it('demands the heavy catalogue read before serving getCatalog', () => {
-    const { handle, demandHeavyDocRead, reads } = setupHandle();
-    const order: string[] = [];
-    demandHeavyDocRead.mockImplementation(() => order.push('demand'));
-    reads.getCatalog.mockImplementation(() => {
-      order.push('read');
-      return catalogResult();
-    });
-    expect(handle.getCatalog({ view: 'quickGallery' })?.revision).toBe('rev-1');
-    expect(demandHeavyDocRead).toHaveBeenCalledWith(styleCatalogReadKey({ view: 'quickGallery' }));
-    expect(order).toEqual(['demand', 'read']);
+  it('serves each getCatalog view on its first call while the source is still loading', async () => {
+    vi.useFakeTimers();
+    try {
+      const calls: unknown[] = [];
+      const doc: LooseRecord = {
+        styles: {
+          getCatalog: (input: unknown) => {
+            calls.push(input);
+            const quickGallery = isObjectRecord(input) && input.view === 'quickGallery';
+            return quickGallery
+              ? catalogResult({ view: 'quickGallery', items: [style('Heading1')] })
+              : catalogResult({ items: [style('Normal'), style('Heading1'), style('Quote', false)] });
+          },
+        },
+      };
+      const host = {
+        getDocumentLoadingSnapshot: () => ({ sourceStage: 'source-loading' }),
+        subscribeDocumentLoading: () => () => undefined,
+      };
+      const superdoc = {
+        activeEditor: { doc, host },
+        config: { documentMode: 'editing' },
+        on: () => {},
+        off: () => {},
+      };
+      const ui = createSuperDocUI({ superdoc });
+      await vi.advanceTimersByTimeAsync(0);
+      const lines = [`mount: ${calls.length} doc.styles.getCatalog calls`];
+      for (const input of [undefined, { view: 'quickGallery' as const }, undefined]) {
+        const before = calls.length;
+        const catalog = ui.styles.getCatalog(input);
+        const returned = catalog
+          ? `view ${catalog.view}, items [${catalog.items.map((item) => item.id).join(', ')}]`
+          : 'null';
+        lines.push(
+          `ui.styles.getCatalog(${JSON.stringify(input) ?? ''}) -> ${returned}; doc.styles.getCatalog calls [${calls
+            .slice(before)
+            .map((call) => `(${JSON.stringify(call) ?? ''})`)
+            .join(', ')}]`,
+        );
+      }
+      ui.destroy();
+      await expect(`${lines.join('\n')}\n`).toMatchFileSnapshot(
+        './__snapshots__/styles-handle/get-catalog-while-loading.txt',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('demands current catalog and paragraph facts before resolving a style mutation', async () => {
@@ -350,13 +391,56 @@ describe('styles handle', () => {
     });
   });
 
-  it('applies the matched run formatting to the active style', async () => {
-    const { handle, apply } = setupHandle();
-    expect(await handle.updateToMatchSelection()).toEqual({ success: true });
-    expect(apply).toHaveBeenCalledWith({
-      target: { scope: 'style', styleId: 'Heading1', channel: 'run' },
-      patch: { bold: true },
-    });
+  it.each([
+    {
+      scenario: 'direct-formatting',
+      input: undefined,
+      direct: 'set',
+    },
+    {
+      scenario: 'inherited-from-the-style',
+      input: undefined,
+      direct: 'unset',
+    },
+    {
+      scenario: 'named-style-input',
+      input: { styleId: 'Quote' },
+      direct: 'unset',
+    },
+  ] as const)('applies the matched run formatting to the style: $scenario', async ({ scenario, input, direct }) => {
+    const { handle, apply, readSelection } = setupHandle();
+    const effective = {
+      bold: { state: 'uniform', value: true },
+      italic: { state: 'uniform', value: false },
+      underline: { state: 'uniform', value: { style: 'double', color: '00FF00' } },
+      color: { state: 'uniform', value: '#C00000' },
+      fontSize: { state: 'uniform', value: 13.5 },
+      rFonts: { state: 'uniform', value: { ascii: 'Cambria', hAnsi: 'Cambria', eastAsia: '' } },
+      rStyle: { state: 'unset' },
+    };
+    const directProperties = Object.fromEntries(
+      Object.keys(effective).map((key) => [key, { state: key === 'rStyle' ? 'unset' : direct }]),
+    );
+    readSelection.mockImplementation(async (read: { view: string }) => ({
+      collapsed: false,
+      properties: read.view === 'effective' ? effective : directProperties,
+    }));
+    const receipt = await handle.updateToMatchSelection(input);
+    const recording = [
+      `input: ${JSON.stringify(input ?? null)}`,
+      `active paragraph style: Heading1`,
+      `direct formatting state: ${direct}`,
+      '',
+      'doc.format.readSelection calls:',
+      ...readSelection.mock.calls.map(([read]) => `  ${JSON.stringify(read)}`),
+      '',
+      'doc.styles.apply calls:',
+      ...apply.mock.calls.map((call: unknown[]) => `  ${JSON.stringify(call[0], null, 2).replace(/\n/g, '\n  ')}`),
+      '',
+      `receipt: ${JSON.stringify(receipt)}`,
+      '',
+    ].join('\n');
+    await expect(recording).toMatchFileSnapshot(`./__snapshots__/styles-handle/update-to-match-${scenario}.txt`);
   });
 
   it('refuses as stale when the controller is disposed before the selection read settles', async () => {
@@ -408,22 +492,17 @@ describe('styles handle', () => {
     );
     expect(await handle.updateToMatchSelection()).toEqual({ success: true });
     expect(effectiveReads.length).toBeGreaterThan(0);
-    const traps: string[] = [];
     readSelection.mockImplementation(
       async () =>
         new Proxy(
           {},
           {
             get: (_target, key) => (key === 'properties' ? { bold: { state: 'uniform', value: true } } : undefined),
-            has: () => {
-              traps.push('has');
-              return false;
-            },
+            has: () => false,
           },
         ),
     );
     expect(await handle.updateToMatchSelection()).toEqual({ success: true });
-    expect(traps).toEqual([]);
     expect(apply).toHaveBeenCalledWith({
       target: { scope: 'style', styleId: 'Heading1', channel: 'run' },
       patch: { bold: true },

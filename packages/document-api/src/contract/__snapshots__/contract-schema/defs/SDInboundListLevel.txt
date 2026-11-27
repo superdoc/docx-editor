@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "enum": [
+        "decimal",
+        "lowerLetter",
+        "upperLetter",
+        "lowerRoman",
+        "upperRoman"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "ordered",
+        "bullet"
+      ]
+    },
+    "level": {
+      "maximum": 8,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "start": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "text": {
+      "pattern": "^%[1-9][.)]$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "level",
+    "kind"
+  ],
+  "type": "object"
+}

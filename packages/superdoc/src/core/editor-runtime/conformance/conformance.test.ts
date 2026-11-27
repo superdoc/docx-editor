@@ -41,9 +41,11 @@ describe('editor-runtime conformance  -  v2', () => {
     expect(typeof rt.id).toBe('string');
     expect(rt.kind).toBe('v2');
     const caps = rt.getCapabilities();
-    expect(caps.lifecycle).toBeDefined();
-    expect(caps.commands).toBeDefined();
-    expect(caps.persistence).toBeDefined();
+    expect(caps).toMatchObject({
+      lifecycle: { canFocus: true, canDispose: true },
+      commands: { canDispatch: true },
+      persistence: { canSave: true, canExportDocx: true },
+    });
   });
 
   it('returns a Promise from mutating dispatch (callers always await)', async () => {
@@ -51,7 +53,7 @@ describe('editor-runtime conformance  -  v2', () => {
     const result = rt.dispatch({ kind: 'text.insert', text: 'x' });
     expect(result).toBeInstanceOf(Promise);
     const awaited = await result;
-    expect(awaited.status).toBeDefined();
+    expect(awaited).toEqual({ status: 'committed', receipt: { revision: 1 } });
   });
 
   it('reads selected text + selection snapshot synchronously', () => {
@@ -155,37 +157,12 @@ describe('editor-runtime conformance  -  v2', () => {
 
 describe('editor-runtime conformance  -  v2-specific posture', () => {
   it('advertises every command kind the fake v2 dispatch accepts', async () => {
-    const expectedSupportedKinds: readonly EditorRuntimeCommandKind[] = [
-      'text.insert',
-      'text.replace',
-      'text.deleteBackward',
-      'text.deleteForward',
-      'text.paste',
-      'history.undo',
-      'history.redo',
-      'structural.splitBlock',
-      'structural.indent',
-      'structural.outdent',
-      'formatting.applyMark',
-      'formatting.applyParagraph',
-      'comments.create',
-      'comments.resolve',
-      'comments.reopen',
-      'comments.delete',
-      'comments.reply',
-      'comments.edit',
-      'trackedChanges.accept',
-      'trackedChanges.reject',
-      'trackedChanges.acceptAll',
-      'trackedChanges.rejectAll',
-      'trackedChanges.setAuthoringMode',
-    ];
     const rt = createFakeV2Runtime();
 
-    expect(rt.getCapabilities().commands.supportedCommands).toEqual(expectedSupportedKinds);
+    expect(rt.getCapabilities().commands.supportedCommands).toEqual(Object.keys(commandFixtureByKind));
 
-    for (const kind of expectedSupportedKinds) {
-      const result = await rt.dispatch(commandFixtureByKind[kind]);
+    for (const command of Object.values(commandFixtureByKind)) {
+      const result = await rt.dispatch(command);
       if (result.status === 'rejected') {
         expect(result.reason).not.toBe('command-unsupported');
       }
@@ -207,7 +184,7 @@ describe('editor-runtime conformance  -  v2-specific posture', () => {
 
   it('exposes a compatibility projection for activeEditor compatibility', () => {
     const rt = createFakeV2Runtime();
-    expect(rt.getLegacyEditorProjection?.()).toBeDefined();
+    expect(rt.getLegacyEditorProjection?.()).toMatchObject({ editorVersion: 2, documentId: 'doc-v2' });
   });
 
   it('rejects dispatch while the host is saving', async () => {

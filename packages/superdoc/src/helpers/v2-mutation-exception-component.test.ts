@@ -286,6 +286,17 @@ describe('SuperDoc editor-update for collaboration', () => {
   });
 
   it.each([true, false])(
+    'keeps display-only remote changes out of editor-update when reviewChanged=%s',
+    async (reviewChanged) => {
+      const { editor, onEditorUpdate } = await mountShell();
+      onEditorUpdate.mockClear();
+      editor.vm.$emit('v2-host-event', remoteChanged({ displayOnly: true, reviewChanged }));
+      await nextTick();
+      expect(onEditorUpdate).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([true, false])(
     'emits one remote editor-update per remote change when reviewChanged=%s',
     async (reviewChanged) => {
       const { editor, onEditorUpdate, superdoc } = await mountShell();

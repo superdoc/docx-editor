@@ -220,6 +220,10 @@ export interface CommentInfo {
   creatorId?: string;
   creatorEmail?: string;
   creatorImage?: string;
+  resolvedTime?: number;
+  resolvedById?: string;
+  resolvedByEmail?: string;
+  resolvedByName?: string;
 }
 export interface CommentsListQuery {
   includeResolved?: boolean;
@@ -297,6 +301,10 @@ export interface CommentDomain {
   creatorId?: string;
   creatorEmail?: string;
   creatorImage?: string;
+  resolvedTime?: number;
+  resolvedById?: string;
+  resolvedByEmail?: string;
+  resolvedByName?: string;
 }
 /**
  * Standardized discovery output for `comments.list`.

@@ -1,3 +1,4 @@
+import type { EditorRendering } from '../public/rendering.js';
 import type { PageMetricsHandle } from '../public/ui/page-metrics.js';
 import {
   createInteractionHistory,
@@ -399,6 +400,7 @@ type V2ActiveEditorFacade = {
       listener: (snapshot: { isLocked?: boolean; lockedBy?: Record<string, unknown> | null }) => void,
     ) => () => void;
   } | null;
+  rendering?: EditorRendering | null;
   pageMetrics?: PageMetricsHandle | null;
   pageLayout?: unknown;
   pageFurniture?: unknown;
@@ -2388,7 +2390,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   async #captureCurrentDocxSourceForUpgrade(): Promise<Blob> {
     const activeEditor = this.activeEditor as ActiveEditor | null;
     if (isV2ActiveEditorFacade(activeEditor) && typeof activeEditor.save === 'function') {
-      const saved = await activeEditor.save();
+      const saved = await activeEditor.save({ purpose: 'working-copy' });
       return this.#savedDocxToBlob(saved);
     }
 
@@ -3357,17 +3359,17 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
   }
 
   /**
-   * Add a comments list to the superdoc
-   * Requires the comments module to be enabled
+   * Mount the built-in comments list. Returns `false`, mounting nothing, for viewers or when comments are off.
    * @param element The DOM element to render the comments list in
    */
-  addCommentsList(element: HTMLElement) {
-    if (!this.config?.modules?.comments || this.config.role === 'viewer') return;
+  addCommentsList(element: HTMLElement): boolean {
+    if (!this.config?.modules?.comments || this.config.role === 'viewer') return false;
     this.commentsList?.close();
     if (element) this.config.modules.comments.element = element;
     this.commentsList = new SuperComments(this.config.modules?.comments, this);
     if (this.config.onCommentsListChange) this.config.onCommentsListChange({ isRendered: true });
     this.emit('comments-list-change', { isRendered: true });
+    return true;
   }
 
   /**
@@ -4061,6 +4063,12 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
       });
     }
 
+    if (blobsToZip.length === 0) {
+      throw new Error(
+        'No exportable DOCX is available. Open a document and wait for the editor to finish loading before retrying.',
+      );
+    }
+
     // If we only have one blob, just download it. Otherwise, zip them up.
     if (blobsToZip.length === 1) {
       if (triggerDownload) {
@@ -4221,7 +4229,7 @@ export class SuperDoc extends EventEmitter<SuperDocEventMap> {
         if (!isV2ActiveEditorFacade(editor) || typeof editor.save !== 'function') {
           throw new Error(`SuperDoc: save is unavailable for document "${doc.id}"`);
         }
-        await editor.save();
+        await editor.save({ purpose: 'working-copy' });
       }),
     );
   }

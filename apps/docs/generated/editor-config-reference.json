@@ -104,7 +104,7 @@
       "type": "{\n  color?: string;\n  commentIdentity?: null | { providerId: string; userId: string; };\n  id?: null | string;\n  name?: null | string;\n  email?: null | string;\n  image?: null | string;\n  claim?: string | (ctx: UserClaimContext) => string | Promise<string>;\n}",
       "typeName": "AwarenessUser",
       "required": false,
-      "description": "The current user of this SuperDoc. Typed as `AwarenessUser` (an extension of `User` with the optional `color` field) so consumers can pass an explicit awareness color and have the runtime honor it as an override - `SuperDoc#assignUserColor()` skips its hash-based assignment when `user.color` is already set.",
+      "description": "The current user of this SuperDoc. Typed as `AwarenessUser` (an extension of `User` with the optional `color` field) so consumers can pass an explicit awareness color and have the runtime honor it as an override - `SuperDoc#assignUserColor()` skips its hash-based assignment when `user.color` is already set. Set `user` to the signed-in person, with a non-empty `name`. If you omit `user`, or give it no `name` (left out, `null`, `undefined`, or blank), SuperDoc uses `{ id: null, name: 'Default SuperDoc user', email: null }` and keeps any other fields you passed. New comments, replies, resolved comments and tracked changes are then credited to `Default SuperDoc user`, collaborators see that name on those comments and changes, and exported DOCX files store it as the comment and tracked-change author. Give each person their own email, or their own name if you don't set emails. People who share an email, or who share a name and have no email, count as one author of tracked changes.",
       "group": "other"
     },
     {

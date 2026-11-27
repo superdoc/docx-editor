@@ -1,0 +1,46 @@
+{
+  "definition": {
+    "description": "List all citation sources in the document store.",
+    "expectedResult": "Returns a CitationSourcesListResult containing discovered sources with address and domain data.",
+    "memberPath": "citations.sources.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "citations/sources-list.mdx",
+    "referenceGroup": "citations",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

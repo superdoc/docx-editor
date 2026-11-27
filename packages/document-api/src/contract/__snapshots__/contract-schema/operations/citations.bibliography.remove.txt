@@ -1,0 +1,202 @@
+{
+  "definition": {
+    "description": "Remove the bibliography block from the document.",
+    "expectedResult": "Returns a BibliographyMutationResult indicating success or a failure.",
+    "memberPath": "citations.bibliography.remove",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "citations/bibliography-remove.mdx",
+    "referenceGroup": "citations",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "block"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "bibliography"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "bibliography": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "block"
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "nodeType": {
+                  "const": "bibliography"
+                }
+              },
+              "required": [
+                "kind",
+                "nodeType",
+                "nodeId"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "bibliography"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "bibliography": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "block"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "bibliography"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "bibliography"
+      ],
+      "type": "object"
+    }
+  }
+}

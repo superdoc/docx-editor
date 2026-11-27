@@ -1,0 +1,77 @@
+{
+  "definition": {
+    "description": "Get the checked state of a checkbox content control.",
+    "expectedResult": "Returns a CheckboxGetStateResult with the checked boolean.",
+    "memberPath": "contentControls.checkbox.getState",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "TYPE_MISMATCH"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "content-controls/checkbox/get-state.mdx",
+    "referenceGroup": "contentControls",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "block",
+                "inline"
+              ]
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "sdt"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "checked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "checked"
+      ],
+      "type": "object"
+    }
+  }
+}

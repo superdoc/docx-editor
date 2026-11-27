@@ -9,6 +9,8 @@ import type {
 } from '../replace/replace.js';
 import type { MutationOptions, TrackedTextMutationOptions } from '../write/write.js';
 import type { BodyStoryLocator } from './story.types.js';
+import type { BlockNodeAddress } from './base.js';
+import type { SDFragment } from './fragment.js';
 
 type TemporaryCall<Name extends string, Method extends (...args: never[]) => unknown> = {
   operation: Name;
@@ -19,6 +21,10 @@ type TemporaryCall<Name extends string, Method extends (...args: never[]) => unk
 type TemporaryText<Name extends 'insert' | 'replace', Input> =
   | { operation: Name; input: Input; options?: MutationOptions & { author?: never } }
   | { operation: Name; input: Exclude<Input, { target: BodyStoryLocator }>; options: TrackedTextMutationOptions };
+
+export type TemporaryBlockInsertInput =
+  | { target: BlockNodeAddress; placement?: 'before' | 'after'; content: SDFragment }
+  | { target: BlockNodeAddress; placement?: 'before' | 'after'; value: string; type: 'markdown' | 'html' };
 
 export interface TemporaryOperationResultTarget {
   kind: 'operationResult';
@@ -33,6 +39,7 @@ type TemporaryCommentInput = Omit<Parameters<CommentsCreate>[0], 'target'> & {
 /** Operations run in order against the temporary document, as one atomic update. */
 export type TemporaryMutationOperation = { id?: string } & (
   | TemporaryText<'insert', PlainTextInsertInput>
+  | TemporaryText<'insert', TemporaryBlockInsertInput>
   | TemporaryText<'replace', TextReplaceInput>
   | { operation: 'replace'; input: ParagraphTextReplaceInput; options?: ReplaceMutationOptions }
   | { operation: 'replace'; input: ParagraphTextReplaceInput; options: TrackedReplaceMutationOptions }

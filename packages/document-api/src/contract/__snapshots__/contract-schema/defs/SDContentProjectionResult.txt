@@ -1,0 +1,76 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "annotations": {
+      "items": {
+        "$ref": "#/$defs/SDProjectionAnnotation"
+      },
+      "type": "array"
+    },
+    "blocks": {
+      "items": {
+        "$ref": "#/$defs/SDProjectionBlockMapEntry"
+      },
+      "type": "array"
+    },
+    "content": {
+      "type": "string"
+    },
+    "diagnostics": {
+      "items": {
+        "$ref": "#/$defs/SDProjectionDiagnostic"
+      },
+      "type": "array"
+    },
+    "evaluatedRevision": {
+      "type": "string"
+    },
+    "format": {
+      "$ref": "#/$defs/SDProjectionFormat"
+    },
+    "lossy": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "enum": [
+        "preserved",
+        "preserved-with-warnings",
+        "simplified",
+        "rejected",
+        "no-op",
+        "invalid-target",
+        "outdated"
+      ]
+    },
+    "reviewMode": {
+      "$ref": "#/$defs/SDProjectionReviewMode"
+    },
+    "scope": {
+      "$ref": "#/$defs/SDResolvedProjectionScope"
+    },
+    "sourceMap": {
+      "$ref": "#/$defs/SDProjectionSourceMap"
+    },
+    "status": {
+      "$ref": "#/$defs/SDProjectionStatus"
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "format",
+    "content",
+    "status",
+    "outcome",
+    "reviewMode",
+    "evaluatedRevision",
+    "story",
+    "scope",
+    "lossy",
+    "diagnostics",
+    "blocks",
+    "annotations"
+  ],
+  "type": "object"
+}

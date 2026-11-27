@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "entries": {
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/SDProjectionSourceMapTextEntry"
+          },
+          {
+            "$ref": "#/$defs/SDProjectionSourceMapSyntheticEntry"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "outputCoordinateSpace": {
+      "const": "utf16"
+    },
+    "sourceCoordinateSpace": {
+      "const": "tracked"
+    },
+    "version": {
+      "const": "sd-projection-source-map/1"
+    }
+  },
+  "required": [
+    "version",
+    "outputCoordinateSpace",
+    "sourceCoordinateSpace",
+    "entries"
+  ],
+  "type": "object"
+}

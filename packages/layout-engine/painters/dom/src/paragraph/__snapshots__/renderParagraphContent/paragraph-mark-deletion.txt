@@ -1,0 +1,35 @@
+<div>
+  data-story-key="body"
+  data-track-change-anchor="paragraph-mark"
+  data-track-change-author="Ada"
+  data-track-change-id="tc-delete-mark"
+  data-track-change-ids="tc-delete-mark"
+  data-track-change-kind="delete"
+  data-track-change-marker="paragraph"
+  data-track-change-semantic-color-key="deletion"
+  data-track-change-structural="paragraph-mark"
+  data-track-change-subtype="paragraph-mark-deletion"
+  data-track-change-target-kind="paragraph-mark"
+  data-track-change-type="structural"
+  style height: 20px
+  style text-align: left
+  <div>
+    <span>
+      "Merged text"
+    <span class="deletion highlighted superdoc-formatting-paragraph-mark superdoc-tracked-paragraph-mark track-delete-dec">
+      data-story-key="body"
+      data-track-change-anchor="paragraph-mark"
+      data-track-change-author="Ada"
+      data-track-change-id="tc-delete-mark"
+      data-track-change-ids="tc-delete-mark"
+      data-track-change-kind="delete"
+      data-track-change-marker="paragraph"
+      data-track-change-semantic-color-key="deletion"
+      data-track-change-structural="paragraph-mark"
+      data-track-change-subtype="paragraph-mark-deletion"
+      data-track-change-target-kind="paragraph-mark"
+      data-track-change-type="structural"
+      style display: inline
+      style text-decoration-color: currentColor
+      style text-decoration-line: line-through
+      "¶"

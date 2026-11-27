@@ -1,0 +1,372 @@
+{
+  "definition": {
+    "description": "Merge two adjacent paragraphs in the same story. The first paragraph keeps its pPr; the second paragraph is removed. Rejects when either paragraph carries a w:sectPr or when their numbering definitions differ.",
+    "expectedResult": "Returns a BlocksMergeResult; on success carries the removed paragraph address plus affectedStories, textRangeShifts, and a txId.",
+    "memberPath": "blocks.merge",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "TARGET_NOT_FOUND",
+        "CAPABILITY_UNAVAILABLE",
+        "INVALID_CONTEXT",
+        "INVALID_INPUT"
+      ],
+      "returnsReceipt": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "blocks/merge.mdx",
+    "referenceGroup": "blocks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE",
+                "INVALID_TARGET",
+                "INVALID_INPUT"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "first": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        },
+        "second": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        }
+      },
+      "required": [
+        "first",
+        "second"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "anchor": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "changeTag": {
+          "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "effects": {
+          "$ref": "#/$defs/ReceiptEffects"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "joinOffset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        },
+        "status": {
+          "const": "NO_OP"
+        },
+        "success": {
+          "const": true
+        },
+        "temporary": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelledBy": {
+              "const": "native-edit",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "onNativeEdit": {
+              "enum": [
+                "cancel",
+                "preserve"
+              ],
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "begin",
+                "replace",
+                "rollback",
+                "commit"
+              ]
+            },
+            "tag": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "phase",
+            "tag"
+          ],
+          "type": "object"
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/ReviewWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "removed"
+      ],
+      "type": "object"
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "anchor": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "changeTag": {
+          "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "effects": {
+          "$ref": "#/$defs/ReceiptEffects"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "joinOffset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        },
+        "status": {
+          "const": "NO_OP"
+        },
+        "success": {
+          "const": true
+        },
+        "temporary": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelledBy": {
+              "const": "native-edit",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "onNativeEdit": {
+              "enum": [
+                "cancel",
+                "preserve"
+              ],
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "begin",
+                "replace",
+                "rollback",
+                "commit"
+              ]
+            },
+            "tag": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "phase",
+            "tag"
+          ],
+          "type": "object"
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/ReviewWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "removed"
+      ],
+      "type": "object"
+    }
+  }
+}

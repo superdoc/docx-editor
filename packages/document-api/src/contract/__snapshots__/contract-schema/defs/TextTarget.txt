@@ -1,0 +1,30 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "captureState": {
+      "description": "Opaque browser selection capture state. Preserve it when passing a selection target to comments.create. Changed or unverifiable state is refused before writing.",
+      "type": "string"
+    },
+    "coordinateSpace": {
+      "$ref": "#/$defs/TextCoordinateSpace"
+    },
+    "kind": {
+      "const": "text"
+    },
+    "segments": {
+      "items": {
+        "$ref": "#/$defs/TextSegment"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "kind",
+    "segments"
+  ],
+  "type": "object"
+}

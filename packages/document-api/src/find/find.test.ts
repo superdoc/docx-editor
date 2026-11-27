@@ -1,8 +1,6 @@
-import { describe, expect, it, mock } from 'bun:test';
-import { executeFind, normalizeFindQuery } from './find.js';
+import { describe, expect, it } from 'bun:test';
+import { normalizeFindQuery } from './find.js';
 import type { Query, Selector } from '../types/index.js';
-import type { SDFindInput, SDFindResult } from '../types/sd-envelope.js';
-import type { FindAdapter } from './find.js';
 
 describe('normalizeFindQuery', () => {
   it('passes through a full Query object with canonical selector', () => {
@@ -142,68 +140,5 @@ describe('BUG: SDK params shape vs Document API contract', () => {
     // The 'type' field should be preserved on the selector
     expect(result.select.type).toBe('node');
     expect((result.select as { nodeType?: string }).nodeType).toBe('paragraph');
-  });
-
-  it('SDK-shaped params without query wrapper are not interchangeable with Query shape', () => {
-    // The SDK interface suggests you can do: client.doc.find({ type: 'text', pattern: 'hello' })
-    // But the Document API's find operation input type is `Selector | Query`.
-    // A Query requires a `select` field. If someone passes SDK-shaped flat params
-    // to code expecting a Query, the `select` field is missing.
-    const sdkShapedParams = { type: 'text', pattern: 'hello' };
-
-    // Check that it does NOT have a `select` field — proving it's not a Query.
-    expect(sdkShapedParams).not.toHaveProperty('select');
-
-    // And normalizeFindQuery would treat it as a Selector (because 'type' in obj is true),
-    // wrapping it. But code that directly checks for Query shape (has 'select') would fail.
-    const isQuery = 'select' in sdkShapedParams;
-    expect(isQuery).toBe(false);
-
-    // The proper Query form should be:
-    const properQuery: Query = { select: { type: 'text', pattern: 'hello' } };
-    expect(properQuery).toHaveProperty('select');
-
-    // This means SDK params and Document API Query params are structurally incompatible.
-    // Any code path that expects a Query (not Selector|Query) will break with SDK params.
-  });
-});
-
-describe('executeFind', () => {
-  it('delegates SDFindInput to the adapter and returns SDFindResult', () => {
-    const sdResult: SDFindResult = {
-      total: 0,
-      limit: 5,
-      offset: 0,
-      items: [],
-    };
-    const adapter: FindAdapter = { find: mock(() => sdResult) };
-    const input: SDFindInput = {
-      select: { type: 'node', nodeType: 'paragraph' },
-      limit: 5,
-    };
-
-    const result = executeFind(adapter, input);
-
-    expect(result).toBe(sdResult);
-    expect(adapter.find).toHaveBeenCalledWith(input);
-  });
-
-  it('passes a text selector input through to the adapter', () => {
-    const sdResult: SDFindResult = {
-      total: 0,
-      limit: 10,
-      offset: 0,
-      items: [],
-    };
-    const adapter: FindAdapter = { find: mock(() => sdResult) };
-    const input: SDFindInput = {
-      select: { type: 'text', pattern: 'hello' },
-      limit: 10,
-    };
-
-    const result = executeFind(adapter, input);
-
-    expect(result).toBe(sdResult);
-    expect(adapter.find).toHaveBeenCalledWith(input);
   });
 });

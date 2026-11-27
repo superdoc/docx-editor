@@ -1,0 +1,15 @@
+built-in method:
+  accept enabled: true
+  calls:
+read canPerformPermission -> commentsStore.getComment("tc-1")
+
+denying method:
+  accept enabled: false
+  calls:
+read canPerformPermission -> canPerformPermission({"permission":"REJECT_OWN"}) = false
+read canPerformPermission -> canPerformPermission({"permission":"RESOLVE_OWN"}) = false
+
+built-in method again:
+  accept enabled: true
+  calls:
+read canPerformPermission -> commentsStore.getComment("tc-1")

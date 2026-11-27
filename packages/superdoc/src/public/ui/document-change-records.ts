@@ -9,7 +9,11 @@ function isRemoteChangeRecord(value: unknown): value is ChangeRecord {
 }
 
 export function remoteChangeRecordsOf(event: Record<string, unknown>): ChangeRecord[] {
-  if (event.type !== 'changes:recorded' || !Array.isArray(event.records)) return [];
+  if (
+    (event.type !== 'changes:recorded' && event.type !== 'collaboration:remote-changed') ||
+    !Array.isArray(event.records)
+  )
+    return [];
   return event.records.filter(isRemoteChangeRecord);
 }
 

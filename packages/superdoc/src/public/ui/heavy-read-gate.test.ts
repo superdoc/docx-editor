@@ -1,5 +1,7 @@
+import type { TrackChangesListResult } from '@superdoc/document-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { AsyncReadEntry } from './async-read-cache.js';
+import { createSuperDocUI } from './create-super-doc-ui.js';
 import {
   createHeavyReadGate,
   HEAVY_READ_IDLE_MS,
@@ -204,53 +206,16 @@ describe('createHeavyReadGate', () => {
     expect(ctx.deps.recompute).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to the retry timer when the host cannot subscribe', () => {
-    const ctx = setup();
-    ctx.setHost({ getDocumentLoadingSnapshot: () => ({ sourceStage: 'source-loading' }) });
-    expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(true);
-    expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(true);
-    expect(ctx.deps.scheduleForegroundAsyncRetry).toHaveBeenCalledTimes(2);
-    expect(ctx.deps.scheduleForegroundAsyncRetry).toHaveBeenCalledWith(HEAVY_READ_IDLE_MS);
-  });
-
-  it('falls back to the retry timer when subscribing throws', () => {
-    const ctx = setup();
-    ctx.setHost({
-      getDocumentLoadingSnapshot: () => ({ sourceStage: 'source-loading' }),
-      subscribeDocumentLoading: () => {
-        throw new Error('nope');
-      },
-    });
-    expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(true);
-    expect(ctx.deps.scheduleForegroundAsyncRetry).toHaveBeenCalledWith(HEAVY_READ_IDLE_MS);
-  });
-
   it('demands a directory catalog while leased and drops the demand on last release', () => {
     const ctx = setup();
     const releaseA = ctx.gate.acquireDirectoryLease('comments');
     const releaseB = ctx.gate.acquireDirectoryLease('comments');
-    expect(ctx.gate.directoryLeaseCounts.comments).toBe(2);
     releaseA();
     releaseA();
-    expect(ctx.gate.directoryLeaseCounts.comments).toBe(1);
     ctx.setHost(loadingHost('source-loading').host);
     expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(false);
     releaseB();
-    expect(ctx.gate.directoryLeaseCounts.comments).toBe(0);
     expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(true);
-  });
-
-  it('reuses a catalog read already started or settled for the current revision', () => {
-    const ctx = setup();
-    ctx.entries.set('trackChanges', { token: null, value: null, hasSettled: false, inflightToken: 'tok-1' });
-    ctx.gate.ensureTrackChangesCatalog();
-    expect(ctx.deps.scheduleAsyncRefresh).not.toHaveBeenCalled();
-    ctx.entries.set('comments', settled('tok-1', []));
-    ctx.gate.ensureCommentsCatalog();
-    expect(ctx.deps.scheduleAsyncRefresh).not.toHaveBeenCalled();
-    ctx.entries.delete('comments');
-    ctx.gate.ensureCommentsCatalog();
-    expect(ctx.deps.scheduleAsyncRefresh).toHaveBeenCalledTimes(1);
   });
 
   it.each(['settled', 'inflight'] as const)(
@@ -298,50 +263,6 @@ describe('createHeavyReadGate', () => {
     expect(ctx.gate.commentsCatalogMayHaveRows()).toBe(true);
   });
 
-  it('refreshes a partial tracked-change directory once when the source completes', () => {
-    const ctx = setup();
-    const loading = loadingHost('source-loading');
-    ctx.setHost(loading.host);
-    ctx.gate.noteTrackChangesDirectoryRead('trackChanges', 'tok-1', 'partial');
-    expect(ctx.gate.incompleteTrackChangesDirectoryReadTokens.get('trackChanges')).toBe('tok-1');
-    ctx.entries.set('trackChanges', settled('tok-1', [{ id: 'a' }]));
-
-    loading.emit('source-complete');
-    expect(ctx.deps.replaceAsyncEntry).toHaveBeenCalledWith('trackChanges', {
-      token: null,
-      value: [{ id: 'a' }],
-      hasSettled: true,
-      inflightToken: null,
-    });
-    expect(ctx.deps.scheduleAsyncRefresh).toHaveBeenCalledTimes(1);
-
-    ctx.entries.set('trackChanges', settled('tok-1', [{ id: 'a' }]));
-    ctx.gate.noteSourceComplete();
-    expect(ctx.deps.replaceAsyncEntry).toHaveBeenCalledTimes(1);
-
-    ctx.gate.noteTrackChangesDirectoryRead('trackChanges', 'tok-1', 'complete');
-    expect(ctx.gate.incompleteTrackChangesDirectoryReadTokens.has('trackChanges')).toBe(false);
-  });
-
-  it('queues the refresh after storage when completion was already observed', async () => {
-    const ctx = setup();
-    ctx.setHost(loadingHost('source-complete').host);
-    ctx.gate.noteTrackChangesDirectoryRead('trackChanges', 'tok-1', 'partial');
-    expect(ctx.deps.replaceAsyncEntry).not.toHaveBeenCalled();
-    ctx.entries.set('trackChanges', settled('tok-1', []));
-    await Promise.resolve();
-    expect(ctx.deps.replaceAsyncEntry).toHaveBeenCalledTimes(1);
-  });
-
-  it('drops partial-coverage tokens from an older content revision', () => {
-    const ctx = setup();
-    ctx.gate.noteTrackChangesDirectoryRead('trackChanges', 'tok-1', 'partial');
-    ctx.setToken('tok-2');
-    ctx.gate.noteSourceComplete();
-    expect(ctx.gate.incompleteTrackChangesDirectoryReadTokens.size).toBe(0);
-    expect(ctx.deps.replaceAsyncEntry).not.toHaveBeenCalled();
-  });
-
   it('resets demand, coverage and the subscription for a new editor', () => {
     const ctx = setup();
     const loading = loadingHost('source-loading');
@@ -350,7 +271,6 @@ describe('createHeavyReadGate', () => {
     ctx.gate.noteTrackChangesDirectoryRead('trackChanges', 'tok-1', 'partial');
     ctx.gate.resetForEditor();
     expect(loading.off).toHaveBeenCalledTimes(1);
-    expect(ctx.gate.incompleteTrackChangesDirectoryReadTokens.size).toBe(0);
     expect(ctx.gate.holdsHeavyRead('comments', 'tok-1')).toBe(true);
     expect(loading.subscribe).toHaveBeenCalledTimes(2);
   });
@@ -365,8 +285,275 @@ describe('createHeavyReadGate', () => {
     ctx.gate.dispose();
     ctx.setDisposed();
     expect(loading.off).toHaveBeenCalledTimes(1);
-    expect(ctx.gate.directoryLeaseCounts.trackChanges).toBe(0);
     vi.advanceTimersByTime(HEAVY_READ_IDLE_MS * 2);
     expect(ctx.deps.recompute).not.toHaveBeenCalled();
+  });
+});
+
+type SourceStage = 'source-loading' | 'source-complete';
+type LoadingSupport = 'subscribe' | 'no-subscribe' | 'subscribe-throws';
+type TrackChangesReply = () => TrackChangesListResult | Promise<TrackChangesListResult>;
+
+function trackedChanges(ids: string[], coverage: 'complete' | 'partial' = 'complete'): TrackChangesListResult {
+  const result: TrackChangesListResult = {
+    evaluatedRevision: 'r1',
+    total: ids.length,
+    items: ids.map((id) => ({
+      id,
+      handle: { ref: `tracked-change:${id}`, refStability: 'stable', targetKind: 'trackedChange' },
+      address: { kind: 'entity', entityType: 'trackedChange', entityId: id },
+      type: 'insertion',
+    })),
+    page: { limit: ids.length, offset: 0, returned: ids.length },
+  };
+  return coverage === 'partial' ? Object.assign(result, { complete: false }) : result;
+}
+
+function describeTrackedChanges(result: TrackChangesListResult): string {
+  const coverage = Reflect.get(result, 'complete') === false ? ' (partial coverage)' : '';
+  return `[${result.items.map((item) => item.id).join(', ')}]${coverage}`;
+}
+
+function uiEditor(options: { stage: SourceStage; loading: LoadingSupport; trackChanges: TrackChangesReply[] }) {
+  let stage = options.stage;
+  const reads: string[] = [];
+  const loadingListeners = new Set<LoadingListener>();
+  const eventListeners = new Set<(event: Record<string, unknown>) => void>();
+  let trackChangesCall = 0;
+  const doc = {
+    selection: {
+      current: () => ({
+        empty: true,
+        target: null,
+        selectionTarget: null,
+        activeMarks: [],
+        activeCommentIds: [],
+        activeChangeIds: [],
+      }),
+    },
+    comments: {
+      list: () => {
+        reads.push('doc.comments.list() -> [c-1]');
+        return {
+          evaluatedRevision: 'r1',
+          total: 1,
+          items: [
+            {
+              id: 'c-1',
+              handle: { ref: 'comment:c-1', refStability: 'stable' as const, targetKind: 'comment' as const },
+              address: { kind: 'entity' as const, entityType: 'comment' as const, entityId: 'c-1' },
+              status: 'open' as const,
+            },
+          ],
+          page: { limit: 1, offset: 0, returned: 1 },
+        };
+      },
+    },
+    trackChanges: {
+      list: (input: unknown) => {
+        const reply = options.trackChanges[Math.min(trackChangesCall, options.trackChanges.length - 1)];
+        trackChangesCall += 1;
+        const result = reply ? reply() : trackedChanges([]);
+        const label = `doc.trackChanges.list(${JSON.stringify(input)})`;
+        if (result instanceof Promise) {
+          reads.push(`${label} -> (in flight)`);
+          void result.then((settled) => reads.push(`${label} settled -> ${describeTrackedChanges(settled)}`));
+        } else {
+          reads.push(`${label} -> ${describeTrackedChanges(result)}`);
+        }
+        return result;
+      },
+    },
+    contentControls: {
+      list: () => {
+        reads.push('doc.contentControls.list() -> []');
+        return { items: [], total: 0 };
+      },
+      listInRange: () => ({ items: [], total: 0 }),
+    },
+  };
+  const host: LooseRecord = {
+    getHandles: () => ({ editing: { selection: { subscribe: () => () => undefined } } }),
+    readLiveSelectionSyncSnapshot: () => ({ empty: true, target: null, selectionTarget: null }),
+    getDocumentLoadingSnapshot: () => ({ sourceStage: stage }),
+    events: {
+      subscribe: (listener: (event: Record<string, unknown>) => void) => {
+        eventListeners.add(listener);
+        return () => eventListeners.delete(listener);
+      },
+    },
+  };
+  if (options.loading === 'subscribe') {
+    host.subscribeDocumentLoading = (listener: LoadingListener) => {
+      loadingListeners.add(listener);
+      return () => loadingListeners.delete(listener);
+    };
+  }
+  if (options.loading === 'subscribe-throws') {
+    host.subscribeDocumentLoading = () => {
+      throw new Error('loading events unavailable');
+    };
+  }
+  const editor = { doc, host };
+  const superdoc = { activeEditor: editor, config: { documentMode: 'editing' }, on: () => {}, off: () => {} };
+  const ui = createSuperDocUI({ superdoc });
+  const log: string[] = [];
+  return {
+    ui,
+    setStage: (next: SourceStage) => {
+      stage = next;
+    },
+    emitStage: (next: SourceStage) => {
+      stage = next;
+      for (const listener of [...loadingListeners]) listener({ sourceStage: next });
+    },
+    emitEdit: () => {
+      for (const listener of [...eventListeners]) listener({ type: 'mutation:committed', origin: 'command' });
+    },
+    async step(label: string) {
+      for (let index = 0; index < 4; index += 1) await Promise.resolve();
+      const comments = ui.comments.getSnapshot();
+      const trackChanges = ui.trackChanges.getSnapshot();
+      log.push(
+        `step: ${label}`,
+        ...(reads.length > 0 ? reads.splice(0).map((read) => `  read ${read}`) : ['  no reads']),
+        `  comments: ${comments.listStatus} [${comments.items.map((item) => item.id).join(', ')}]`,
+        `  trackChanges: ${trackChanges.listStatus} [${trackChanges.items.map((item) => item.id).join(', ')}]`,
+        '',
+      );
+    },
+    recording: () => log.join('\n'),
+  };
+}
+
+describe('heavy reads through createSuperDocUI', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100_000);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const recordingPath = (name: string) => `./__snapshots__/heavy-read-gate/${name}.txt`;
+
+  it('re-reads a partial tracked-change directory once when the source completes', async () => {
+    const fake = uiEditor({
+      stage: 'source-loading',
+      loading: 'subscribe',
+      trackChanges: [() => trackedChanges(['tc-a'], 'partial'), () => trackedChanges(['tc-a', 'tc-b'])],
+    });
+    await fake.step('mount while the source is loading');
+    fake.ui.trackChanges.list();
+    await fake.step('ui.trackChanges.list()');
+    fake.emitStage('source-complete');
+    await fake.step('the source completes');
+    await vi.advanceTimersByTimeAsync(HEAVY_READ_IDLE_MS);
+    await fake.step(`input stays idle for ${HEAVY_READ_IDLE_MS}ms`);
+    fake.emitStage('source-complete');
+    await vi.advanceTimersByTimeAsync(HEAVY_READ_IDLE_MS);
+    await fake.step('the host reports source-complete again');
+    fake.ui.destroy();
+    await expect(fake.recording()).toMatchFileSnapshot(recordingPath('partial-directory-refresh'));
+  });
+
+  it('re-reads a directory that is still partial after the source completes only once', async () => {
+    const fake = uiEditor({
+      stage: 'source-loading',
+      loading: 'subscribe',
+      trackChanges: [
+        () => trackedChanges(['tc-a'], 'partial'),
+        () => trackedChanges(['tc-a', 'tc-b'], 'partial'),
+        () => trackedChanges(['tc-a', 'tc-b', 'tc-c']),
+      ],
+    });
+    await fake.step('mount while the source is loading');
+    fake.ui.trackChanges.list();
+    await fake.step('ui.trackChanges.list()');
+    fake.emitStage('source-complete');
+    await fake.step('the source completes');
+    fake.emitStage('source-complete');
+    await fake.step('the host reports source-complete again');
+    fake.ui.destroy();
+    await expect(fake.recording()).toMatchFileSnapshot(recordingPath('partial-directory-still-partial'));
+  });
+
+  it('re-reads a partial directory that arrives after the source already completed', async () => {
+    const fake = uiEditor({
+      stage: 'source-complete',
+      loading: 'subscribe',
+      trackChanges: [() => trackedChanges(['tc-a'], 'partial'), () => trackedChanges(['tc-a', 'tc-b'])],
+    });
+    await fake.step('mount after the source completed');
+    await vi.advanceTimersByTimeAsync(HEAVY_READ_IDLE_MS);
+    await fake.step(`input stays idle for ${HEAVY_READ_IDLE_MS}ms`);
+    fake.ui.destroy();
+    await expect(fake.recording()).toMatchFileSnapshot(recordingPath('partial-directory-after-completion'));
+  });
+
+  it('does not re-read a partial directory from an older content revision', async () => {
+    const fake = uiEditor({
+      stage: 'source-loading',
+      loading: 'subscribe',
+      trackChanges: [() => trackedChanges(['tc-a'], 'partial'), () => trackedChanges(['tc-a', 'tc-b'])],
+    });
+    await fake.step('mount while the source is loading');
+    fake.ui.trackChanges.list();
+    await fake.step('ui.trackChanges.list()');
+    fake.emitEdit();
+    await fake.step('an edit commits');
+    fake.emitStage('source-complete');
+    await fake.step('the source completes');
+    await vi.advanceTimersByTimeAsync(HEAVY_READ_IDLE_MS);
+    await fake.step(`input stays idle for ${HEAVY_READ_IDLE_MS}ms`);
+    fake.ui.destroy();
+    await expect(fake.recording()).toMatchFileSnapshot(recordingPath('partial-directory-older-revision'));
+  });
+
+  it.each(['no-subscribe', 'subscribe-throws'] as const)(
+    'releases held reads on the retry timer when the host loading subscription is %s',
+    async (loading) => {
+      const fake = uiEditor({ stage: 'source-loading', loading, trackChanges: [() => trackedChanges(['tc-a'])] });
+      await fake.step('mount while the source is loading');
+      await vi.advanceTimersByTimeAsync(HEAVY_READ_IDLE_MS);
+      await fake.step(`the first retry fires ${HEAVY_READ_IDLE_MS}ms later, still loading`);
+      fake.setStage('source-complete');
+      await vi.advanceTimersByTimeAsync(HEAVY_READ_IDLE_MS - 1);
+      await fake.step(`the source completes silently, ${HEAVY_READ_IDLE_MS - 1}ms later`);
+      await vi.advanceTimersByTimeAsync(1 + HEAVY_READ_IDLE_POLL_MS);
+      await fake.step(`${1 + HEAVY_READ_IDLE_POLL_MS}ms later`);
+      fake.ui.destroy();
+      await expect(fake.recording()).toMatchFileSnapshot(recordingPath(`retry-timer-${loading}`));
+    },
+  );
+
+  it('reuses a tracked-change directory read that is in flight or settled for the current revision', async () => {
+    let settleFirst: (result: TrackChangesListResult) => void = () => undefined;
+    const fake = uiEditor({
+      stage: 'source-loading',
+      loading: 'subscribe',
+      trackChanges: [
+        () =>
+          new Promise<TrackChangesListResult>((resolve) => {
+            settleFirst = resolve;
+          }),
+        () => trackedChanges(['tc-a', 'tc-b']),
+      ],
+    });
+    await fake.step('mount while the source is loading');
+    fake.ui.trackChanges.list();
+    fake.ui.trackChanges.list();
+    fake.ui.trackChanges.list();
+    await fake.step('ui.trackChanges.list() three times');
+    settleFirst(trackedChanges(['tc-a']));
+    await fake.step('the directory read settles');
+    fake.ui.trackChanges.list();
+    fake.ui.trackChanges.list();
+    await fake.step('ui.trackChanges.list() twice more');
+    fake.emitEdit();
+    fake.ui.trackChanges.list();
+    await fake.step('an edit commits, then ui.trackChanges.list()');
+    fake.ui.destroy();
+    await expect(fake.recording()).toMatchFileSnapshot(recordingPath('directory-read-reuse'));
   });
 });

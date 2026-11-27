@@ -1,0 +1,211 @@
+{
+  "definition": {
+    "description": "Remove a bookmark from the document.",
+    "expectedResult": "Returns a BookmarkMutationResult indicating success or a failure.",
+    "memberPath": "bookmarks.remove",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "bookmarks/remove.mdx",
+    "referenceGroup": "bookmarks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "bookmark"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "name": {
+              "type": "string"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "bookmark": {
+              "additionalProperties": false,
+              "properties": {
+                "entityType": {
+                  "const": "bookmark"
+                },
+                "kind": {
+                  "const": "entity"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "kind",
+                "entityType",
+                "name"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "bookmark"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "bookmark": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "bookmark"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "name": {
+              "type": "string"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "name"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "bookmark"
+      ],
+      "type": "object"
+    }
+  }
+}

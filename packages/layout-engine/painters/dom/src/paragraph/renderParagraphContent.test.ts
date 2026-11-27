@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { renderParagraphContent } from './renderParagraphContent.js';
 import type { Line, ParagraphBlock, ParagraphMeasure, ResolvedParagraphContent } from '@superdoc/contracts';
+import { describeElement } from '../test-utils/describe-element.js';
+
+const RECORDINGS = './__snapshots__/renderParagraphContent';
 
 describe('renderParagraphContent', () => {
   const line = (index: number): Line => ({
@@ -191,7 +194,7 @@ describe('renderParagraphContent', () => {
     expect(frameEl.style.getPropertyValue('--sd-sdt-chrome-width')).toBe('');
   });
 
-  it('stamps paragraph-mark tracked-change anchors on the paragraph frame and mark glyph', () => {
+  it('stamps paragraph-mark tracked-change anchors on the paragraph frame and mark glyph', async () => {
     const doc = document.implementation.createHTMLDocument('paragraph-content');
     const frameEl = doc.createElement('div');
     const block: ParagraphBlock = {
@@ -238,37 +241,11 @@ describe('renderParagraphContent', () => {
       },
     });
 
-    expect(frameEl.dataset.trackChangeId).toBe('tc-7');
-    expect(frameEl.dataset.trackChangeIds).toBe('tc-7');
-    expect(frameEl.dataset.trackChangeKind).toBe('insert');
-    expect(frameEl.dataset.trackChangeAnchor).toBe('paragraph-mark');
-    expect(frameEl.dataset.trackChangeStructural).toBe('paragraph-mark');
-    expect(frameEl.dataset.trackChangeMarker).toBe('paragraph');
-    expect(frameEl.dataset.trackChangeSubtype).toBe('paragraph-mark-insertion');
-    expect(frameEl.dataset.trackChangeTargetKind).toBe('paragraph-mark');
-    expect(frameEl.dataset.storyKey).toBe('body');
     expect(frameEl.classList.contains('track-insert-dec')).toBe(false);
-
-    const markEl = frameEl.querySelector<HTMLElement>('.superdoc-formatting-paragraph-mark');
-    expect(markEl).not.toBeNull();
-    expect(markEl?.dataset.trackChangeId).toBe('tc-7');
-    expect(markEl?.dataset.trackChangeIds).toBe('tc-7');
-    expect(markEl?.dataset.trackChangeKind).toBe('insert');
-    expect(markEl?.dataset.trackChangeAnchor).toBe('paragraph-mark');
-    expect(markEl?.dataset.trackChangeStructural).toBe('paragraph-mark');
-    expect(markEl?.dataset.trackChangeMarker).toBe('paragraph');
-    expect(markEl?.dataset.trackChangeSubtype).toBe('paragraph-mark-insertion');
-    expect(markEl?.dataset.trackChangeTargetKind).toBe('paragraph-mark');
-    expect(markEl?.dataset.storyKey).toBe('body');
-    expect(markEl?.classList.contains('superdoc-tracked-paragraph-mark')).toBe(true);
-    expect(markEl?.classList.contains('track-insert-dec')).toBe(true);
-    expect(markEl?.classList.contains('highlighted')).toBe(true);
-    expect(markEl?.classList.contains('insertion')).toBe(true);
-    expect(markEl?.style.display).toBe('inline');
-    expect(markEl?.style.textDecorationLine).toBe('underline');
+    await expect(describeElement(frameEl)).toMatchFileSnapshot(`${RECORDINGS}/paragraph-mark-insertion.txt`);
   });
 
-  it('decorates paragraph-mark deletions on the mark glyph without striking paragraph text', () => {
+  it('decorates paragraph-mark deletions on the mark glyph without striking paragraph text', async () => {
     const doc = document.implementation.createHTMLDocument('paragraph-content');
     const frameEl = doc.createElement('div');
     const block: ParagraphBlock = {
@@ -317,25 +294,11 @@ describe('renderParagraphContent', () => {
       },
     });
 
-    expect(frameEl.classList.contains('track-delete-dec')).toBe(false);
     expect(frameEl.style.textDecorationLine).toBe('');
-
-    const markEl = frameEl.querySelector<HTMLElement>('.superdoc-formatting-paragraph-mark');
-    expect(markEl).not.toBeNull();
-    expect(markEl?.dataset.trackChangeId).toBe('tc-delete-mark');
-    expect(markEl?.dataset.trackChangeKind).toBe('delete');
-    expect(markEl?.dataset.trackChangeAnchor).toBe('paragraph-mark');
-    expect(markEl?.dataset.trackChangeSubtype).toBe('paragraph-mark-deletion');
-    expect(markEl?.dataset.trackChangeTargetKind).toBe('paragraph-mark');
-    expect(markEl?.classList.contains('superdoc-tracked-paragraph-mark')).toBe(true);
-    expect(markEl?.classList.contains('track-delete-dec')).toBe(true);
-    expect(markEl?.classList.contains('highlighted')).toBe(true);
-    expect(markEl?.classList.contains('deletion')).toBe(true);
-    expect(markEl?.style.display).toBe('inline');
-    expect(markEl?.style.textDecorationLine).toBe('line-through');
+    await expect(describeElement(frameEl)).toMatchFileSnapshot(`${RECORDINGS}/paragraph-mark-deletion.txt`);
   });
 
-  it('renders reviewable section-break tracked-change markers', () => {
+  it('renders reviewable section-break tracked-change markers', async () => {
     const doc = document.implementation.createHTMLDocument('paragraph-content');
     const frameEl = doc.createElement('div');
     const block: ParagraphBlock = {
@@ -378,29 +341,11 @@ describe('renderParagraphContent', () => {
       renderLine: () => doc.createElement('div'),
     });
 
-    expect(frameEl.dataset.trackChangeId).toBe('tc-section-12');
-    expect(frameEl.dataset.trackChangeAnchor).toBe('paragraph-mark');
-    expect(frameEl.dataset.trackChangeSubtype).toBe('section-break-insertion');
-    expect(frameEl.dataset.trackChangeTargetKind).toBe('section-break');
-
-    const markerEl = frameEl.querySelector<HTMLElement>('.superdoc-section-break-review-marker');
-    expect(markerEl).not.toBeNull();
-    expect(markerEl?.textContent).toBe('Section Break');
-    expect(markerEl?.dataset.trackChangeId).toBe('tc-section-12');
-    expect(markerEl?.dataset.trackChangeIds).toBe('tc-section-12');
-    expect(markerEl?.dataset.trackChangeKind).toBe('insert');
-    expect(markerEl?.dataset.trackChangeAnchor).toBe('section-break');
-    expect(markerEl?.dataset.trackChangeStructural).toBe('section-break');
-    expect(markerEl?.dataset.trackChangeMarker).toBe('section-break');
-    expect(markerEl?.dataset.trackChangeSubtype).toBe('section-break-insertion');
-    expect(markerEl?.dataset.trackChangeTargetKind).toBe('section-break');
-    expect(markerEl?.dataset.storyKey).toBe('body');
-    expect(markerEl?.classList.contains('track-insert-dec')).toBe(true);
-    expect(markerEl?.classList.contains('highlighted')).toBe(true);
-    expect(markerEl?.classList.contains('insertion')).toBe(true);
+    expect(frameEl.querySelector('.superdoc-section-break-review-marker')?.textContent).toBe('Section Break');
+    await expect(describeElement(frameEl)).toMatchFileSnapshot(`${RECORDINGS}/section-break-insertion.txt`);
   });
 
-  it('stamps paragraph-property tracked-change anchors without paragraph-mark semantics', () => {
+  it('stamps paragraph-property tracked-change anchors without paragraph-mark semantics', async () => {
     const doc = document.implementation.createHTMLDocument('paragraph-content');
     const frameEl = doc.createElement('div');
     const block: ParagraphBlock = {
@@ -441,35 +386,8 @@ describe('renderParagraphContent', () => {
       renderLine: () => doc.createElement('div'),
     });
 
-    expect(frameEl.dataset.trackChangeId).toBe('tc-format-1');
-    expect(frameEl.dataset.trackChangeIds).toBe('tc-format-1');
-    expect(frameEl.dataset.trackChangeKind).toBe('format');
-    expect(frameEl.dataset.trackChangeAnchor).toBe('paragraph-property');
-    expect(frameEl.dataset.trackChangeMarkerVisible).toBe('true');
     expect(frameEl.dataset.trackChangeStructural).toBeUndefined();
-    expect(frameEl.dataset.trackChangeMarker).toBeUndefined();
-    expect(frameEl.dataset.trackChangeSubtype).toBe('paragraph-formatting');
-    expect(frameEl.dataset.trackChangeTargetKind).toBe('paragraph');
-    expect(frameEl.dataset.storyKey).toBe('body');
-    expect(frameEl.classList.contains('track-insert-dec')).toBe(false);
-    expect(frameEl.classList.contains('track-format-dec')).toBe(false);
-    expect(frameEl.style.getPropertyValue('--sd-tracked-changes-format-border')).toBe('#6b7280');
-    expect(frameEl.style.getPropertyValue('--sd-tracked-changes-paragraph-property-marker-left')).toBe('55px');
-
-    const markerEl = frameEl.querySelector<HTMLElement>('.superdoc-paragraph-property-review-marker');
-    expect(markerEl).not.toBeNull();
-    expect(markerEl?.dataset.trackChangeId).toBe('tc-format-1');
-    expect(markerEl?.dataset.trackChangeIds).toBe('tc-format-1');
-    expect(markerEl?.dataset.trackChangeKind).toBe('format');
-    expect(markerEl?.dataset.trackChangeAnchor).toBe('paragraph-property');
-    expect(markerEl?.dataset.trackChangeStructural).toBeUndefined();
-    expect(markerEl?.dataset.trackChangeMarker).toBeUndefined();
-    expect(markerEl?.dataset.trackChangeSubtype).toBe('paragraph-formatting');
-    expect(markerEl?.dataset.trackChangeTargetKind).toBe('paragraph');
-    expect(markerEl?.dataset.storyKey).toBe('body');
-    expect(markerEl?.classList.contains('track-format-dec')).toBe(true);
-    expect(markerEl?.classList.contains('highlighted')).toBe(true);
-    expect(markerEl?.style.getPropertyValue('--sd-tracked-changes-format-border')).toBe('#6b7280');
+    await expect(describeElement(frameEl)).toMatchFileSnapshot(`${RECORDINGS}/paragraph-property-formatting.txt`);
   });
 
   it('stamps paragraph-property anchors alongside paragraph-mark tracked changes', () => {

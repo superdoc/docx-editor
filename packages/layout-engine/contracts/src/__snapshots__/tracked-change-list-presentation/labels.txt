@@ -1,0 +1,163 @@
+## split inside a list
+label: Split list item
+
+## split outside a list
+label: (none)
+
+## split not inspected
+label: (none)
+
+## merge as paragraph-mark deletion
+label: Merged list items
+
+## paragraph-mark deletion without merge
+label: (none)
+
+## merge as text deletion
+label: Merged list items
+
+## merge on a legacy delete
+label: Merged list items
+
+## merge on a page-break deletion
+label: (none)
+
+## merge fact on another structural change
+label: (none)
+
+## plain deletion
+label: (none)
+
+## plain insertion
+label: (none)
+
+## one item added to a list
+label: Added to list
+
+## three items added to a list
+label: Added 3 items to a list
+
+## one item removed from a list
+label: Removed from list
+
+## two items removed from a list
+label: Removed 2 items from list
+
+## legacy format type
+label: Removed from list
+
+## one item indented
+label: Indented item
+
+## two items outdented
+label: Outdented 2 items
+
+## items indented and outdented
+label: Changed list formatting (2 items)
+  "first item" — Indented item
+  "second item" — Outdented item
+
+## list level without direction
+label: Changed list formatting (1 item)
+  "only item" — Changed list level
+
+## numbers to bullets
+label: Changed list style: numbers → bullets
+
+## letters to roman numerals
+label: Changed list style: letters → roman numerals
+
+## other list to numbers
+label: Changed list style: list → numbers
+
+## numbers to numbers
+label: Changed list style
+
+## unresolved from style
+label: Changed list style
+
+## unresolved to style
+label: Changed list style
+
+## other to other
+label: Changed list style
+
+## unknown style kind
+label: Changed list style
+
+## members with different from styles
+label: Changed list style
+
+## restart at 1
+label: Restarted numbering at 1
+
+## restart at 5
+label: Restarted numbering at 5
+
+## restart without a value
+label: Restarted numbering
+
+## restarts at different values
+label: Restarted numbering
+
+## style change and added item
+label: Changed list formatting (2 items)
+  "Second existing item" — Changed list style
+  "New plain paragraph" — Added to list
+
+## added item and other formatting, one excerpt
+label: Changed list formatting (2 items)
+  "only first" — Added to list
+  "" — Changed formatting
+
+## named style on a detail line
+label: Changed list formatting (2 items)
+  "a" — Changed list style: numbers → bullets
+  "b" — Added to list
+
+## every member verb
+label: Changed list formatting (11 items)
+  "a" — Added to list
+  "b" — Removed from list
+  "c" — Indented item
+  "d" — Outdented item
+  "e" — Changed list level
+  "f" — Changed list style: numbers → bullets
+  "g" — Changed list style: list → numbers
+  "h" — Restarted numbering at 1
+  "i" — Changed indent
+  "j" — Changed formatting
+  "k" — Changed formatting
+
+## one indent
+label: (none)
+
+## two indents
+label: (none)
+
+## other formatting
+label: (none)
+
+## indent and other formatting
+label: (none)
+
+## unknown member kind
+label: (none)
+
+## formatting without list facts
+label: (none)
+
+## list deltas without a summary
+label: (none)
+
+## summary without list deltas
+label: (none)
+
+## empty list deltas
+label: (none)
+
+## null
+label: (none)
+
+## array
+label: (none)

@@ -1,0 +1,70 @@
+{
+  "definition": {
+    "description": "Check whether two adjacent list sequences can be joined.",
+    "expectedResult": "Returns a ListsCanJoinResult indicating feasibility and reason if not possible.",
+    "memberPath": "lists.canJoin",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "lists/can-join.mdx",
+    "referenceGroup": "lists",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "enum": [
+            "withPrevious",
+            "withNext"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/ListItemAddress"
+        }
+      },
+      "required": [
+        "target",
+        "direction"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "adjacentListId": {
+          "type": "string"
+        },
+        "canJoin": {
+          "type": "boolean"
+        },
+        "reason": {
+          "enum": [
+            "NO_ADJACENT_SEQUENCE",
+            "INCOMPATIBLE_DEFINITIONS",
+            "ALREADY_SAME_SEQUENCE"
+          ]
+        }
+      },
+      "required": [
+        "canJoin"
+      ],
+      "type": "object"
+    }
+  }
+}

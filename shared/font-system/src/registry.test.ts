@@ -140,6 +140,24 @@ describe('FontRegistry skeleton contract', () => {
     );
   });
 
+  it('preserves each configured subset and rejects conflicting sources for equivalent ranges', () => {
+    const { registry } = makeRegistry(fontSet);
+    const register = (source: string, unicodeRange: string) =>
+      registry.register(
+        {
+          family: 'Subset',
+          source,
+          descriptors: { unicodeRange },
+        },
+        { allowUnicodeSubsets: true },
+      );
+    expect(register('url(latin.woff2)', 'U+0-FF').changed).toBe(true);
+    expect(register('url(cyrillic.woff2)', 'U+04??').changed).toBe(true);
+    expect(register('url(cyrillic.woff2)', 'U+0400-04FF').changed).toBe(false);
+    expect(() => register('url(other.woff2)', 'U+0400-04FF')).toThrow(/already registered from a different source/);
+    expect(fontSet.added).toHaveLength(2);
+  });
+
   it('reports `loaded` when a real face loads', async () => {
     fontSet.behaviors.set('Carlito', 'load-ok');
     const { registry } = makeRegistry(fontSet);

@@ -1,0 +1,78 @@
+before:
+
+store:
+{
+  "activeComment": "comment-owner",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Original owner comment"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-owner: comment: Original owner comment
+reply pill
+
+action: choose Edit in the comment menu, type "<p>Corrected owner comment</p>", click Update
+
+document calls:
+comments.setActiveComment "comment-owner"
+comments.edit {"commentId":"comment-owner","text":"Corrected owner comment"}
+
+comments-update events:
+[
+  {
+    "type": "update",
+    "comment": {
+      "commentId": "comment-owner",
+      "fileId": "doc-1",
+      "creatorId": "user-1",
+      "creatorEmail": "user@example.com",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Corrected owner comment",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    },
+    "changes": [
+      {
+        "key": "text",
+        "value": "Corrected owner comment"
+      }
+    ]
+  }
+]
+
+superdoc.focus calls: []
+
+after:
+
+store:
+{
+  "activeComment": "comment-owner",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-owner",
+      "commentText": "Corrected owner comment"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-owner: comment: Corrected owner comment
+reply pill

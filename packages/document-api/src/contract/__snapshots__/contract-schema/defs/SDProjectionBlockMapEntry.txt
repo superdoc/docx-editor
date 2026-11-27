@@ -1,0 +1,102 @@
+{
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "blockId": {
+          "type": "string"
+        },
+        "changeIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "commentIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "identity": {
+          "const": "public"
+        },
+        "nodeType": {
+          "enum": [
+            "paragraph",
+            "heading",
+            "listItem",
+            "table",
+            "tableRow",
+            "tableCell",
+            "tableOfContents",
+            "image",
+            "sdt"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/Range"
+        },
+        "parentBlockId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodeType",
+        "output",
+        "identity",
+        "blockId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "changeIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "commentIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "identity": {
+          "const": "unavailable"
+        },
+        "identityUnavailableReason": {
+          "const": "positionDerivedFallback"
+        },
+        "nodeType": {
+          "enum": [
+            "paragraph",
+            "heading",
+            "listItem",
+            "table",
+            "tableRow",
+            "tableCell",
+            "tableOfContents",
+            "image",
+            "sdt"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/Range"
+        },
+        "parentBlockId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nodeType",
+        "output",
+        "identity",
+        "identityUnavailableReason"
+      ],
+      "type": "object"
+    }
+  ]
+}

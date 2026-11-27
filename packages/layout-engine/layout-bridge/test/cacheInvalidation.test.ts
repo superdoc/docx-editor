@@ -4,8 +4,8 @@
  * Tests for cache invalidation logic for headers/footers and body content.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vite-plus/test';
-import type { FlowBlock, ParagraphBlock, SectionMetadata } from '@superdoc/contracts';
+import { describe, it, expect, beforeEach } from 'vite-plus/test';
+import type { FlowBlock, Measure, ParagraphBlock, SectionMetadata, TextRun } from '@superdoc/contracts';
 import type { HeaderFooterConstraints } from '../../layout-engine';
 import {
   computeHeaderFooterContentHash,
@@ -23,33 +23,29 @@ describe('Cache Invalidation', () => {
         expect(computeHeaderFooterContentHash([])).toBe('');
       });
 
-      it('should compute hash based on block IDs and content', () => {
-        const blocks: FlowBlock[] = [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: 'Hello' }, { text: 'World', bold: true }],
-          } as ParagraphBlock,
+      it.each<[string, Partial<TextRun>]>([
+        ['text', { text: 'World' }],
+        ['bold', { bold: true }],
+        ['italic', { italic: true }],
+        ['page-number token', { token: 'pageNumber' }],
+      ])('should produce different hashes when only run %s changes', (_field, change) => {
+        const paragraph = (run: Partial<TextRun>): FlowBlock[] => [
+          { kind: 'paragraph', id: 'p1', runs: [{ text: 'Hello', ...run }] } as ParagraphBlock,
         ];
 
-        const hash = computeHeaderFooterContentHash(blocks);
-        expect(hash).toContain('p1');
-        expect(hash).toContain('Hello');
-        expect(hash).toContain('World');
-        expect(hash).toContain('b'); // Bold marker
+        expect(computeHeaderFooterContentHash(paragraph(change))).not.toBe(
+          computeHeaderFooterContentHash(paragraph({})),
+        );
       });
 
-      it('should include token information in hash', () => {
-        const blocks: FlowBlock[] = [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: '0', token: 'pageNumber' }],
-          } as ParagraphBlock,
+      it('should produce different hashes when only the block id changes', () => {
+        const paragraph = (id: string): FlowBlock[] => [
+          { kind: 'paragraph', id, runs: [{ text: 'Hello' }] } as ParagraphBlock,
         ];
 
-        const hash = computeHeaderFooterContentHash(blocks);
-        expect(hash).toContain('token:pageNumber');
+        expect(computeHeaderFooterContentHash(paragraph('p2'))).not.toBe(
+          computeHeaderFooterContentHash(paragraph('p1')),
+        );
       });
 
       it('should include page number token format in hash', () => {
@@ -100,17 +96,13 @@ describe('Cache Invalidation', () => {
         expect(computeSectionMetadataHash([])).toBe('');
       });
 
-      it('should compute hash based on section properties', () => {
-        const sections: SectionMetadata[] = [
-          {
-            sectionIndex: 1,
-            numbering: { format: 'lowerRoman', start: 1 },
-          },
-        ];
+      it.each<[string, SectionMetadata]>([
+        ['section index', { sectionIndex: 2, numbering: { format: 'decimal', start: 1 } }],
+        ['numbering start', { sectionIndex: 1, numbering: { format: 'decimal', start: 5 } }],
+      ])('should produce different hashes when only the %s changes', (_field, changed) => {
+        const base: SectionMetadata = { sectionIndex: 1, numbering: { format: 'decimal', start: 1 } };
 
-        const hash = computeSectionMetadataHash(sections);
-        expect(hash).toContain('section:1');
-        expect(hash).toContain('num:lowerRoman:1');
+        expect(computeSectionMetadataHash([changed])).not.toBe(computeSectionMetadataHash([base]));
       });
 
       it('should produce different hashes for different metadata', () => {
@@ -136,19 +128,18 @@ describe('Cache Invalidation', () => {
     });
 
     describe('computeConstraintsHash', () => {
-      it('should compute hash based on width and height', () => {
-        const constraints: HeaderFooterConstraints = {
-          width: 500,
-          height: 100,
-        };
-
-        const hash = computeConstraintsHash(constraints);
-        expect(hash).toContain('w:500');
-        expect(hash).toContain('h:100');
-      });
-
-      it('should include optional properties in hash', () => {
-        const constraints: HeaderFooterConstraints = {
+      it.each<[string, Partial<HeaderFooterConstraints>]>([
+        ['height', { height: 120 }],
+        ['pageWidth', { pageWidth: 620 }],
+        ['pageHeight', { pageHeight: 820 }],
+        ['left margin', { margins: { left: 55, right: 50, top: 40, bottom: 60, header: 30, footer: 20 } }],
+        ['right margin', { margins: { left: 50, right: 55, top: 40, bottom: 60, header: 30, footer: 20 } }],
+        ['top margin', { margins: { left: 50, right: 50, top: 45, bottom: 60, header: 30, footer: 20 } }],
+        ['bottom margin', { margins: { left: 50, right: 50, top: 40, bottom: 65, header: 30, footer: 20 } }],
+        ['header margin', { margins: { left: 50, right: 50, top: 40, bottom: 60, header: 35, footer: 20 } }],
+        ['footer margin', { margins: { left: 50, right: 50, top: 40, bottom: 60, header: 30, footer: 25 } }],
+      ])('should produce different hashes when only the %s changes', (_field, change) => {
+        const base: HeaderFooterConstraints = {
           width: 500,
           height: 100,
           pageWidth: 600,
@@ -156,15 +147,7 @@ describe('Cache Invalidation', () => {
           margins: { left: 50, right: 50, top: 40, bottom: 60, header: 30, footer: 20 },
         };
 
-        const hash = computeConstraintsHash(constraints);
-        expect(hash).toContain('pw:600');
-        expect(hash).toContain('ph:800');
-        expect(hash).toContain('ml:50');
-        expect(hash).toContain('mr:50');
-        expect(hash).toContain('mt:40');
-        expect(hash).toContain('mb:60');
-        expect(hash).toContain('mh:30');
-        expect(hash).toContain('mf:20');
+        expect(computeConstraintsHash({ ...base, ...change })).not.toBe(computeConstraintsHash(base));
       });
 
       it('should produce different hashes for different constraints', () => {
@@ -182,17 +165,6 @@ describe('Cache Invalidation', () => {
         const hash2 = computeConstraintsHash(constraints2);
 
         expect(hash1).not.toBe(hash2);
-      });
-
-      it('should include overflowBaseHeight in hash when provided', () => {
-        const constraints: HeaderFooterConstraints = {
-          width: 500,
-          height: 100,
-          overflowBaseHeight: 50,
-        };
-
-        const hash = computeConstraintsHash(constraints);
-        expect(hash).toContain('obh:50');
       });
 
       it('should produce different hashes when overflowBaseHeight changes', () => {
@@ -214,14 +186,12 @@ describe('Cache Invalidation', () => {
         expect(hash1).not.toBe(hash2);
       });
 
-      it('should omit overflowBaseHeight from hash when undefined', () => {
-        const constraints: HeaderFooterConstraints = {
-          width: 500,
-          height: 100,
-        };
+      it('should produce different hashes when overflowBaseHeight is added', () => {
+        const constraints: HeaderFooterConstraints = { width: 500, height: 100 };
 
-        const hash = computeConstraintsHash(constraints);
-        expect(hash).not.toContain('obh:');
+        expect(computeConstraintsHash({ ...constraints, overflowBaseHeight: 50 })).not.toBe(
+          computeConstraintsHash(constraints),
+        );
       });
     });
   });
@@ -439,211 +409,74 @@ describe('Cache Invalidation', () => {
     let cache: HeaderFooterLayoutCache;
     let cacheState: HeaderFooterCacheState;
 
+    const helloBlocks = { default: [{ kind: 'paragraph', id: 'p1', runs: [{ text: 'Hello' }] } as ParagraphBlock] };
+
+    const remeasuredHelloBlocks = async (): Promise<number> => {
+      let calls = 0;
+      await cache.measureBlocks(helloBlocks.default, { width: 500, height: 100 }, async () => {
+        calls += 1;
+        return { kind: 'paragraph', lines: [], totalHeight: 0 } as Measure;
+      });
+      return calls;
+    };
+
     beforeEach(() => {
       cache = new HeaderFooterLayoutCache();
       cacheState = new HeaderFooterCacheState();
     });
 
-    it('should invalidate cache when content changes', () => {
-      const invalidateSpy = vi.spyOn(cache, 'invalidate');
+    it('should drop the cached measure when content changes', async () => {
+      expect(await remeasuredHelloBlocks()).toBe(1);
 
-      const blocks1 = {
-        default: [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: 'Hello' }],
-          } as ParagraphBlock,
-        ],
-      };
+      invalidateHeaderFooterCache(cache, cacheState, helloBlocks, undefined, undefined, undefined);
+      expect(await remeasuredHelloBlocks()).toBe(0);
 
-      const blocks2 = {
-        default: [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: 'World' }],
-          } as ParagraphBlock,
-        ],
-      };
-
-      // First call - no invalidation (first time)
-      invalidateHeaderFooterCache(cache, cacheState, blocks1, undefined, undefined, undefined);
-      expect(invalidateSpy).not.toHaveBeenCalled();
-
-      // Second call with changed content - should invalidate
-      invalidateHeaderFooterCache(cache, cacheState, blocks2, undefined, undefined, undefined);
-      expect(invalidateSpy).toHaveBeenCalledWith(['p1']);
+      const worldBlocks = { default: [{ kind: 'paragraph', id: 'p1', runs: [{ text: 'World' }] } as ParagraphBlock] };
+      invalidateHeaderFooterCache(cache, cacheState, worldBlocks, undefined, undefined, undefined);
+      expect(await remeasuredHelloBlocks()).toBe(1);
     });
 
-    it('should invalidate cache when constraints change', () => {
-      const invalidateSpy = vi.spyOn(cache, 'invalidate');
-
-      const blocks = {
-        default: [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: 'Hello' }],
-          } as ParagraphBlock,
-        ],
-      };
-
-      const constraints1: HeaderFooterConstraints = {
-        width: 500,
-        height: 100,
-      };
-
-      const constraints2: HeaderFooterConstraints = {
-        width: 600,
-        height: 100,
-      };
-
-      // First call
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, constraints1, undefined);
-
-      // Second call with changed constraints
-      invalidateSpy.mockClear();
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, constraints2, undefined);
-
-      expect(invalidateSpy).toHaveBeenCalled();
-    });
-
-    it('should invalidate cache when section metadata changes', () => {
-      const invalidateSpy = vi.spyOn(cache, 'invalidate');
-
-      const blocks = {
-        default: [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: 'Hello' }],
-          } as ParagraphBlock,
-        ],
-      };
-
-      const sections1: SectionMetadata[] = [
-        {
-          sectionIndex: 1,
-          numbering: { format: 'decimal', start: 1 },
-        },
-      ];
-
-      const sections2: SectionMetadata[] = [
-        {
-          sectionIndex: 1,
-          numbering: { format: 'lowerRoman', start: 1 },
-        },
-      ];
-
-      // First call
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, undefined, sections1);
-
-      // Second call with changed metadata
-      invalidateSpy.mockClear();
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, undefined, sections2);
-
-      expect(invalidateSpy).toHaveBeenCalled();
-    });
-
-    it('should not invalidate when nothing has changed', () => {
-      const invalidateSpy = vi.spyOn(cache, 'invalidate');
-
-      const blocks = {
-        default: [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: 'Hello' }],
-          } as ParagraphBlock,
-        ],
-      };
-
-      const constraints: HeaderFooterConstraints = {
-        width: 500,
-        height: 100,
-      };
-
-      // First call
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, constraints, undefined);
-
-      // Second call with same data
-      invalidateSpy.mockClear();
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, constraints, undefined);
-
-      expect(invalidateSpy).not.toHaveBeenCalled();
-    });
-
-    it('should invalidate cache when overflowBaseHeight changes', () => {
-      const invalidateSpy = vi.spyOn(cache, 'invalidate');
-
-      const blocks = {
-        default: [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: 'Hello' }],
-          } as ParagraphBlock,
-        ],
-      };
-
-      const constraints1: HeaderFooterConstraints = {
+    it.each<
+      [string, Pick<HeaderFooterConstraints, 'overflowBaseHeight' | 'margins' | 'pageHeight'> & { width?: number }]
+    >([
+      ['width', { width: 600 }],
+      ['overflowBaseHeight', { overflowBaseHeight: 75 }],
+      [
+        'top margin of a page-relative header',
+        { pageHeight: 900, margins: { left: 50, right: 50, top: 96, bottom: 72, header: 36 } },
+      ],
+    ])('should drop the cached measure when the constraint %s changes', async (_field, change) => {
+      const before: HeaderFooterConstraints = {
         width: 500,
         height: 100,
         overflowBaseHeight: 50,
-      };
-
-      const constraints2: HeaderFooterConstraints = {
-        width: 500,
-        height: 100,
-        overflowBaseHeight: 75,
-      };
-
-      // First call
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, constraints1, undefined);
-
-      // Second call with changed overflowBaseHeight
-      invalidateSpy.mockClear();
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, constraints2, undefined);
-
-      expect(invalidateSpy).toHaveBeenCalled();
-      expect(invalidateSpy).toHaveBeenCalledWith(['p1']);
-    });
-
-    it('should invalidate cache when page-relative header measurement constraints change', () => {
-      const invalidateSpy = vi.spyOn(cache, 'invalidate');
-
-      const blocks = {
-        default: [
-          {
-            kind: 'paragraph',
-            id: 'p1',
-            runs: [{ text: 'Hello' }],
-          } as ParagraphBlock,
-        ],
-      };
-
-      const constraints1: HeaderFooterConstraints = {
-        width: 500,
-        height: 100,
         pageHeight: 900,
         margins: { left: 50, right: 50, top: 72, bottom: 72, header: 36 },
       };
+      invalidateHeaderFooterCache(cache, cacheState, helloBlocks, undefined, before, undefined);
+      expect(await remeasuredHelloBlocks()).toBe(1);
 
-      const constraints2: HeaderFooterConstraints = {
-        width: 500,
-        height: 100,
-        pageHeight: 900,
-        margins: { left: 50, right: 50, top: 96, bottom: 72, header: 36 },
-      };
+      invalidateHeaderFooterCache(cache, cacheState, helloBlocks, undefined, { ...before, ...change }, undefined);
+      expect(await remeasuredHelloBlocks()).toBe(1);
+    });
 
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, constraints1, undefined);
+    it('should drop the cached measure when section metadata changes', async () => {
+      const decimal: SectionMetadata[] = [{ sectionIndex: 1, numbering: { format: 'decimal', start: 1 } }];
+      const roman: SectionMetadata[] = [{ sectionIndex: 1, numbering: { format: 'lowerRoman', start: 1 } }];
+      invalidateHeaderFooterCache(cache, cacheState, helloBlocks, undefined, undefined, decimal);
+      expect(await remeasuredHelloBlocks()).toBe(1);
 
-      invalidateSpy.mockClear();
-      invalidateHeaderFooterCache(cache, cacheState, blocks, undefined, constraints2, undefined);
+      invalidateHeaderFooterCache(cache, cacheState, helloBlocks, undefined, undefined, roman);
+      expect(await remeasuredHelloBlocks()).toBe(1);
+    });
 
-      expect(invalidateSpy).toHaveBeenCalled();
-      expect(invalidateSpy).toHaveBeenCalledWith(['p1']);
+    it('should keep the cached measure when nothing has changed', async () => {
+      const constraints: HeaderFooterConstraints = { width: 500, height: 100 };
+      invalidateHeaderFooterCache(cache, cacheState, helloBlocks, undefined, constraints, undefined);
+      expect(await remeasuredHelloBlocks()).toBe(1);
+
+      invalidateHeaderFooterCache(cache, cacheState, helloBlocks, undefined, constraints, undefined);
+      expect(await remeasuredHelloBlocks()).toBe(0);
     });
   });
 });

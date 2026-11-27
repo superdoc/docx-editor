@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "insertedText"
+    },
+    "selectionTarget": {
+      "$ref": "#/$defs/SelectionTarget"
+    },
+    "sourcePath": {
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "target": {
+      "$ref": "#/$defs/TextAddress"
+    },
+    "text": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "target",
+    "selectionTarget",
+    "text"
+  ],
+  "type": "object"
+}

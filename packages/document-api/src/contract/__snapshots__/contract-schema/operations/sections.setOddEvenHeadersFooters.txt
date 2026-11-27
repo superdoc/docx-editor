@@ -1,0 +1,151 @@
+{
+  "definition": {
+    "description": "Enable or disable odd/even header-footer mode in document settings.",
+    "expectedResult": "Returns a DocumentMutationResult (not SectionMutationResult) because odd/even headers-footers is a document-level setting, not per-section. Reports NO_OP if the setting already matches.",
+    "memberPath": "sections.setOddEvenHeadersFooters",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "sections/set-odd-even-headers-footers.mdx",
+    "referenceGroup": "sections",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "changed": {
+              "type": "boolean"
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "type": "boolean"
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

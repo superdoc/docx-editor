@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "blockId": {
+      "type": "string"
+    },
+    "range": {
+      "$ref": "#/$defs/Range"
+    }
+  },
+  "required": [
+    "blockId",
+    "range"
+  ],
+  "type": "object"
+}

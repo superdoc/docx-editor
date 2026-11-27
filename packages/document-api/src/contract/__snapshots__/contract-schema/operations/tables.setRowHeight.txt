@@ -1,0 +1,249 @@
+{
+  "definition": {
+    "description": "Set the height of a table row.",
+    "expectedResult": "Returns a TableMutationResult receipt; reports NO_OP if the row height already matches.",
+    "intentAction": "set_row",
+    "intentGroup": "table",
+    "memberPath": "tables.setRowHeight",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "NO_OP",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "tables/set-row-height.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "heightPt": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "rule": {
+              "enum": [
+                "atLeast",
+                "exact",
+                "auto"
+              ]
+            },
+            "target": {
+              "$ref": "#/$defs/TableRowAddress"
+            }
+          },
+          "required": [
+            "target",
+            "heightPt"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "heightPt": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "rowIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rule": {
+              "enum": [
+                "atLeast",
+                "exact",
+                "auto"
+              ]
+            },
+            "target": {
+              "$ref": "#/$defs/TableAddress"
+            }
+          },
+          "required": [
+            "target",
+            "rowIndex",
+            "heightPt"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "heightPt": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "rowIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rule": {
+              "enum": [
+                "atLeast",
+                "exact",
+                "auto"
+              ]
+            }
+          },
+          "required": [
+            "nodeId",
+            "rowIndex",
+            "heightPt"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "success": {
+              "const": true
+            },
+            "table": {
+              "$ref": "#/$defs/TableAddress"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "success": {
+          "const": true
+        },
+        "table": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

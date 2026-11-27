@@ -79,3 +79,33 @@ text that kept its original formatting. Both pickers should show **Mixed**.
 For an alternative recipe, [build application document controls](/editor/custom-ui/zoom-and-document-state) for zoom
 and download. It replaces this example and keeps the built-in formatting toolbar. Use
 [Custom commands](/editor/custom-ui/custom-commands) later for application actions that SuperDoc does not provide.
+
+## Add ribbon commands
+
+Use `await ui.commands.executeAsync('grow-font')` or `'shrink-font'` to step the effective size of selected text.
+Mixed sizes step independently in one atomic action and one Undo. At a caret, the command sets the size for subsequent
+typing. The existing font picker options stay the same.
+
+The size sequence is 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, and 72 points. Between listed sizes, choose
+the next size in the requested direction. Below 8, step to the next whole point; above 72, step to the next multiple of 10. Sizes clamp to 1–1638 points. A command at its limit returns `false`. Unresolvable or protected selections fail
+without applying a partial step. Mixed selections whose public text ranges cannot represent their complete scope also
+return `false`.
+
+Arm the format painter with `await ui.commands.executeAsync('copy-format')`, select the destination, then await
+`ui.commands.executeAsync('apply-format')`. It returns `true` after formatting commits and `false` when no application
+can commit. The existing pointer and keyboard notifications still work. Double-click capture retains persistent mode;
+`ui.formatPainter.cancel()` cancels it.
+
+The image command accepts PNG/JPEG browser inputs as well as existing URL and data-URI strings:
+
+```ts
+await ui.commands.executeAsync('image', { src: file, alt: 'Diagram', size: { width: 320, height: 240 } });
+await ui.commands.executeAsync('image', { src: blob, title: 'Embedded diagram' });
+```
+
+File and Blob bytes are embedded in the DOCX. An empty or unsupported input returns `false`. If the document, selection,
+mode, or editor changes while bytes are read, the command returns `false` without inserting. Use `executeAsync()` to
+observe the completed result.
+
+`table-fix` remains unsupported and reports `command-unsupported`; it does not repair a table. Use the supported
+[table commands and live context](/editor/custom-ui/tables) for specific table edits.

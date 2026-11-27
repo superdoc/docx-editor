@@ -1,0 +1,43 @@
+{
+  "definition": {
+    "description": "Get details for a specific image by its stable ID.",
+    "expectedResult": "Returns an ImageSummary with full image properties.",
+    "memberPath": "images.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "AMBIGUOUS_TARGET"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "images/get.mdx",
+    "referenceGroup": "images",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "imageId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "imageId"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

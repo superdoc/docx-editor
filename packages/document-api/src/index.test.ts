@@ -13,12 +13,11 @@ import type { GetNodeAdapter } from './get-node/get-node.js';
 import type { GetAdapter } from './get/get.js';
 import type { TrackChangesAdapter } from './track-changes/track-changes.js';
 import type { WriteAdapter } from './write/write.js';
-import { createDocumentApi, type DocumentApiAdapters } from './index.js';
+import { createDocumentApi, type DocumentApi, type DocumentApiAdapters } from './index.js';
 import type { CommentInfo, CommentsListQuery, CommentsListResult } from './comments/comments.types.js';
 import type { CreateAdapter } from './create/create.js';
 import type { ListsAdapter } from './lists/lists.js';
 import type { CapabilitiesAdapter, DocumentApiCapabilities } from './capabilities/capabilities.js';
-import type { HistoryAdapter } from './history/history.js';
 import type { ChangesAdapter } from './changes/changes.js';
 import type { TablesAdapter } from './index.js';
 
@@ -343,20 +342,6 @@ function makeTablesAdapter(): TablesAdapter {
   };
 }
 
-function makeHistoryAdapter(): HistoryAdapter {
-  return {
-    get: mock(() => ({
-      undoDepth: 0,
-      redoDepth: 0,
-      canUndo: false,
-      canRedo: false,
-      historyUnsafeOperations: [],
-    })),
-    undo: mock(() => ({ noop: true, revision: { before: '0', after: '0' } })),
-    redo: mock(() => ({ noop: true, revision: { before: '0', after: '0' } })),
-  };
-}
-
 function makeCapabilitiesAdapter(overrides?: Partial<DocumentApiCapabilities>): CapabilitiesAdapter {
   const defaultCapabilities: DocumentApiCapabilities = {
     global: {
@@ -381,6 +366,10 @@ function makeCapabilitiesAdapter(overrides?: Partial<DocumentApiCapabilities>): 
 }
 
 const PARAGRAPH_ADDRESS: NodeAddress = { kind: 'block', nodeType: 'paragraph', nodeId: 'p1' };
+
+const TABLE = { kind: 'block', nodeType: 'table', nodeId: 't1' } as const;
+
+const FIND_QUERY = { select: { type: 'node', nodeType: 'paragraph' } } as const;
 
 const PARAGRAPH_NODE_RESULT: SDNodeResult = {
   node: { kind: 'paragraph', paragraph: { inlines: [] } },
@@ -417,6 +406,89 @@ describe('createDocumentApi', () => {
     expect(match).not.toHaveBeenCalled();
     api.query.match({ select, require: 'last' });
     expect(match).toHaveBeenCalledWith({ select, require: 'last' });
+  });
+
+  it.each([
+    [
+      'flat text selector',
+      { type: 'text', pattern: 'Materials and methods' },
+      { select: { type: 'text', pattern: 'Materials and methods' } },
+    ],
+    [
+      'flat node selector',
+      { type: 'node', nodeType: 'paragraph' },
+      { select: { type: 'node', nodeType: 'paragraph' } },
+    ],
+    [
+      'flat text selector with query options',
+      { type: 'text', pattern: 'Materials and methods', wholeWord: true, require: 'first', limit: 1 },
+      { select: { type: 'text', pattern: 'Materials and methods', wholeWord: true }, require: 'first', limit: 1 },
+    ],
+    [
+      'type-less node selector with query options',
+      { nodeType: 'paragraph', require: 'first', limit: 1 },
+      { select: { type: 'node', nodeType: 'paragraph' }, require: 'first', limit: 1 },
+    ],
+  ])('sends a query.match %s to the adapter as a canonical query', (_shape, input, request) => {
+    const match = mock(() => ({
+      evaluatedRevision: 'r1',
+      total: 0,
+      items: [],
+      page: { limit: 0, offset: 0, returned: 0 },
+      meta: { effectiveResolved: true },
+    }));
+    const api = createDocumentApi({ query: { match } } as unknown as DocumentApiAdapters);
+
+    api.query.match(input as any);
+
+    expect(match).toHaveBeenCalledWith(request);
+  });
+
+  it.each([
+    ['find', 'find', 'find', (api: DocumentApi) => api.find(FIND_QUERY), [FIND_QUERY]],
+    ['getNode', 'getNode', 'getNode', (api: DocumentApi) => api.getNode(PARAGRAPH_ADDRESS), [PARAGRAPH_ADDRESS]],
+    [
+      'getNodeById',
+      'getNode',
+      'getNodeById',
+      (api: DocumentApi) => api.getNodeById({ nodeId: 'p1', nodeType: 'paragraph' }),
+      [{ nodeId: 'p1', nodeType: 'paragraph' }],
+    ],
+    ['getText', 'getText', 'getText', (api: DocumentApi) => api.getText({}), [{}]],
+    ['info', 'info', 'info', (api: DocumentApi) => api.info({}), [{}]],
+    ['extract', 'extract', 'extract', (api: DocumentApi) => api.extract({}), [{}]],
+    [
+      'clearContent',
+      'clearContent',
+      'clearContent',
+      (api: DocumentApi) => api.clearContent({}, { expectedRevision: 'r1' }),
+      [{}, { expectedRevision: 'r1' }],
+    ],
+    ['history.get', 'history', 'get', (api: DocumentApi) => api.history.get(), []],
+    ['history.undo', 'history', 'undo', (api: DocumentApi) => api.history.undo(), []],
+    ['history.redo', 'history', 'redo', (api: DocumentApi) => api.history.redo(), []],
+    ['tables.get', 'tables', 'get', (api: DocumentApi) => api.tables.get({ target: TABLE }), [{ target: TABLE }]],
+    [
+      'tables.getCells',
+      'tables',
+      'getCells',
+      (api: DocumentApi) => api.tables.getCells({ target: TABLE }),
+      [{ target: TABLE }],
+    ],
+    [
+      'tables.getProperties',
+      'tables',
+      'getProperties',
+      (api: DocumentApi) => api.tables.getProperties({ target: TABLE }),
+      [{ target: TABLE }],
+    ],
+  ] as const)('sends %s to the %s adapter %s method unchanged', (_member, slot, method, call, request) => {
+    const reached = mock(() => ({}));
+    const api = createDocumentApi({ [slot]: { [method]: reached } } as unknown as DocumentApiAdapters);
+
+    call(api);
+
+    expect(reached).toHaveBeenCalledWith(...request);
   });
   it('delegates detailed projection methods through optional root adapter slots', async () => {
     const htmlResult = {
@@ -459,143 +531,6 @@ describe('createDocumentApi', () => {
     expect(() => api.htmlToFragment({ html: '<p>Hello</p>' })).toThrow(
       expect.objectContaining({ code: 'CAPABILITY_UNAVAILABLE' }),
     );
-  });
-
-  it('delegates find to the find adapter', () => {
-    const findAdapter = makeFindAdapter(FIND_RESULT);
-    const api = createDocumentApi({
-      find: findAdapter,
-      get: makeGetAdapter(),
-      getNode: makeGetNodeAdapter(PARAGRAPH_NODE_RESULT),
-      getText: makeGetTextAdapter(),
-      info: makeInfoAdapter(),
-      comments: makeCommentsAdapter(),
-      write: makeWriteAdapter(),
-      selectionMutation: makeSelectionMutationAdapter(),
-      trackChanges: makeTrackChangesAdapter(),
-      create: makeCreateAdapter(),
-      lists: makeListsAdapter(),
-    });
-
-    const input = { select: { type: 'node' as const, nodeType: 'paragraph' as const } };
-    const result = api.find(input);
-
-    expect(result).toEqual(FIND_RESULT);
-    expect(findAdapter.find).toHaveBeenCalledTimes(1);
-  });
-
-  it('delegates find with text selector', () => {
-    const findAdapter = makeFindAdapter(FIND_RESULT);
-    const api = createDocumentApi({
-      find: findAdapter,
-      get: makeGetAdapter(),
-      getNode: makeGetNodeAdapter(PARAGRAPH_NODE_RESULT),
-      getText: makeGetTextAdapter(),
-      info: makeInfoAdapter(),
-      comments: makeCommentsAdapter(),
-      write: makeWriteAdapter(),
-      selectionMutation: makeSelectionMutationAdapter(),
-      trackChanges: makeTrackChangesAdapter(),
-      create: makeCreateAdapter(),
-      lists: makeListsAdapter(),
-    });
-
-    const result = api.find({ select: { type: 'text', pattern: 'hello' }, limit: 5 });
-
-    expect(result).toEqual(FIND_RESULT);
-    expect(findAdapter.find).toHaveBeenCalledTimes(1);
-  });
-
-  it('delegates getNode to the getNode adapter', () => {
-    const getNodeAdpt = makeGetNodeAdapter(PARAGRAPH_NODE_RESULT);
-    const api = createDocumentApi({
-      find: makeFindAdapter(FIND_RESULT),
-      get: makeGetAdapter(),
-      getNode: getNodeAdpt,
-      getText: makeGetTextAdapter(),
-      info: makeInfoAdapter(),
-      comments: makeCommentsAdapter(),
-      write: makeWriteAdapter(),
-      selectionMutation: makeSelectionMutationAdapter(),
-      trackChanges: makeTrackChangesAdapter(),
-      create: makeCreateAdapter(),
-      lists: makeListsAdapter(),
-    });
-
-    const info = api.getNode(PARAGRAPH_ADDRESS);
-
-    expect(info).toEqual(PARAGRAPH_NODE_RESULT);
-    expect(getNodeAdpt.getNode).toHaveBeenCalledWith(PARAGRAPH_ADDRESS);
-  });
-
-  it('delegates getNodeById to the getNode adapter', () => {
-    const getNodeAdpt = makeGetNodeAdapter(PARAGRAPH_NODE_RESULT);
-    const api = createDocumentApi({
-      find: makeFindAdapter(FIND_RESULT),
-      get: makeGetAdapter(),
-      getNode: getNodeAdpt,
-      getText: makeGetTextAdapter(),
-      info: makeInfoAdapter(),
-      comments: makeCommentsAdapter(),
-      write: makeWriteAdapter(),
-      selectionMutation: makeSelectionMutationAdapter(),
-      trackChanges: makeTrackChangesAdapter(),
-      create: makeCreateAdapter(),
-      lists: makeListsAdapter(),
-    });
-
-    const info = api.getNodeById({ nodeId: 'p1', nodeType: 'paragraph' });
-
-    expect(info).toEqual(PARAGRAPH_NODE_RESULT);
-    expect(getNodeAdpt.getNodeById).toHaveBeenCalledWith({ nodeId: 'p1', nodeType: 'paragraph' });
-  });
-
-  it('delegates getText to the getText adapter', () => {
-    const getTextAdpt = makeGetTextAdapter('Hello world');
-    const api = createDocumentApi({
-      find: makeFindAdapter(FIND_RESULT),
-      get: makeGetAdapter(),
-      getNode: makeGetNodeAdapter(PARAGRAPH_NODE_RESULT),
-      getText: getTextAdpt,
-      info: makeInfoAdapter(),
-      comments: makeCommentsAdapter(),
-      write: makeWriteAdapter(),
-      selectionMutation: makeSelectionMutationAdapter(),
-      trackChanges: makeTrackChangesAdapter(),
-      create: makeCreateAdapter(),
-      lists: makeListsAdapter(),
-    });
-
-    const text = api.getText({});
-
-    expect(text).toBe('Hello world');
-    expect(getTextAdpt.getText).toHaveBeenCalledWith({});
-  });
-
-  it('delegates info to the info adapter', () => {
-    const infoAdpt = makeInfoAdapter({
-      counts: { words: 42 },
-      outline: [{ level: 1, text: 'Heading', nodeId: 'h1' }],
-    });
-    const api = createDocumentApi({
-      find: makeFindAdapter(FIND_RESULT),
-      get: makeGetAdapter(),
-      getNode: makeGetNodeAdapter(PARAGRAPH_NODE_RESULT),
-      getText: makeGetTextAdapter(),
-      info: infoAdpt,
-      comments: makeCommentsAdapter(),
-      write: makeWriteAdapter(),
-      selectionMutation: makeSelectionMutationAdapter(),
-      trackChanges: makeTrackChangesAdapter(),
-      create: makeCreateAdapter(),
-      lists: makeListsAdapter(),
-    });
-
-    const result = api.info({});
-
-    expect(result.counts.words).toBe(42);
-    expect(result.outline).toEqual([{ level: 1, text: 'Heading', nodeId: 'h1' }]);
-    expect(infoAdpt.info).toHaveBeenCalledWith({});
   });
 
   it('delegates comments.create through the comments adapter (root comment)', () => {
@@ -1043,61 +978,6 @@ describe('createDocumentApi', () => {
         code: 'CAPABILITY_UNAVAILABLE',
       },
     });
-  });
-
-  it('delegates history.get to the history adapter', () => {
-    const historyAdpt = makeHistoryAdapter();
-    const api = createDocumentApi({
-      find: makeFindAdapter(FIND_RESULT),
-      get: makeGetAdapter(),
-      getNode: makeGetNodeAdapter(PARAGRAPH_NODE_RESULT),
-      getText: makeGetTextAdapter(),
-      info: makeInfoAdapter(),
-      comments: makeCommentsAdapter(),
-      write: makeWriteAdapter(),
-      selectionMutation: makeSelectionMutationAdapter(),
-      trackChanges: makeTrackChangesAdapter(),
-      create: makeCreateAdapter(),
-      lists: makeListsAdapter(),
-      history: historyAdpt,
-    } as any);
-
-    const result = api.history.get();
-
-    expect(historyAdpt.get).toHaveBeenCalledOnce();
-    expect(result).toEqual({
-      undoDepth: 0,
-      redoDepth: 0,
-      canUndo: false,
-      canRedo: false,
-      historyUnsafeOperations: [],
-    });
-  });
-
-  it('delegates history.undo and history.redo to the history adapter', () => {
-    const historyAdpt = makeHistoryAdapter();
-    const api = createDocumentApi({
-      find: makeFindAdapter(FIND_RESULT),
-      get: makeGetAdapter(),
-      getNode: makeGetNodeAdapter(PARAGRAPH_NODE_RESULT),
-      getText: makeGetTextAdapter(),
-      info: makeInfoAdapter(),
-      comments: makeCommentsAdapter(),
-      write: makeWriteAdapter(),
-      selectionMutation: makeSelectionMutationAdapter(),
-      trackChanges: makeTrackChangesAdapter(),
-      create: makeCreateAdapter(),
-      lists: makeListsAdapter(),
-      history: historyAdpt,
-    } as any);
-
-    const undoResult = api.history.undo();
-    const redoResult = api.history.redo();
-
-    expect(historyAdpt.undo).toHaveBeenCalledOnce();
-    expect(historyAdpt.redo).toHaveBeenCalledOnce();
-    expect(undoResult).toEqual({ noop: true, revision: { before: '0', after: '0' } });
-    expect(redoResult).toEqual({ noop: true, revision: { before: '0', after: '0' } });
   });
 
   describe('changes.* delegation', () => {
@@ -1659,7 +1539,6 @@ describe('createDocumentApi', () => {
     const getResult = api.capabilities.get();
 
     expect(directResult).toEqual(getResult);
-    expect(capAdpt.get).toHaveBeenCalledTimes(2);
   });
 
   it('masks adapter-gated namespace capabilities when the adapter is absent', () => {
@@ -3516,38 +3395,6 @@ describe('createDocumentApi', () => {
       const clearViaSetStyleResult = api.tables.setStyle({ target });
       expect(clearViaSetStyleResult.success).toBe(true);
       expect(tablesAdpt.setStyle).toHaveBeenCalledWith({ target }, { changeMode: 'direct', dryRun: false });
-    });
-
-    it('delegates table reads directly without options normalization', () => {
-      const tablesAdpt = makeTablesAdapter();
-      const api = createDocumentApi({
-        find: makeFindAdapter(FIND_RESULT),
-        get: makeGetAdapter(),
-        getNode: makeGetNodeAdapter(PARAGRAPH_NODE_RESULT),
-        getText: makeGetTextAdapter(),
-        info: makeInfoAdapter(),
-        comments: makeCommentsAdapter(),
-        write: makeWriteAdapter(),
-        selectionMutation: makeSelectionMutationAdapter(),
-        trackChanges: makeTrackChangesAdapter(),
-        create: makeCreateAdapter(),
-        lists: makeListsAdapter(),
-        tables: tablesAdpt,
-      });
-
-      const target = { kind: 'block' as const, nodeType: 'table' as const, nodeId: 't1' };
-
-      const getResult = api.tables.get({ target });
-      expect(getResult.rows).toBe(3);
-      expect(getResult.columns).toBe(3);
-
-      const cellsResult = api.tables.getCells({ target });
-      expect(cellsResult.nodeId).toBe('t1');
-      expect(cellsResult.cells).toHaveLength(1);
-
-      const propsResult = api.tables.getProperties({ target });
-      expect(propsResult.nodeId).toBe('t1');
-      expect(propsResult.styleId).toBe('TableGrid');
     });
 
     it('delegates create.table with at defaulting to documentEnd', () => {

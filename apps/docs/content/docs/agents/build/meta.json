@@ -1,4 +1,13 @@
 {
   "title": "Agents",
-  "pages": ["build-an-agent", "tools", "actions", "custom-actions", "providers", "skills", "legacy-tools"]
+  "pages": [
+    "build-an-agent",
+    "tools",
+    "actions",
+    "full-preset",
+    "custom-actions",
+    "providers",
+    "skills",
+    "legacy-tools"
+  ]
 }

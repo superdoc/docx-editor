@@ -149,7 +149,12 @@ describe('splitDominantTableAtRowBoundary', () => {
     const { fragments } = split([tableFragment], rows);
     const firstMetadata: unknown = tableFragment.metadata;
     expect(fragments[1]).toMatchObject({ continuesOnNext: 1 });
-    expect(firstMetadata).toEqual({ rowBoundaries: fragmentRowBoundaries([40, 40]) });
+    expect(firstMetadata).toEqual({
+      rowBoundaries: [
+        { index: 0, y: 0.5, height: 40, minHeight: 40, resizable: true },
+        { index: 1, y: 40.5, height: 40, minHeight: 40, resizable: true },
+      ],
+    });
   });
 
   it('ends the second half where the original fragment ended when it did not continue', () => {

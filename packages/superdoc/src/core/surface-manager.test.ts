@@ -42,7 +42,6 @@ describe('SurfaceManager', () => {
         component: StubComponent,
       });
 
-      expect(handle.id).toBeDefined();
       expect(handle.mode).toBe('dialog');
       expect(typeof handle.close).toBe('function');
       expect(handle.result).toBeInstanceOf(Promise);
@@ -68,6 +67,8 @@ describe('SurfaceManager', () => {
     it('generates an id if none provided', () => {
       const h1 = manager.open({ mode: 'dialog', component: StubComponent });
       const h2 = manager.open({ mode: 'floating', component: StubComponent });
+      expect(h1.id).toMatch(/\S/);
+      expect(h2.id).toMatch(/\S/);
       expect(h1.id).not.toBe(h2.id);
     });
 

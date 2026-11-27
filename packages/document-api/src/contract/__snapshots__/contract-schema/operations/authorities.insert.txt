@@ -1,0 +1,267 @@
+{
+  "definition": {
+    "description": "Insert a new table-of-authorities block at a target location.",
+    "expectedResult": "Returns an AuthoritiesMutationResult indicating success with the TOA address or a failure.",
+    "memberPath": "authorities.insert",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "authorities/insert.mdx",
+    "referenceGroup": "authorities",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "documentStart"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "documentEnd"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "before"
+                },
+                "target": {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "after"
+                },
+                "target": {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "config": {
+          "additionalProperties": false,
+          "properties": {
+            "category": {
+              "type": "integer"
+            },
+            "entryPageSeparator": {
+              "type": "string"
+            },
+            "includeHeadings": {
+              "type": "boolean"
+            },
+            "pageRangeSeparator": {
+              "type": "string"
+            },
+            "tabLeader": {
+              "type": "string"
+            },
+            "usePassim": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "at"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "authorities": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "block"
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "nodeType": {
+                  "const": "tableOfAuthorities"
+                }
+              },
+              "required": [
+                "kind",
+                "nodeType",
+                "nodeId"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "authorities"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "authorities": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "block"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "tableOfAuthorities"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "authorities"
+      ],
+      "type": "object"
+    }
+  }
+}

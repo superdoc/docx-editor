@@ -1,0 +1,13 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/SDInboundRun"
+    },
+    {
+      "$ref": "#/$defs/SDInboundHyperlink"
+    },
+    {
+      "$ref": "#/$defs/SDInboundLineBreak"
+    }
+  ]
+}

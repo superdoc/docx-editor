@@ -1,0 +1,201 @@
+{
+  "definition": {
+    "description": "Set column configuration for a section.",
+    "expectedResult": "Returns a SectionMutationResult receipt; reports NO_OP if column configuration already matches.",
+    "memberPath": "sections.setColumns",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "sections/set-columns.mdx",
+    "referenceGroup": "sections",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "target",
+            "count"
+          ]
+        },
+        {
+          "required": [
+            "target",
+            "gap"
+          ]
+        },
+        {
+          "required": [
+            "target",
+            "equalWidth"
+          ]
+        }
+      ],
+      "properties": {
+        "count": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "equalWidth": {
+          "type": "boolean"
+        },
+        "gap": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "target": {
+          "$ref": "#/$defs/SectionAddress"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "section"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "section"
+      ],
+      "type": "object"
+    }
+  }
+}

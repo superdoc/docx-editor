@@ -84,7 +84,12 @@ export type { SfntNaturalLineMetrics } from './natural-line-metrics';
 export { parseSfntNaturalLineMetrics } from './natural-line-metrics';
 
 export type { UnicodeCoverage, UnicodeRange } from './unicode-coverage';
-export { parseUnicodeCoverage, textForUnicodeCoverage, unicodeCoverageIncludes } from './unicode-coverage';
+export {
+  parseUnicodeCoverage,
+  textForUnicodeCoverage,
+  unicodeCoverageFromCss,
+  unicodeCoverageIncludes,
+} from './unicode-coverage';
 
 export {
   CORE_SYMBOL_FALLBACK_COVERAGE,

@@ -251,7 +251,7 @@ The generated [`mutations.preview` reference](/document-api/reference/mutations/
 
 ## Show temporary edits in the document
 
-Use `mutations.beginTemporary` to display an in-memory suggestion without adding an Undo entry or clearing Redo. Supply a nonempty host `tag` and an ordered `operations` array. Each operation uses the corresponding public method's input and options:
+Use `mutations.beginTemporary` to display an in-memory suggestion without adding an Undo entry or clearing Redo. Begin, replace and cancel update the screen without firing `onEditorUpdate` or `ui.document.onChange`. Receiving editors need this preview support for the same quiet behavior: older editors still notify on remote previews. Updates that also contain a real edit, or cannot be identified as preview-only, retain ordinary remote notifications. Commit fires the ordinary change callbacks; genuine peer edits made during a preview still fire theirs. Supply a nonempty host `tag` and an ordered `operations` array. Each operation uses the corresponding public method's input and options:
 
 ```ts
 const shown = await doc.mutations.beginTemporary({
@@ -274,11 +274,39 @@ await doc.mutations.rollbackTemporary({ previewId: shown.temporary.id });
 
 `replaceTemporary` takes the same `previewId`, original `tag`, and a new complete operation array. It evaluates the new choice against the original state, then publishes the replacement once. If validation fails, the currently displayed choice remains intact. `rollbackTemporary` restores the original package and preserves the existing Undo and Redo stacks. `commitTemporary` keeps the displayed content and adds one Undo entry. A completed handle cannot be reused. Each lifecycle receipt includes `temporary: { id, phase, tag }` and the before/after revision. Temporary semantic refs and text shifts use the original preview baseline. A consumer maintaining its own anchors must retain a baseline snapshot, restore it before processing a `replace` receipt, and restore it on `rollback`; do not compose replacement shifts onto the previous choice. The revision pair describes the actual old and new displayed states. Built-in extension anchors handle this lifecycle automatically.
 
-Set `onNativeEdit: 'cancel'` on `beginTemporary` to let native editor interaction cancel the preview before continuing. Clicking into the document, typing, deletion, paste, composition and native Undo/Redo first restore the baseline, rebase the captured selection, then perform the original interaction once. A caret inside replaced wording keeps its relative offset, clamped to the restored range; positions outside it follow the actual transition. The policy remains fixed for the handle; `replaceTemporary` can omit it or repeat it. Without the option, the existing exclusive editing lease remains in effect. This does not allow unrelated programmatic edits while a preview owns the document.
+Set `onNativeEdit: 'cancel'` on `beginTemporary` to let native editor interaction cancel the preview before continuing. Clicking into the document, typing, deletion, paste, composition and native Undo/Redo first restore the baseline, rebase the captured selection, then perform the original interaction once. A caret inside replaced wording keeps its relative offset, clamped to the restored range; positions outside it follow the actual transition. The policy remains fixed for the handle; `replaceTemporary` can omit it or repeat it. Set `onNativeEdit: 'preserve'` to keep native edits made while the preview is shown. This policy takes no exclusive editing lease; `replaceTemporary`, `rollbackTemporary` and `commitTemporary` change only the preview's own wording and retain those edits, and a replacement that cannot replay a retained edit is refused. Without the option, the existing exclusive editing lease remains in effect and rejects API writes until the preview ends. With `'preserve'`, ordinary API edits such as `insert` and `replace` are not blocked and are retained, like native edits. Operations that need their own history owner are refused until the preview ends: `history.beginGroup()` returns `PRECONDITION_FAILED`, and a mixed inline `mutations.apply` plan is rejected.
 
 Native cancellation emits the existing mutation event with `receipt.temporary.phase: 'rollback'` and `receipt.temporary.cancelledBy: 'native-edit'`, including the preview ID, tag and `onNativeEdit` policy. Hosts can reset their pending choice from this event; an explicit Cancel does not carry `cancelledBy`. A lifecycle-only commit or unchanged rollback has no paint transaction ID; a rollback that changes content carries its actual paint transaction ID.
 
 Use `replaceTemporary` to switch choices directly; a separate rollback followed by begin would expose two lifecycle operations. This is the temporary lifecycle's publication guarantee, not a general layout-hold API for arbitrary calls.
+
+### Preview new paragraphs
+
+An `insert` can preview whole paragraphs before or after a block: a paragraph, heading, list item, or block content control. Pass the block as `target`, set `placement` to `'before'` or `'after'` (the default), and supply either structured `content` or `markdown`/`html` text. The new paragraphs sit in the normal document flow, so the content below them and the page breaks move as they would after a real edit:
+
+```ts
+const draft = await doc.mutations.beginTemporary({
+  tag: 'agent-draft',
+  operations: [
+    {
+      operation: 'insert',
+      input: {
+        target: { kind: 'block', nodeType: 'sdt', nodeId: 'clause-control' },
+        placement: 'after',
+        content: [
+          { kind: 'paragraph', paragraph: { inlines: [{ kind: 'run', run: { text: 'First drafted paragraph.' } }] } },
+          { kind: 'paragraph', paragraph: { inlines: [{ kind: 'run', run: { text: 'Second drafted paragraph.' } }] } },
+        ],
+      },
+      options: { changeMode: 'tracked' },
+    },
+  ],
+});
+```
+
+To stream a draft, call `replaceTemporary` with the full text so far. Each call replaces the shown paragraphs, so a growing or shrinking draft never accumulates copies. `commitTemporary` keeps the paragraphs as one Undo entry, and `rollbackTemporary` removes them.
+
+Placing paragraphs beside a content control keeps them outside it, so the control, its locks and its content stay unchanged. This needs a top-level paragraph or a nonempty top-level content control directly on that side. Adjacent locked controls remain separate, with the preview inserted between them. A control that starts or ends the document, sits next to a table, an empty control or a wrapped paragraph, or is nested inside another control or a `w:customXml` wrapper, returns `CAPABILITY_UNSUPPORTED` for that side. A newline in a plain-text `value` adds a line break within the paragraph rather than a new paragraph. A block preview can't be combined with `onNativeEdit: 'preserve'`, and `placement: 'insideStart'` or `'insideEnd'` is refused.
 
 ### Comment on text an earlier operation inserted
 
@@ -321,7 +349,7 @@ const operations = [
 
 Each run resolves the reference again, so `replaceTemporary` anchors the comment on the new wording. Only `comments.create` can use a reference, with no other edit between it and the operation it names. A reference to a missing, later or duplicate `id`, or across an edit, fails with `INVALID_INPUT` before anything changes; an operation without a text result fails with `CAPABILITY_UNSUPPORTED`. References stay within one call: `commitTemporary({ operations })` cannot target operations from the shown preview.
 
-Supported operations are plain-text `insert`, `replace`, `delete`, whole-revision `trackChanges.decide`, and `comments.create`, with their existing author, tracking, permission, target, and revision checks. Preparation is atomic. HTML, retained snapshots, and collaboration are not currently supported by this lifecycle and return typed failures. Temporary sessions take an exclusive document mutation lease: API writes are rejected until rollback or commit. Native editor writes, Undo and Redo are also rejected by default; `onNativeEdit: 'cancel'` restores the baseline before allowing those native interactions. Reads and rendering remain available. Dispose the editor when abandoning the entire document; otherwise finish the temporary session explicitly.
+Supported operations are plain-text `insert`, block `insert` before or after a block target (structured content, markdown, or HTML), plain-text `replace`, `delete`, `blocks.delete`, whole-revision `trackChanges.decide`, and `comments.create`, with their existing author, tracking, permission, target, and revision checks. Preparation is atomic. Rich content at a text selection returns `CAPABILITY_UNSUPPORTED`. The lifecycle also runs in collaborative rooms, where peers see the displayed choice and rollback removes only the preview. By default, temporary sessions take an exclusive document mutation lease: API writes are rejected until rollback or commit. Native editor writes, Undo and Redo are also rejected by default; `onNativeEdit: 'cancel'` restores the baseline before allowing those native interactions, and `onNativeEdit: 'preserve'` takes no lease and keeps them. Reads and rendering remain available. Dispose the editor when abandoning the entire document; otherwise finish the temporary session explicitly.
 
 ## Retain discussions when a revision erases their text
 
@@ -356,7 +384,7 @@ The atomic route prepares in an isolated copy of the document and commits its ch
 
 Supported entries include content-control creation, content replacement, type and property changes, lock changes, adjacent insertion, unwrap and deletion; image creation; text insertion/replacement/deletion; paragraph and inline formatting; paragraph style references; list insertion; tracked-change decisions; comment patches; and existing `mutations.apply` operations. Each operation keeps its own validation, protection, author, and tracking rules. A refused entry discards the complete proposal.
 
-The same transaction path works in collaborative rooms. Peers receive the completed group together, including new image media, control identities, and numbering. Undo and Redo act on the author’s local group and preserve unrelated peer edits. Peer history remains local to each peer.
+The same transaction path works in collaborative rooms, including tracked entries such as a tracked `format.bold` with a tracked `insert`, which the other peer can accept or reject. Peers receive the completed group together, including new image media, control identities, and numbering. Undo and Redo act on the author’s local group and preserve unrelated peer edits. Peer history remains local to each peer.
 
 `captureAs` and capture references may connect entries **inside** an atomic plan. Atomic captures do not persist across calls and `captureReturns` is unavailable, because preparation can produce revision-bound handles. Read fresh results after a successful commit. Failure expectations and per-entry history exclusion are also unavailable in this route. Hosts without atomic support refuse the opt-in before executing entries.
 

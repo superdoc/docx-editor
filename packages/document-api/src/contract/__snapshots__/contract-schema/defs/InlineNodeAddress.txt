@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "anchor": {
+      "$ref": "#/$defs/InlineAnchor"
+    },
+    "kind": {
+      "const": "inline"
+    },
+    "nodeType": {
+      "enum": [
+        "run",
+        "bookmark",
+        "comment",
+        "hyperlink",
+        "sdt",
+        "image",
+        "footnoteRef",
+        "endnoteRef",
+        "crossRef",
+        "indexEntry",
+        "citation",
+        "authorityEntry",
+        "sequenceField",
+        "tab",
+        "lineBreak"
+      ]
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "kind",
+    "nodeType",
+    "anchor"
+  ],
+  "type": "object"
+}

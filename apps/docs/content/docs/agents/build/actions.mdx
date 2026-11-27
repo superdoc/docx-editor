@@ -8,6 +8,8 @@ description: The arguments, selectors, placements, and receipts behind superdoc_
 
 The `core` preset advertises two tools. `superdoc_inspect` reads a deterministic snapshot. `superdoc_perform_action` runs one named action with flat arguments and returns a receipt. This page documents both from the action registry in `@superdoc/sdk`, and the same definitions are served over MCP under `MCP_PRESET=core`.
 
+The [full preset](/agents/build/full-preset) advertises the same two tools, adds four helper actions to `superdoc_perform_action`, and adds two tools for the rest of the Document API.
+
 The registry changes across SDK releases without changing the preset id. Pin the SDK version when your integration depends on a specific action set, and read the advertised schema after upgrading:
 
 ```ts
@@ -122,10 +124,58 @@ Arguments marked `?` are optional. Styled text arguments (`texts`, `cellTexts`, 
 
 ### Tracked-change review
 
-| Action                   | Arguments                | Tracked | Notes                                                          |
-| ------------------------ | ------------------------ | ------- | -------------------------------------------------------------- |
-| `accept_tracked_changes` | `author?`, `changeType?` | No      | `changeType` is `insert`, `delete`, `replacement`, or `format` |
-| `reject_tracked_changes` | `author?`, `changeType?` | No      |                                                                |
+| Action                   | Arguments                       | Tracked |
+| ------------------------ | ------------------------------- | ------- |
+| `accept_tracked_changes` | `id?`, `author?`, `changeType?` | No      |
+| `reject_tracked_changes` | `id?`, `author?`, `changeType?` | No      |
+
+Pass one logical change ID as `id: '…'`, or pass an array as `id: ['…', '…']`. Use IDs from the current `superdoc_inspect` tracked changes or `document.trackChanges.list()`. The [Document API example](/document-api/mutation-plans#relocate-a-discussion-and-decide-revisions-together) spells an exact array target `{ kind: 'ids', ids }`. The agent action uses the singular field `id` for both shapes.
+
+An ID array is one atomic decision. A missing ID fails the batch, and repeated IDs resolve once. Re-list after a decision or a failed stale selection. The action refuses an empty ID array and a combination of `id` with `author` or `changeType`.
+
+Use `author` for a case-insensitive match on the author text shown in the tracked-change list. Equal displayed names can match multiple changes. If your application tracks a separate account ID, select the exact change IDs it associates with that account. The optional `changeType` is `insert`, `delete`, `replacement`, or `format`. For a paired replacement, `insert` or `delete` decides just that side and leaves the other side pending. Use `replacement` to decide the pair. Omitting all three selectors decides every pending change.
+
+For a human-reviewed selection, keep the same open document handle and save the `evaluatedRevision` from the list shown to the reviewer alongside the IDs they approve. A change can keep its ID while its content changes. Require a new review after a revision mismatch or after reopening the document.
+
+```ts
+import { createAgentToolkit, type SuperDocDocument } from '@superdoc/sdk';
+
+async function acceptApprovedChanges(
+  document: SuperDocDocument,
+  approvedIds: ReadonlySet<string>,
+  displayedAuthor: string,
+  reviewedRevision: string,
+  offset = 0,
+) {
+  if (approvedIds.size === 0) return;
+
+  const { items, evaluatedRevision } = await document.trackChanges.list({ offset, limit: 100 });
+  if (evaluatedRevision !== reviewedRevision) {
+    throw new Error('The document changed. Review the current list again.');
+  }
+  const ids = items
+    .filter((change) => approvedIds.has(change.id) && change.author === displayedAuthor)
+    .map((change) => change.id);
+
+  if (ids.length !== approvedIds.size) {
+    throw new Error('Review the current list again. An approved change is missing or has a different author.');
+  }
+
+  const { dispatch } = await createAgentToolkit({ provider: 'generic', preset: 'core' });
+  const receipt = await dispatch(
+    document,
+    'superdoc_perform_action',
+    { action: 'accept_tracked_changes', id: ids },
+    { expectedRevision: reviewedRevision },
+  );
+  if (typeof receipt !== 'object' || receipt === null || !('status' in receipt) || receipt.status !== 'ok') {
+    throw new Error('Review decision failed. Inspect the receipt and re-list pending changes before retrying.');
+  }
+  return receipt;
+}
+```
+
+For a selection spanning pages, verify all approved IDs against pages from the same reviewed revision, then send one `id` array with that revision. The example's author comparison is case-sensitive. The built-in `author` selector is case-insensitive.
 
 Exclude both when a person must make the final decision. [Safety](/agents/operate/safety#keep-a-human-in-the-loop) shows the exclusion.
 

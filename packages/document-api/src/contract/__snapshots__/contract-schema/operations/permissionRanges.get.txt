@@ -1,0 +1,44 @@
+{
+  "definition": {
+    "description": "Get detailed information about a specific permission range by ID.",
+    "expectedResult": "Returns a PermissionRangeInfo object with the range principal, kind, and positions.",
+    "memberPath": "permissionRanges.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "permission-ranges/get.mdx",
+    "referenceGroup": "permissionRanges",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

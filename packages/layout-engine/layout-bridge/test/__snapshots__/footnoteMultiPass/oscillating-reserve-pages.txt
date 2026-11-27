@@ -1,0 +1,16 @@
+page 1 footnoteReserved 0 bodyMaxY 292
+  body-0 lines 0-1 at y 72
+  body-1 lines 0-1 at y 92
+  body-2 lines 0-1 at y 112
+  body-3 lines 0-1 at y 132
+  body-4 lines 0-1 at y 152
+  body-5 lines 0-1 at y 172
+  body-6 lines 0-1 at y 192
+  body-7 lines 0-1 at y 212
+  body-8 lines 0-1 at y 232
+  body-9 lines 0-1 at y 252
+  body-10 lines 0-1 at y 272
+page 2 footnoteReserved 78 bodyMaxY 92
+  body-11 lines 0-1 at y 72
+  footnote-separator-page-2-col-0 at y 246
+  footnote-1-0-paragraph lines 0-5 at y 252

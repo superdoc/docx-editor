@@ -212,6 +212,12 @@ describe('SuperDoc.export', () => {
     await expect(instance.exportEditorsToDOCX()).resolves.toEqual([]);
   });
 
+  it('reports a diagnostic when no DOCX or additional file is available', async () => {
+    const instance = createInstance();
+    vi.spyOn(instance, 'exportEditorsToDOCX').mockResolvedValue([]);
+    await expect(instance.export({ triggerDownload: false })).rejects.toThrow('No exportable DOCX is available');
+  });
+
   it.each([
     ['pdf only', ['pdf']],
     ['HTML only', ['html']],

@@ -6,7 +6,7 @@ describe('resolveSdtMetadata', () => {
     clearSdtMetadataCache();
   });
 
-  it('normalizes field annotation metadata', () => {
+  it('records normalized field annotation metadata', () => {
     const metadata = resolveSdtMetadata({
       nodeType: 'fieldAnnotation',
       attrs: {
@@ -40,36 +40,18 @@ describe('resolveSdtMetadata', () => {
       },
     });
 
-    expect(metadata).toEqual({
-      type: 'fieldAnnotation',
-      fieldId: 'field-123',
-      variant: 'text',
-      fieldType: undefined,
-      displayLabel: 'Customer',
-      defaultDisplayLabel: 'Customer',
-      alias: 'Customer Name',
-      fieldColor: '#ff00ff',
-      borderColor: undefined,
-      highlighted: false,
-      fontFamily: 'Calibri',
-      fontSize: '12pt',
-      textColor: '#333333',
-      textHighlight: '#ffff00',
-      linkUrl: 'https://example.com',
-      imageSrc: null,
-      rawHtml: { html: '<p>hello</p>' },
-      size: { width: 120, height: 32 },
-      extras: { foo: 'bar' },
-      multipleImage: true,
-      hash: 'abc123',
-      generatorIndex: 2,
-      sdtId: '456',
-      hidden: false,
-      visibility: 'hidden',
-      isLocked: true,
-      formatting: { bold: true, underline: true },
-      marks: undefined,
+    expect(metadata).toMatchSnapshot();
+  });
+
+  it('coerces string flags and normalizes visibility', () => {
+    const metadata = resolveSdtMetadata({
+      nodeType: 'fieldAnnotation',
+      attrs: { fieldId: 'flags', highlighted: 'false', isLocked: 'true', visibility: 'Hidden' },
     });
+
+    expect(metadata?.highlighted).toBe(false);
+    expect(metadata?.isLocked).toBe(true);
+    expect(metadata?.visibility).toBe('hidden');
   });
 
   it('supports structured content blocks', () => {
@@ -180,36 +162,8 @@ describe('resolveSdtMetadata', () => {
       attrs: { fieldId: 'MINIMAL_FIELD' },
     });
 
-    expect(metadata).toEqual({
-      type: 'fieldAnnotation',
-      fieldId: 'MINIMAL_FIELD',
-      variant: undefined,
-      fieldType: undefined,
-      displayLabel: undefined,
-      defaultDisplayLabel: undefined,
-      alias: undefined,
-      fieldColor: undefined,
-      borderColor: undefined,
-      highlighted: true,
-      fontFamily: null,
-      fontSize: null,
-      textColor: null,
-      textHighlight: null,
-      linkUrl: null,
-      imageSrc: null,
-      rawHtml: undefined,
-      size: null,
-      extras: null,
-      multipleImage: false,
-      hash: null,
-      generatorIndex: null,
-      sdtId: null,
-      hidden: false,
-      visibility: undefined,
-      isLocked: false,
-      formatting: undefined,
-      marks: undefined,
-    });
+    expect(metadata).toMatchSnapshot();
+    expect(metadata?.highlighted).toBe(true);
   });
 
   it('handles field annotation with missing fieldId (defaults to empty string)', () => {

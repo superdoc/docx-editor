@@ -6,7 +6,6 @@ import { buildAutoFitWorkingGridInput } from './autofit-normalize.js';
 import { computeFixedTableColumnWidths } from './fixed-table-columns.js';
 import {
   buildAutoFitTableResultCacheKey,
-  buildTableCellContentMetricsCacheKey,
   clearTableAutoFitMeasurementCaches,
   measureTableAutoFitContentMetrics,
   measureTableCellContentMetrics,
@@ -791,40 +790,38 @@ describe('table-autofit-metrics', () => {
     expect(measuringSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('changes identity-sensitive keys only when strict cache mode is selected', () => {
+  it('measures identity-only differences again when strict cache mode is selected', async () => {
+    const measuringSpy = vi.fn(measureBlock);
     const first: TableCell = {
       id: 'CELL-A',
-      blocks: [{ kind: 'paragraph', id: 'PARAGRAPH-A', runs: [{ text: 'same geometry' }] }],
+      blocks: [
+        {
+          kind: 'paragraph',
+          id: 'PARAGRAPH-A',
+          runs: [{ text: 'same geometry', fontFamily: 'Arial', fontSize: 12 }],
+        },
+      ],
     };
     const second: TableCell = {
       ...first,
       id: 'CELL-B',
-      blocks: [{ kind: 'paragraph', id: 'PARAGRAPH-B', runs: [{ text: 'same geometry' }] }],
+      blocks: first.blocks?.map((block) => ({ ...block, id: 'PARAGRAPH-B' })),
     };
 
-    const strictFirst = buildTableCellContentMetricsCacheKey(first, { maxWidth: 400 });
-    const strictSecond = buildTableCellContentMetricsCacheKey(second, { maxWidth: 400 });
-    const contentFirst = buildTableCellContentMetricsCacheKey(first, {
-      maxWidth: 400,
-      identityNeutralCache: true,
-    });
-    const contentSecond = buildTableCellContentMetricsCacheKey(second, {
-      maxWidth: 400,
-      identityNeutralCache: true,
-    });
+    await measureTableCellContentMetrics(first, { maxWidth: 400, measureBlock: measuringSpy });
+    await measureTableCellContentMetrics(second, { maxWidth: 400, measureBlock: measuringSpy });
 
-    expect(strictFirst).not.toBe(strictSecond);
-    expect(contentFirst).toBe(contentSecond);
+    expect(measuringSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('changes cell content keys when only nested inline-box metrics or appearance change', () => {
+  it('measures a cell again when only nested inline-box metrics or appearance change', async () => {
     const cell = (paddingInlineStart: number, backgroundColor: string): TableCell => ({
       id: 'inline-box-cell',
       blocks: [
         {
           kind: 'paragraph',
           id: 'inline-box-paragraph',
-          runs: [{ text: 'Citation' }],
+          runs: [{ text: 'Citation', fontFamily: 'Arial', fontSize: 12 }],
           inlineBoxes: [
             {
               id: 'citation',
@@ -845,11 +842,19 @@ describe('table-autofit-metrics', () => {
         },
       ],
     });
-    const base = buildTableCellContentMetricsCacheKey(cell(4, '#eef2ff'), { maxWidth: 400 });
+    const measuringSpy = vi.fn(measureBlock);
+    const measure = (padding: number, background: string) =>
+      measureTableCellContentMetrics(cell(padding, background), { maxWidth: 400, measureBlock: measuringSpy });
 
-    expect(buildTableCellContentMetricsCacheKey(cell(8, '#eef2ff'), { maxWidth: 400 })).not.toBe(base);
-    expect(buildTableCellContentMetricsCacheKey(cell(4, '#ffffff'), { maxWidth: 400 })).not.toBe(base);
-    expect(buildTableCellContentMetricsCacheKey(cell(4, '#eef2ff'), { maxWidth: 400 })).toBe(base);
+    await measure(4, '#eef2ff');
+    await measure(4, '#eef2ff');
+    expect(measuringSpy).toHaveBeenCalledTimes(1);
+
+    await measure(8, '#eef2ff');
+    expect(measuringSpy).toHaveBeenCalledTimes(2);
+
+    await measure(4, '#ffffff');
+    expect(measuringSpy).toHaveBeenCalledTimes(3);
   });
 
   it('reuses cached cell metrics when only absolute source positions shift', async () => {
@@ -1004,7 +1009,6 @@ describe('table-autofit-metrics', () => {
     expect(metrics.rowMetrics[0].cells[1].span).toBe(1);
     expect(metrics.rows).toHaveLength(1);
     expect(metrics.rows[0].cells).toHaveLength(2);
-    expect(metrics.cellMetricKeys).toHaveLength(2);
   });
 
   it('preserves nested percentage width measurement through the table-level metrics helper', async () => {

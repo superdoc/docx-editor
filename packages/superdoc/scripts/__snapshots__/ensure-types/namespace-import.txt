@@ -1,0 +1,38 @@
+== input files
+--- superdoc/src/public/index.d.ts
+declare class SuperDoc {}
+export { SuperDoc };
+
+--- superdoc/src/public/ui.d.ts
+export {};
+
+--- superdoc/src/public/ui-react.d.ts
+export {};
+
+--- superdoc/src/public/ui-vue.d.ts
+export {};
+
+--- superdoc/src/public/collaboration-upgrade-engine.d.ts
+export {};
+
+--- superdoc/src/public/collaboration-validation.d.ts
+export {};
+
+--- superdoc/src/public/collaboration-worker.d.ts
+export {};
+
+--- superdoc/src/public/collaboration.d.ts
+export declare function resolveCollaborationRoomName(documentId: string): string;
+
+--- superdoc/src/core/collaboration/helpers.d.ts
+import * as common from '../../../../../shared/common';
+export type Event = common.CommentEvent;
+
+== $ node ensure-types.cjs
+exit code: 1
+-- stdout
+[ensure-types] ✓ Emitted @superdoc/font-system declarations
+
+-- stderr
+[ensure-types] superdoc/src/core/collaboration/helpers.d.ts: 'import * as common from '../../../../../shared/common';' must name each symbol it takes from '../../../../../shared/common'
+

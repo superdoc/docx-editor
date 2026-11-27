@@ -1,0 +1,11 @@
+<div>
+  data-sd-borderless-cell=""
+  data-superdoc-table-row-role="body"
+  style height: 20px
+  style left: 0px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px

@@ -1,0 +1,8 @@
+## editor ready
+controller.setContext document=doc-a comments=true trackedChanges=true
+
+## review mutation commits while reconciliation fails
+controller.beginMutation {"token":"mutation-1"}
+controller.settleMutation "mutation-1" {"outcome":"committed","allResolved":false,"resumeDomains":["comments","trackedChanges"],"trackedRowCount":0}
+sidebar rows:
+(none)

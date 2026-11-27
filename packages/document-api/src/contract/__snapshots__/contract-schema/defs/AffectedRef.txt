@@ -1,0 +1,19 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/TextAddress"
+    },
+    {
+      "$ref": "#/$defs/BookmarkAddress"
+    },
+    {
+      "$ref": "#/$defs/CommentAddress"
+    },
+    {
+      "$ref": "#/$defs/TrackedChangeAddress"
+    },
+    {
+      "$ref": "#/$defs/BlockNavigationAddress"
+    }
+  ]
+}

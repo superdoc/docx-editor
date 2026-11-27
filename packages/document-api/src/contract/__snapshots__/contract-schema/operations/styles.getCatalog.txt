@@ -1,0 +1,731 @@
+{
+  "definition": {
+    "description": "List the available styles as a normalized catalogue with stable IDs, display names, type, visibility, priority, provenance, and source diagnostics. Supports view (quickGallery/recommended/currentDocument/all/inUse), type filtering, hidden/latent inclusion, usage rollups, and UI-safe preview tokens. Distinct from DocumentInfo.styles, which is a usage summary.",
+    "expectedResult": "Returns a StylesGetCatalogResult with the requested view, the full filtered style set, document defaults, per-source status, and diagnostics (including labeled fallbacks and unsupported-option notices).",
+    "memberPath": "styles.getCatalog",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "styles/get-catalog.mdx",
+    "referenceGroup": "styles",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "includeDiagnostics": {
+          "type": "boolean"
+        },
+        "includeHidden": {
+          "type": "boolean"
+        },
+        "includeLatent": {
+          "type": "boolean"
+        },
+        "includePreview": {
+          "type": "boolean"
+        },
+        "includeUsage": {
+          "type": "boolean"
+        },
+        "types": {
+          "items": {
+            "enum": [
+              "paragraph",
+              "character",
+              "linked",
+              "table",
+              "numbering"
+            ]
+          },
+          "type": "array"
+        },
+        "view": {
+          "enum": [
+            "quickGallery",
+            "recommended",
+            "currentDocument",
+            "all",
+            "inUse"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "defaults": {
+          "additionalProperties": false,
+          "properties": {
+            "characterStyleId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "paragraphStyleId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tableStyleId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "paragraphStyleId",
+            "characterStyleId",
+            "tableStyleId"
+          ],
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "part": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "info",
+                  "warning",
+                  "error"
+                ]
+              }
+            },
+            "required": [
+              "severity",
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "basedOn": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "builtin": {
+                "type": "boolean"
+              },
+              "custom": {
+                "type": "boolean"
+              },
+              "default": {
+                "type": "boolean"
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "link": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "next": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "preview": {
+                "additionalProperties": false,
+                "properties": {
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "css": {
+                    "type": "object"
+                  },
+                  "sources": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "color": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fallback": {
+                            "const": true
+                          },
+                          "origin": {
+                            "enum": [
+                              "literal",
+                              "theme",
+                              "default"
+                            ]
+                          },
+                          "shade": {
+                            "maximum": 255,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "themeColor": {
+                            "enum": [
+                              "dk1",
+                              "dk2",
+                              "lt1",
+                              "lt2",
+                              "accent1",
+                              "accent2",
+                              "accent3",
+                              "accent4",
+                              "accent5",
+                              "accent6",
+                              "hyperlink",
+                              "followedHyperlink"
+                            ]
+                          },
+                          "tint": {
+                            "maximum": 255,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "origin"
+                        ],
+                        "type": "object"
+                      },
+                      "fontFamily": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fallback": {
+                            "const": true
+                          },
+                          "origin": {
+                            "enum": [
+                              "literal",
+                              "theme"
+                            ]
+                          },
+                          "themeFont": {
+                            "enum": [
+                              "majorAscii",
+                              "majorHAnsi",
+                              "majorEastAsia",
+                              "majorBidi",
+                              "minorAscii",
+                              "minorHAnsi",
+                              "minorEastAsia",
+                              "minorBidi"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "origin"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "unsupportedReason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "available"
+                ],
+                "type": "object"
+              },
+              "priority": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "provenance": {
+                "enum": [
+                  "authored",
+                  "default-floor",
+                  "latent"
+                ]
+              },
+              "qFormat": {
+                "type": "boolean"
+              },
+              "semiHidden": {
+                "type": "boolean"
+              },
+              "type": {
+                "enum": [
+                  "paragraph",
+                  "character",
+                  "linked",
+                  "table",
+                  "numbering",
+                  "unknown"
+                ]
+              },
+              "unhideWhenUsed": {
+                "type": "boolean"
+              },
+              "usage": {
+                "additionalProperties": false,
+                "properties": {
+                  "numberingCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "paragraphCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "runCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tableCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "used": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "used"
+                ],
+                "type": "object"
+              },
+              "visibility": {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "type": "boolean"
+                  },
+                  "effectivelyHidden": {
+                    "type": "boolean"
+                  },
+                  "quickGallery": {
+                    "type": "boolean"
+                  },
+                  "recommended": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "quickGallery",
+                  "recommended",
+                  "all",
+                  "effectivelyHidden"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "aliases",
+              "type",
+              "custom",
+              "builtin",
+              "default",
+              "basedOn",
+              "next",
+              "link",
+              "priority",
+              "qFormat",
+              "hidden",
+              "semiHidden",
+              "unhideWhenUsed",
+              "locked",
+              "provenance",
+              "visibility"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceStatus": {
+          "additionalProperties": false,
+          "properties": {
+            "preview": {
+              "enum": [
+                "unsupported",
+                "available"
+              ]
+            },
+            "settings": {
+              "enum": [
+                "present",
+                "missing",
+                "malformed"
+              ]
+            },
+            "styles": {
+              "enum": [
+                "present",
+                "missing",
+                "malformed"
+              ]
+            },
+            "theme": {
+              "enum": [
+                "present",
+                "missing",
+                "malformed"
+              ]
+            },
+            "usage": {
+              "enum": [
+                "unsupported",
+                "complete",
+                "partial",
+                "failed"
+              ]
+            },
+            "view": {
+              "enum": [
+                "supported",
+                "unsupported"
+              ]
+            }
+          },
+          "required": [
+            "styles",
+            "settings",
+            "usage",
+            "preview",
+            "view"
+          ],
+          "type": "object"
+        },
+        "styles": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "basedOn": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "builtin": {
+                "type": "boolean"
+              },
+              "custom": {
+                "type": "boolean"
+              },
+              "default": {
+                "type": "boolean"
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "link": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "next": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "preview": {
+                "additionalProperties": false,
+                "properties": {
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "css": {
+                    "type": "object"
+                  },
+                  "sources": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "color": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fallback": {
+                            "const": true
+                          },
+                          "origin": {
+                            "enum": [
+                              "literal",
+                              "theme",
+                              "default"
+                            ]
+                          },
+                          "shade": {
+                            "maximum": 255,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "themeColor": {
+                            "enum": [
+                              "dk1",
+                              "dk2",
+                              "lt1",
+                              "lt2",
+                              "accent1",
+                              "accent2",
+                              "accent3",
+                              "accent4",
+                              "accent5",
+                              "accent6",
+                              "hyperlink",
+                              "followedHyperlink"
+                            ]
+                          },
+                          "tint": {
+                            "maximum": 255,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "origin"
+                        ],
+                        "type": "object"
+                      },
+                      "fontFamily": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fallback": {
+                            "const": true
+                          },
+                          "origin": {
+                            "enum": [
+                              "literal",
+                              "theme"
+                            ]
+                          },
+                          "themeFont": {
+                            "enum": [
+                              "majorAscii",
+                              "majorHAnsi",
+                              "majorEastAsia",
+                              "majorBidi",
+                              "minorAscii",
+                              "minorHAnsi",
+                              "minorEastAsia",
+                              "minorBidi"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "origin"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "unsupportedReason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "available"
+                ],
+                "type": "object"
+              },
+              "priority": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "provenance": {
+                "enum": [
+                  "authored",
+                  "default-floor",
+                  "latent"
+                ]
+              },
+              "qFormat": {
+                "type": "boolean"
+              },
+              "semiHidden": {
+                "type": "boolean"
+              },
+              "type": {
+                "enum": [
+                  "paragraph",
+                  "character",
+                  "linked",
+                  "table",
+                  "numbering",
+                  "unknown"
+                ]
+              },
+              "unhideWhenUsed": {
+                "type": "boolean"
+              },
+              "usage": {
+                "additionalProperties": false,
+                "properties": {
+                  "numberingCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "paragraphCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "runCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tableCount": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "used": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "used"
+                ],
+                "type": "object"
+              },
+              "visibility": {
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "type": "boolean"
+                  },
+                  "effectivelyHidden": {
+                    "type": "boolean"
+                  },
+                  "quickGallery": {
+                    "type": "boolean"
+                  },
+                  "recommended": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "quickGallery",
+                  "recommended",
+                  "all",
+                  "effectivelyHidden"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "aliases",
+              "type",
+              "custom",
+              "builtin",
+              "default",
+              "basedOn",
+              "next",
+              "link",
+              "priority",
+              "qFormat",
+              "hidden",
+              "semiHidden",
+              "unhideWhenUsed",
+              "locked",
+              "provenance",
+              "visibility"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "version": {
+          "const": "style-catalog/v1"
+        },
+        "view": {
+          "enum": [
+            "quickGallery",
+            "recommended",
+            "currentDocument",
+            "all",
+            "inUse"
+          ]
+        }
+      },
+      "required": [
+        "version",
+        "revision",
+        "view",
+        "defaults",
+        "items",
+        "styles",
+        "sourceStatus",
+        "diagnostics"
+      ],
+      "type": "object"
+    }
+  }
+}

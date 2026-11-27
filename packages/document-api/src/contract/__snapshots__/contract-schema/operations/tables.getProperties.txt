@@ -1,0 +1,377 @@
+{
+  "definition": {
+    "description": "Retrieve layout, style, and authored row and grid column dimensions of a table.",
+    "expectedResult": "Returns a TablesGetPropertiesOutput with direct table layout and style state and optional indexed rows and columns. Row heightPt and grid widthPt are authored points, not rendered sizes. Unspecified dimensions and unstored heightRule are omitted; explicit zero and auto are retained. Existing style options, borders, default cell margins, and cell spacing are included when explicitly set.",
+    "memberPath": "tables.getProperties",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "tables/get-properties.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "target"
+          ]
+        },
+        {
+          "required": [
+            "nodeId"
+          ]
+        }
+      ],
+      "properties": {
+        "nodeId": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/TableAddress"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "alignment": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "autoFitMode": {
+          "enum": [
+            "fixedWidth",
+            "fitContents",
+            "fitWindow"
+          ]
+        },
+        "borders": {
+          "additionalProperties": false,
+          "properties": {
+            "bottom": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "pattern": "^(#?([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})|auto)$",
+                      "type": "string"
+                    },
+                    "lineStyle": {
+                      "type": "string"
+                    },
+                    "lineWeightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "lineStyle",
+                    "lineWeightPt",
+                    "color"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "insideH": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "pattern": "^(#?([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})|auto)$",
+                      "type": "string"
+                    },
+                    "lineStyle": {
+                      "type": "string"
+                    },
+                    "lineWeightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "lineStyle",
+                    "lineWeightPt",
+                    "color"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "insideV": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "pattern": "^(#?([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})|auto)$",
+                      "type": "string"
+                    },
+                    "lineStyle": {
+                      "type": "string"
+                    },
+                    "lineWeightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "lineStyle",
+                    "lineWeightPt",
+                    "color"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "left": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "pattern": "^(#?([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})|auto)$",
+                      "type": "string"
+                    },
+                    "lineStyle": {
+                      "type": "string"
+                    },
+                    "lineWeightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "lineStyle",
+                    "lineWeightPt",
+                    "color"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "right": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "pattern": "^(#?([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})|auto)$",
+                      "type": "string"
+                    },
+                    "lineStyle": {
+                      "type": "string"
+                    },
+                    "lineWeightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "lineStyle",
+                    "lineWeightPt",
+                    "color"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "top": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "pattern": "^(#?([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})|auto)$",
+                      "type": "string"
+                    },
+                    "lineStyle": {
+                      "type": "string"
+                    },
+                    "lineWeightPt": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "lineStyle",
+                    "lineWeightPt",
+                    "color"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "cellSpacingPt": {
+          "type": "number"
+        },
+        "columns": {
+          "description": "Authored grid columns in logical order, with zero-based indices. No widths are inferred from cells or layout.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "columnIndex": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "widthPt": {
+                "description": "Direct authored grid column width in points, normalized to twip precision. Omitted when unspecified; explicit zero is retained. Not a cell preferred width or rendered width.",
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "columnIndex"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "defaultCellMargins": {
+          "additionalProperties": false,
+          "properties": {
+            "bottomPt": {
+              "type": "number"
+            },
+            "leftPt": {
+              "type": "number"
+            },
+            "rightPt": {
+              "type": "number"
+            },
+            "topPt": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "direction": {
+          "enum": [
+            "ltr",
+            "rtl"
+          ]
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "preferredWidth": {
+          "type": "number"
+        },
+        "preferredWidthType": {
+          "enum": [
+            "dxa",
+            "auto",
+            "pct"
+          ]
+        },
+        "rows": {
+          "description": "Rows in logical table order, with zero-based indices and optional authored dimensions. These are source values, not rendered heights.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "heightPt": {
+                "description": "Direct authored row height in points, normalized to twip precision. Omitted when unspecified; explicit zero is retained.",
+                "minimum": 0,
+                "type": "number"
+              },
+              "heightRule": {
+                "description": "Direct authored height rule. Omitted when not stored, independently of heightPt.",
+                "enum": [
+                  "atLeast",
+                  "exact",
+                  "auto"
+                ]
+              },
+              "rowIndex": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "rowIndex"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "styleId": {
+          "type": "string"
+        },
+        "styleOptions": {
+          "additionalProperties": false,
+          "properties": {
+            "bandedColumns": {
+              "type": "boolean"
+            },
+            "bandedRows": {
+              "type": "boolean"
+            },
+            "firstColumn": {
+              "type": "boolean"
+            },
+            "headerRow": {
+              "type": "boolean"
+            },
+            "lastColumn": {
+              "type": "boolean"
+            },
+            "lastRow": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "nodeId",
+        "address"
+      ],
+      "type": "object"
+    }
+  }
+}

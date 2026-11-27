@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "items": {
+        "$ref": "#/$defs/SDInboundContentNode"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "level": {
+      "maximum": 8,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "marker": {
+      "type": "string"
+    },
+    "path": {
+      "items": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "level",
+    "content"
+  ],
+  "type": "object"
+}

@@ -222,14 +222,21 @@ describe('WatermarkSurface', () => {
     const input = wrapper.get<HTMLInputElement>('input[type="file"]');
     Object.defineProperty(input.element, 'files', {
       configurable: true,
+      value: [new File(['image'], 'logo.png', { type: 'image/png' })],
+    });
+    await input.trigger('change');
+    await vi.waitFor(() => expect(state().draft.src).toBe('data:image/png;base64,aW1hZ2U='));
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
       value: [new File(['bad'], 'image.svg', { type: 'image/svg+xml' })],
     });
     await input.trigger('change');
     expect(wrapper.get('[role="alert"]').text()).toContain('PNG or JPEG');
-    expect(state().draft.src).toBeUndefined();
+    expect(state().draft).toMatchObject({ src: 'data:image/png;base64,aW1hZ2U=', pictureName: 'logo.png' });
     Object.defineProperty(input.element, 'files', { value: [] });
     await input.trigger('change');
-    expect(state().draft.src).toBeUndefined();
+    await flushPromises();
+    expect(state().draft).toMatchObject({ src: 'data:image/png;base64,aW1hZ2U=', pictureName: 'logo.png' });
   });
 
   it('discards file completion after closing and unsubscribes when unmounted', async () => {

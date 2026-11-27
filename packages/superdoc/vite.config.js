@@ -302,6 +302,7 @@ export default defineConfig(({ mode, command }) => {
           'public/ui-react': 'src/public/ui-react.ts',
           'public/ui-vue': 'src/public/ui-vue.ts',
           'public/collaboration-worker': 'src/public/collaboration-worker.ts',
+          'public/collaboration': 'src/public/collaboration.ts',
         },
         external: (id) => {
           if (id === 'superdoc-entry-vue') return true;

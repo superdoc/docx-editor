@@ -32,7 +32,7 @@ interface ImageFilePicker {
  * Whether a picked/dropped file is an insertable image (PNG/JPEG). Falls back
  * to the file extension when the browser reports no MIME type.
  */
-export function isSupportedImageFile(file: File | null | undefined): boolean {
+export function isSupportedImageFile(file: NamedBlob | null | undefined): boolean {
   if (!file) return false;
   const type = typeof file.type === 'string' ? file.type.toLowerCase() : '';
   if (type) return SUPPORTED_IMAGE_MIME_TYPES.has(type);

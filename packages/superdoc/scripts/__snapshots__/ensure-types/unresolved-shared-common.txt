@@ -1,0 +1,38 @@
+== input files
+--- shared/common/event-types.d.ts
+export type CommentEvent = string;
+
+--- superdoc/src/ok.d.ts
+import { CommentEvent } from '../../shared/common/event-types.js';
+export type A = CommentEvent;
+
+--- superdoc/src/bare.d.ts
+import { CommentEvent } from '../../shared/common';
+export type B = CommentEvent;
+
+--- superdoc/src/missing.d.ts
+export type C = import('../../shared/common/missing.js').Missing;
+
+== $ node audit-declarations.cjs
+exit code: 1
+-- stdout
+[audit-declarations] Declaration surface audit
+========================================================================
+Scanned: <n> declaration files under <dist>/
+
+OK    Private @superdoc/* specifiers: none
+OK    Package-manager-internal paths: none
+OK    Relocated packages do not appear in shim file (11 guarded)
+FAIL  Unrelocated shared/common specifiers (ensure-types must rewrite each to a .js declaration under dist/shared/common/, or packed consumers cannot resolve it): 2 files
+      superdoc/src/bare.d.ts: ../../shared/common
+      superdoc/src/missing.d.ts: ../../shared/common/missing.js
+
+========================================================================
+FAIL findings: unrelocated-shared-common
+
+Exiting non-zero (strict mode is the default since SD-2859).
+Review the findings above for the violated declaration-surface rules.
+Pass --informational (or SUPERDOC_AUDIT_INFORMATIONAL=1) to opt out for local iteration on a known leak.
+
+-- stderr
+

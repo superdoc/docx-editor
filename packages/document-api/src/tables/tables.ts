@@ -20,6 +20,7 @@ import type {
   TablesSetLayoutInput,
   TablesSetTableOptionsInput,
   TablesSortInput,
+  TableBorderPatch,
   TableBorderSpec,
   TableStyleOptionsPatch,
 } from '../types/table-operations.types.js';
@@ -125,7 +126,8 @@ function validateRowLocator(input: RowLocatorInput, operationName: string, optio
   if (input.target.nodeType === 'table' && !hasRowIndex && !isAppendShorthand) {
     throw new DocumentApiValidationError(
       'INVALID_TARGET',
-      `${operationName}: rowIndex is required when target is a table.`,
+      `${operationName}: rowIndex is required when target is a table. ` +
+        `Pass rowIndex (0-based) with the table target, or a tableRow target; to change every row, make one call per row.`,
     );
   }
 
@@ -204,6 +206,16 @@ function validateCellOrTableScopedCellLocator(input: CellOrTableScopedCellLocato
       );
     }
   }
+}
+
+export function normalizeInsertRowAtTableEdge<T extends { target?: unknown; rowIndex?: unknown; position?: unknown }>(
+  input: T,
+): T {
+  if (input == null || input.rowIndex != null || !isRecord(input.target)) return input;
+  if (input.target.kind !== 'block' || input.target.nodeType !== 'table') return input;
+  if (input.position === 'above') return { ...input, rowIndex: 0 };
+  if (input.position === 'below') return { ...input, position: undefined };
+  return input;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,17 +354,24 @@ function validateStyleOptionsPatch(options: TableStyleOptionsPatch, operationNam
   }
 }
 
+const BORDER_SPEC_SHAPE =
+  'A border is {lineStyle:"single", lineWeightPt:0.5, color:"000000"} with lineWeightPt in points; null or lineStyle "none" removes the border.';
+
+function receivedKeys(spec: object): string {
+  return `Received keys: ${Object.keys(spec).join(', ') || 'none'}.`;
+}
+
 function validateBorderSpec(spec: TableBorderSpec, fieldPath: string, operationName: string): void {
   if (typeof spec !== 'object' || spec === null) {
     throw new DocumentApiValidationError(
       'INVALID_INPUT',
-      `${operationName}: ${fieldPath} must be a border spec object.`,
+      `${operationName}: ${fieldPath} must be a border spec object or null. ${BORDER_SPEC_SHAPE}`,
     );
   }
   if (typeof spec.lineStyle !== 'string' || spec.lineStyle.length === 0) {
     throw new DocumentApiValidationError(
       'INVALID_INPUT',
-      `${operationName}: ${fieldPath}.lineStyle must be a non-empty string.`,
+      `${operationName}: ${fieldPath}.lineStyle must be a non-empty string. ${BORDER_SPEC_SHAPE} ${receivedKeys(spec)}`,
       {
         field: `${fieldPath}.lineStyle`,
       },
@@ -361,7 +380,7 @@ function validateBorderSpec(spec: TableBorderSpec, fieldPath: string, operationN
   if (typeof spec.lineWeightPt !== 'number' || !Number.isFinite(spec.lineWeightPt) || spec.lineWeightPt <= 0) {
     throw new DocumentApiValidationError(
       'INVALID_INPUT',
-      `${operationName}: ${fieldPath}.lineWeightPt must be a positive number.`,
+      `${operationName}: ${fieldPath}.lineWeightPt must be a positive number. ${BORDER_SPEC_SHAPE} ${receivedKeys(spec)}`,
       { field: `${fieldPath}.lineWeightPt` },
     );
   }
@@ -410,6 +429,40 @@ const VALID_APPLY_TO_VALUES = new Set([
 ]);
 
 const VALID_BORDER_EDGE_KEYS = new Set(['top', 'bottom', 'left', 'right', 'insideH', 'insideV']);
+
+const BORDER_PATCH_EDGES = ['top', 'bottom', 'left', 'right', 'insideH', 'insideV'] as const;
+
+const NO_BORDER_LINE_STYLES = new Set(['none', 'nil']);
+
+function isNoBorderSpec(value: unknown): boolean {
+  return (
+    isRecord(value) && typeof value.lineStyle === 'string' && NO_BORDER_LINE_STYLES.has(value.lineStyle.toLowerCase())
+  );
+}
+
+function isTableBorderSpec(value: unknown): value is TableBorderSpec {
+  return (
+    isRecord(value) &&
+    typeof value.lineStyle === 'string' &&
+    typeof value.lineWeightPt === 'number' &&
+    typeof value.color === 'string'
+  );
+}
+
+export function normalizeTablesSetBordersInput(input: TablesSetBordersInput): TablesSetBordersInput {
+  if (!isRecord(input)) return input;
+  if (input.mode === 'applyTo') return isNoBorderSpec(input.border) ? { ...input, border: null } : input;
+  if (input.mode !== 'edges' || !isRecord(input.edges)) return input;
+  const shared = input.border;
+  const edges: TableBorderPatch = { ...input.edges };
+  for (const edge of BORDER_PATCH_EDGES) {
+    const value: unknown = input.edges[edge];
+    if (isNoBorderSpec(value)) edges[edge] = null;
+    else if (value === true && isNoBorderSpec(shared)) edges[edge] = null;
+    else if (value === true && isTableBorderSpec(shared)) edges[edge] = shared;
+  }
+  return { ...input, edges };
+}
 
 // ---------------------------------------------------------------------------
 // Convenience operation execute wrappers
@@ -481,12 +534,15 @@ export function executeTablesSetBorders<TResult>(
   input: TablesSetBordersInput,
   options?: MutationOptions,
 ): TResult {
+  input = normalizeTablesSetBordersInput(input);
   validateTableLocator(input, operationName);
 
   if (!('mode' in input) || (input.mode !== 'applyTo' && input.mode !== 'edges')) {
-    throw new DocumentApiValidationError('INVALID_INPUT', `${operationName}: mode must be "applyTo" or "edges".`, {
-      field: 'mode',
-    });
+    throw new DocumentApiValidationError(
+      'INVALID_INPUT',
+      `${operationName}: mode must be "applyTo" (with applyTo and border) or "edges" (with edges:{top?, bottom?, left?, right?, insideH?, insideV?}). ${BORDER_SPEC_SHAPE}`,
+      { field: 'mode' },
+    );
   }
 
   if (input.mode === 'applyTo') {

@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "blockIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "trackedChange",
+        "comment"
+      ]
+    },
+    "omittedReason": {
+      "enum": [
+        "reviewMode",
+        "unsupported"
+      ]
+    },
+    "outputRanges": {
+      "items": {
+        "$ref": "#/$defs/Range"
+      },
+      "type": "array"
+    },
+    "side": {
+      "enum": [
+        "inserted",
+        "deleted",
+        "source",
+        "destination",
+        "formatting"
+      ]
+    },
+    "sourceTarget": {
+      "$ref": "#/$defs/TextTarget"
+    },
+    "status": {
+      "enum": [
+        "emitted",
+        "partiallyEmitted",
+        "omitted"
+      ]
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "blockIds",
+    "outputRanges",
+    "status"
+  ],
+  "type": "object"
+}

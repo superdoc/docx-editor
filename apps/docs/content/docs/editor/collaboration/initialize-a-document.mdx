@@ -79,6 +79,23 @@ If creation reports that the room exists, reopen the intended document with `joi
 
 To reset a room on purpose, delete it on the server and create it again. See [Delete or reset a room](/editor/collaboration/deploy-a-server#delete-or-reset-a-room).
 
+### Opt into create-or-join
+
+Use `roomMode: 'create-or-join'` when your application can supply the DOCX for a missing room and should join a room that already exists. Each open checks the synchronized room state; an existing room keeps its shared content and review attribution even if the supplied DOCX differs.
+
+```ts
+const openConnection = {
+  ...createConnection,
+  roomMode: 'create-or-join',
+} satisfies DocumentCollaborationConfig;
+```
+
+The Node SDK accepts the same value in `collaboration.roomMode`; the CLI also accepts `--room-mode create-or-join`. Omission still means `join`, and explicit `create` still refuses an existing room.
+
+This option does not reserve the room. Follow [backend coordination and server write admission](/editor/collaboration/coordinate-room-creation) when multiple requests can initialize it. Admit one creator, keep other requests waiting while initialization is pending, and allow joiners after the committed room is visible. A pending, corrupt, inaccessible, or incompatible room is not an empty room: an unsuccessful open reports its error rather than replacing it. After a competing creation refusal, reconcile the authoritative room state before reopening; do not automatically convert arbitrary errors into creation attempts.
+
+Repeated mounts can use the same option without retaining a client-side room-exists flag. Persistence still depends on your server storage and room lifetime, as described below.
+
 ## Choose where initialization belongs
 
 The browser path above works when the first editor supplies the DOCX. Two other starting points have different owners:

@@ -1,0 +1,4 @@
+mount: 0 doc.styles.getCatalog calls
+ui.styles.getCatalog() -> view all, items [Normal, Heading1, Quote]; doc.styles.getCatalog calls [()]
+ui.styles.getCatalog({"view":"quickGallery"}) -> view quickGallery, items [Heading1]; doc.styles.getCatalog calls [({"view":"quickGallery"})]
+ui.styles.getCatalog() -> view all, items [Normal, Heading1, Quote]; doc.styles.getCatalog calls []

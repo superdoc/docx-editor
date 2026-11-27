@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vite-plus/test';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import CommentInputSource from './CommentInput.vue?raw';
@@ -60,6 +60,25 @@ describe('CommentInput.vue', () => {
     commentsStore.currentCommentText = '<p>first <strong>line</strong><br>continued</p><p></p><p>last &amp; line</p>';
     const wrapper = mountInput();
     expect(wrapper.find('textarea').element.value).toBe('first line\ncontinued\n\nlast & line');
+  });
+
+  it('edits benign rich comments as text without parsing a separate document', async () => {
+    const parseDocument = vi.spyOn(DOMParser.prototype, 'parseFromString');
+    try {
+      commentsStore.currentCommentText =
+        '<p>First <strong>bold</strong> &amp; &lt;TODO&gt;<br>next <span data-id="u1">@Reviewer</span> <a>link</a></p><p></p><p>Last &quot;line&quot;</p>';
+      const wrapper = mountInput();
+      const textarea = wrapper.find('textarea.superdoc-field');
+      const expected = 'First bold & <TODO>\nnext @Reviewer link\n\nLast "line"';
+      expect(textarea.element.value).toBe(expected);
+      expect(parseDocument).not.toHaveBeenCalled();
+      await textarea.setValue(`${expected}\nDone`);
+      expect(textarea.element.value).toBe(`${expected}\nDone`);
+      expect(commentsStore.currentCommentText).toContain('&lt;TODO&gt;');
+      expect(commentsStore.currentCommentText).toContain('&amp;');
+    } finally {
+      parseDocument.mockRestore();
+    }
   });
 
   it('stores configured user selections as structured mention identities', async () => {

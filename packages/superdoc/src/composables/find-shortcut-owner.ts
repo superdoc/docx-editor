@@ -13,6 +13,12 @@
 
 let currentOwner: unknown = null;
 
+export function isFindShortcutEvent(e: KeyboardEvent, platform = globalThis.navigator?.platform ?? ''): boolean {
+  const isMac = /mac|iphone|ipad|ipod/i.test(platform);
+  const command = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  return command && !e.altKey && e.key?.toLowerCase?.() === 'f';
+}
+
 /**
  * Make `owner` the ambient find-shortcut owner. Call on mount and on user
  * interaction (pointerdown / focusin inside the instance) so "the SuperDoc the

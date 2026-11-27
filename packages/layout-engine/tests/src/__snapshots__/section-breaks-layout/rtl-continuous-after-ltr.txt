@@ -1,0 +1,3 @@
+page 1 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=0 sectionRefs={-}
+  "LTR" x=48 y=48
+  "RTL" x=264 y=68

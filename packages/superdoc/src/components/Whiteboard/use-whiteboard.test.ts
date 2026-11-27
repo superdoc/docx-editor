@@ -3,7 +3,7 @@ import { defineComponent, ref, h, nextTick, type Ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import type { SuperDocComponentProxy } from '../../composables/use-superdoc-instance.js';
 import type { Document, Modules } from '../../core/types/index.js';
-import type { Whiteboard, WhiteboardPageSize } from '../../core/whiteboard/Whiteboard';
+import { Whiteboard, type WhiteboardPageSize } from '../../core/whiteboard/Whiteboard';
 import type { WhiteboardPage } from '../../core/whiteboard/WhiteboardPage';
 import { useWhiteboard, type UseWhiteboardOptions } from './use-whiteboard.js';
 
@@ -118,23 +118,56 @@ describe('useWhiteboard', () => {
     expect(exposed().whiteboardEnabled.value).toBe(true);
   });
 
-  it('subscribes to whiteboard events when whiteboard is present', () => {
-    mountWithComposable({ proxy, layers, documents, modules: {} });
-    expect(whiteboard.on).toHaveBeenCalledWith('change', expect.any(Function));
-    expect(whiteboard.on).toHaveBeenCalledWith('setData', expect.any(Function));
-    expect(whiteboard.on).toHaveBeenCalledWith('enabled', expect.any(Function));
-    expect(whiteboard.on).toHaveBeenCalledWith('opacity', expect.any(Function));
-    expect(whiteboard.on).toHaveBeenCalledWith('tool', expect.any(Function));
-  });
+  it('re-emits real Whiteboard events until unmount', () => {
+    const board = new Whiteboard();
+    const emitted: unknown[][] = [];
+    let exposed: ReturnType<typeof useWhiteboard<Whiteboard>> | undefined;
+    const wrapper = mount(
+      defineComponent({
+        setup() {
+          exposed = useWhiteboard({
+            proxy: { $superdoc: { emit: (...args: unknown[]) => emitted.push(args), whiteboard: board } },
+            layers,
+            documents,
+            modules: {},
+          });
+          return () => h('div');
+        },
+      }),
+    );
 
-  it('unsubscribes whiteboard events on unmount', () => {
-    const { wrapper } = mountWithComposable({ proxy, layers, documents, modules: {} });
+    const readState = () => {
+      if (!exposed) throw new Error('useWhiteboard did not run');
+      return {
+        enabled: exposed.whiteboardEnabled.value,
+        opacity: exposed.whiteboardOpacity.value,
+        pages: exposed.whiteboardPages.value.map((page) => page.pageIndex),
+      };
+    };
+
+    board.setTool('pen');
+    board.setEnabled(true);
+    board.setOpacity(0.5);
+    board.setWhiteboardData({ pages: { 1: {} } });
+
+    expect(emitted).toEqual([
+      ['whiteboard:tool', 'pen'],
+      ['whiteboard:enabled', true],
+      [
+        'whiteboard:change',
+        { pages: { 1: { strokes: [], text: [], images: [] } }, meta: { pageSizes: {} }, version: 1 },
+      ],
+    ]);
+    expect(readState()).toEqual({ enabled: true, opacity: 0.5, pages: [1] });
+
     wrapper.unmount();
-    expect(whiteboard.off).toHaveBeenCalledWith('change', expect.any(Function));
-    expect(whiteboard.off).toHaveBeenCalledWith('setData', expect.any(Function));
-    expect(whiteboard.off).toHaveBeenCalledWith('enabled', expect.any(Function));
-    expect(whiteboard.off).toHaveBeenCalledWith('opacity', expect.any(Function));
-    expect(whiteboard.off).toHaveBeenCalledWith('tool', expect.any(Function));
+    board.setTool('eraser');
+    board.setEnabled(false);
+    board.setOpacity(0.2);
+    board.setWhiteboardData({});
+
+    expect(emitted).toHaveLength(3);
+    expect(readState()).toEqual({ enabled: true, opacity: 0.5, pages: [1] });
   });
 
   describe('event re-emission', () => {

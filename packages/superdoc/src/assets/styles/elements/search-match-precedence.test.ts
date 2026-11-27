@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vite-plus/test';
+import { describe, it, expect, afterEach } from 'vite-plus/test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -12,12 +12,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // whose source rPr carries a highlight mark (e.g. `<w:highlight w:val="white"/>`).
 // These tests guard the two CSS sites that paint the transient search colour.
 
-const repoRoot = join(__dirname, '..', '..', '..', '..', '..', '..');
+const stylesRoot = join(__dirname, '..');
 
-const superdocCss = readFileSync(
-  join(repoRoot, 'packages', 'superdoc', 'src', 'assets', 'styles', 'elements', 'superdoc.css'),
-  'utf8',
-);
+const inlineImports = (path: string): string =>
+  readFileSync(path, 'utf8').replace(/@import\s+'([^']+)';/g, (_statement, relative: string) =>
+    inlineImports(join(dirname(path), relative)),
+  );
+
+const superdocStyles = inlineImports(join(stylesRoot, 'main.css'));
+
+const superdocCss = readFileSync(join(__dirname, 'superdoc.css'), 'utf8');
 
 const extractRuleBody = (css: string, selector: string) => {
   const idx = css.indexOf(selector);
@@ -28,20 +32,54 @@ const extractRuleBody = (css: string, selector: string) => {
   return css.slice(open + 1, close);
 };
 
+const INLINE_RUN_HIGHLIGHT = 'rgb(255, 255, 255)';
+
+const renderRun = (classes: string[], attributes: Record<string, string> = {}): HTMLElement => {
+  const root = document.createElement('div');
+  root.className = 'superdoc';
+  const span = document.createElement('span');
+  span.className = classes.join(' ');
+  span.setAttribute('style', `background-color: ${INLINE_RUN_HIGHLIGHT};`);
+  for (const [name, value] of Object.entries(attributes)) span.setAttribute(name, value);
+  root.append(span);
+  document.body.append(root);
+  return span;
+};
+
 describe('search-match CSS precedence (SD-3045)', () => {
-  describe('packages/superdoc/src/assets/styles/elements/superdoc.css', () => {
-    it('the coarse match fallback excludes exact-range carriers and uses !important', () => {
-      const selector = '.superdoc .ProseMirror-search-match:not([data-sd-search-exact-highlight])';
-      const body = extractRuleBody(superdocCss, selector);
-      expect(body, `${selector} rule must exist`).not.toBeNull();
-      expect(body).toMatch(/background\s*:[^;]*!important/);
+  describe('packages/superdoc/src/assets/styles/main.css', () => {
+    afterEach(() => {
+      document.head.innerHTML = '';
+      document.body.innerHTML = '';
     });
 
-    it('the coarse active fallback excludes exact-range carriers and uses !important', () => {
-      const selector = '.superdoc .ProseMirror-active-search-match:not([data-sd-search-exact-highlight])';
-      const body = extractRuleBody(superdocCss, selector);
-      expect(body, `${selector} rule must exist`).not.toBeNull();
-      expect(body).toMatch(/background\s*:[^;]*!important/);
+    const loadSuperdocStyles = () => {
+      const styleEl = document.createElement('style');
+      styleEl.textContent = superdocStyles;
+      document.head.append(styleEl);
+    };
+
+    it('paints a coarse match over the run highlight written inline by the painter', () => {
+      loadSuperdocStyles();
+      const run = renderRun(['ProseMirror-search-match']);
+      expect(getComputedStyle(run).backgroundColor).toBe('rgba(255, 213, 0, 0.4)');
+    });
+
+    it('paints the active coarse match over the inline run highlight and the plain match color', () => {
+      loadSuperdocStyles();
+      const active = renderRun(['ProseMirror-active-search-match']);
+      const both = renderRun(['ProseMirror-search-match', 'ProseMirror-active-search-match']);
+      expect(getComputedStyle(active).backgroundColor).toBe('rgba(255, 150, 0, 0.6)');
+      expect(getComputedStyle(both).backgroundColor).toBe('rgba(255, 150, 0, 0.6)');
+    });
+
+    it('leaves exact-range carriers to the custom highlight and keeps their inline run highlight', () => {
+      loadSuperdocStyles();
+      const exact = { 'data-sd-search-exact-highlight': '' };
+      const match = renderRun(['ProseMirror-search-match'], exact);
+      const active = renderRun(['ProseMirror-active-search-match'], exact);
+      expect(getComputedStyle(match).backgroundColor).toBe(INLINE_RUN_HIGHLIGHT);
+      expect(getComputedStyle(active).backgroundColor).toBe(INLINE_RUN_HIGHLIGHT);
     });
 
     it('uses the existing search variables for exact custom-highlight colors', () => {

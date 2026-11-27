@@ -1,0 +1,73 @@
+<div class="superdoc-line">
+  data-layout-epoch="0"
+  style color: inherit
+  style display: block
+  style font-size: 0px
+  style height: 21.313333px
+  style line-height: 21.313333px
+  style overflow: visible
+  style position: relative
+  style text-align: left
+  style white-space: pre
+  <span class="superdoc-text-run">
+    data-layout-epoch="0"
+    data-superdoc-inline-box-from="0"
+    data-superdoc-inline-box-to="6"
+    style font-family: "Liberation Sans"
+    style font-kerning: none
+    style font-size: 16px
+    style font-synthesis: weight style
+    style font-variant-caps: normal
+    style left: 0px
+    style position: absolute
+    style text-decoration-line: none
+    style z-index: 1
+    "Name: "
+  <span class="superdoc-tab">
+    data-layout-epoch="0"
+    style display: inline-block
+    style height: 21.313333px
+    style left: 50px
+    style pointer-events: none
+    style position: absolute
+    style top: 0px
+    style visibility: hidden
+    style width: 48px
+    style z-index: 1
+  <span class="superdoc-tab">
+    data-layout-epoch="0"
+    style display: inline-block
+    style height: 21.313333px
+    style left: 98px
+    style pointer-events: none
+    style position: absolute
+    style top: 0px
+    style visibility: hidden
+    style width: 94px
+    style z-index: 1
+  <span class="superdoc-text-run">
+    data-layout-epoch="0"
+    data-superdoc-inline-box-from="8"
+    data-superdoc-inline-box-to="13"
+    style font-family: "Liberation Sans"
+    style font-kerning: none
+    style font-size: 16px
+    style font-synthesis: weight style
+    style font-variant-caps: normal
+    style left: 192px
+    style position: absolute
+    style text-decoration-line: none
+    style z-index: 1
+    "Value"
+  <div class="superdoc-underline-overlay">
+    aria-hidden="true"
+    style border-top-color: #000000
+    style border-top-style: solid
+    style border-top-width: 1px
+    style height: 0px
+    style left: 0px
+    style pointer-events: none
+    style position: absolute
+    style top: 17.912515px
+    style width: 232px
+    style z-index: 2

@@ -1,0 +1,98 @@
+{
+  "definition": {
+    "description": "Read the current document protection state including editing restrictions, write protection, and read-only recommendation.",
+    "expectedResult": "Returns a DocumentProtectionState with editingRestriction, writeProtection, and readOnlyRecommended fields.",
+    "memberPath": "protection.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "protection/get.mdx",
+    "referenceGroup": "protection",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "editingRestriction": {
+          "additionalProperties": false,
+          "properties": {
+            "enforced": {
+              "type": "boolean"
+            },
+            "formattingRestricted": {
+              "type": "boolean"
+            },
+            "mode": {
+              "enum": [
+                "none",
+                "readOnly",
+                "comments",
+                "trackedChanges",
+                "forms"
+              ],
+              "type": "string"
+            },
+            "passwordProtected": {
+              "type": "boolean"
+            },
+            "runtimeEnforced": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "mode",
+            "enforced",
+            "runtimeEnforced",
+            "passwordProtected",
+            "formattingRestricted"
+          ],
+          "type": "object"
+        },
+        "readOnlyRecommended": {
+          "type": "boolean"
+        },
+        "writeProtection": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "passwordProtected": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled",
+            "passwordProtected"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "editingRestriction",
+        "writeProtection",
+        "readOnlyRecommended"
+      ],
+      "type": "object"
+    }
+  }
+}

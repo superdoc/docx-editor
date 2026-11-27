@@ -1,0 +1,56 @@
+{
+  "definition": {
+    "description": "List all images in the document.",
+    "expectedResult": "Returns an ImagesListResult with total count and image summaries.",
+    "memberPath": "images.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "images/list.mdx",
+    "referenceGroup": "images",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "items"
+      ],
+      "type": "object"
+    }
+  }
+}

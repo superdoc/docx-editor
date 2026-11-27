@@ -1,0 +1,183 @@
+{
+  "definition": {
+    "description": "Read the numbering-aware list state for a paragraph (numId, ilvl, abstract reference, level format). Returns null when the target is not a list item. `target.story` locates a paragraph outside the main body.",
+    "expectedResult": "Returns a ListsGetStateResult with `isListItem` plus numId/ilvl/abstract/numFmt metadata when present.",
+    "memberPath": "lists.getState",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [
+        "TARGET_NOT_FOUND",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "lists/get-state.mdx",
+    "referenceGroup": "lists",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "block"
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "nodeType": {
+                  "const": "paragraph"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "kind",
+                "nodeType",
+                "nodeId"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "block"
+                },
+                "nodeId": {
+                  "type": "string"
+                },
+                "nodeType": {
+                  "const": "listItem"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "kind",
+                "nodeType",
+                "nodeId"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "abstractNumId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ilvl": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "isListItem": {
+              "type": "boolean"
+            },
+            "lvlText": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "numFmt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "numId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "seed": {
+              "enum": [
+                "bullet",
+                "ordered",
+                null
+              ],
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "isListItem",
+            "ilvl"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  }
+}

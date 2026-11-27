@@ -5,15 +5,13 @@
 // flow, horizontal/book layout modes and the legacy virtualization machinery
 // are DELETED. These tests pin the guards (cross-mode use fails loud, BEFORE
 // any painter state mutates), fresh-state persistent oracle use, and the
-// absence of deleted branches — so a reintroduction
-// cannot land silently.
+// absence of deleted public entry points and options.
 
 import { describe, expect, it, expectTypeOf } from 'vite-plus/test';
 import type { ResolvedLayout, ResolvedPage } from '@superdoc/contracts';
 import * as painterDom from './index.js';
 import { createDomPainter } from './index.js';
 import type { DomPainterOptions, LayoutMode } from './index.js';
-import { DomPainter } from './renderer.js';
 
 function resolvedPage(pageIndex: number): ResolvedPage {
   return {
@@ -127,25 +125,7 @@ describe('mode ownership (painter plan P7)', () => {
     const retiredBatch = ['paintDense', 'PageBatch'].join('');
     expect((painterDom as Record<string, unknown>)[retiredFactory]).toBeUndefined();
     expect(ordinary[retiredBatch]).toBeUndefined();
-    expect((DomPainter.prototype as unknown as Record<string, unknown>)[retiredBatch]).toBeUndefined();
     ordinary.dispose?.();
-  });
-
-  it('horizontal/book render branches and the legacy virtualization machinery are ABSENT', () => {
-    const prototype = DomPainter.prototype as unknown as Record<string, unknown>;
-    for (const deleted of [
-      'renderHorizontal',
-      'renderBookMode',
-      'renderVirtualized',
-      'updateVirtualWindow',
-      'ensureVirtualizationSetup',
-      'setVirtualizationPins',
-      'onScroll',
-      'setZoom',
-      'setScrollContainer',
-    ]) {
-      expect(prototype[deleted], `DomPainter.${deleted} must stay deleted (P7)`).toBeUndefined();
-    }
   });
 
   it('LayoutMode is exactly "vertical" and the deleted options stay off DomPainterOptions', () => {

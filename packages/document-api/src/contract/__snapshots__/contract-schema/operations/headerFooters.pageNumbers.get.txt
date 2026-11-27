@@ -1,0 +1,140 @@
+{
+  "definition": {
+    "description": "Read where a section shows page numbers, their alignment, the first-page choice, and the section's number style and start.",
+    "expectedResult": "Returns the header and footer placements that show a PAGE field (empty when none), first-page visibility, the number format, and the start number or null when numbering continues.",
+    "memberPath": "headerFooters.pageNumbers.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "header-footers/page-numbers/get.mdx",
+    "referenceGroup": "headerFooters",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        }
+      },
+      "required": [
+        "section"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "decimal",
+            "lowerLetter",
+            "upperLetter",
+            "lowerRoman",
+            "upperRoman",
+            "numberInDash",
+            "hebrew1",
+            "hebrew2"
+          ]
+        },
+        "placements": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "alignment": {
+                "oneOf": [
+                  {
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "header",
+                  "footer"
+                ]
+              },
+              "parts": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "headerFooterPart"
+                    },
+                    "refId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "refId"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "alignment",
+              "parts"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "showOnFirstPage": {
+          "type": "boolean"
+        },
+        "start": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "titlePage": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "section",
+        "placements",
+        "showOnFirstPage",
+        "titlePage",
+        "format",
+        "start"
+      ],
+      "type": "object"
+    }
+  }
+}

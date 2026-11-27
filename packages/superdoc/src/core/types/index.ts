@@ -1,3 +1,4 @@
+import type { EditorRendering } from '../../public/rendering.js';
 import type { PageMetricsHandle } from '../../public/ui/page-metrics.js';
 import type { DiagnosticsConfig } from './diagnostics.js';
 // Public-contract type definitions for the `superdoc` package.
@@ -541,6 +542,7 @@ export interface Editor {
    */
   doc?: BrowserDocumentApi | null;
   authoring?: V2AuthoringFacade | null;
+  rendering?: EditorRendering | null;
   /** Existing per-editor page geometry, zoom and navigation facade. */
   pageMetrics?: PageMetricsHandle | null;
   /**
@@ -679,7 +681,7 @@ export interface V2YWebsocketCollaborationConfig {
   /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
   syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
-  roomMode?: 'join' | 'create';
+  roomMode?: 'join' | 'create' | 'create-or-join';
 }
 
 export interface HocuspocusRetryOptions {
@@ -709,7 +711,7 @@ export interface V2HocuspocusCollaborationConfig {
   /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
   syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
-  roomMode?: 'join' | 'create';
+  roomMode?: 'join' | 'create' | 'create-or-join';
   /**
    * Where writes that carry `expectedRevision` are checked. `'session'` (default) compares this
    * editor's own revision. `'room'` makes the Hocuspocus server admit them one at a time, so a stale
@@ -744,7 +746,7 @@ export interface V2LiveblocksCollaborationConfig {
   /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
   syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
-  roomMode?: 'join' | 'create';
+  roomMode?: 'join' | 'create' | 'create-or-join';
 }
 
 /** Named provider adapter implemented by the configured collaboration Worker. */
@@ -761,7 +763,7 @@ export interface V2ProviderExtensionCollaborationConfig {
   /** Maximum initial synchronization wait in milliseconds. Defaults to 30,000. */
   syncTimeoutMs?: number;
   /** Explicit room operation. Defaults to `'join'`; `'create'` never joins an existing room. */
-  roomMode?: 'join' | 'create';
+  roomMode?: 'join' | 'create' | 'create-or-join';
 }
 
 export interface Comment {
@@ -1540,11 +1542,50 @@ export interface TrackChangeHighlightColors {
   formatBorder?: string;
 }
 
-/**
- * Previous object form for content-control chrome.
- * @deprecated replaceWith=`boolean ui.contentControls` compat-indefinitely=v2 configuration compatibility
- */
+export interface ContentControlInlineBoxOptions {
+  layout?: {
+    paddingInline?: number | { start: number; end: number };
+    paddingBlock?: number | { start: number; end: number };
+    gapBefore?: number;
+    gapAfter?: number;
+    borderWidth?: number;
+  };
+  appearance?: {
+    backgroundColor?: string;
+    borderColor?: string;
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
+    borderRadius?: number;
+    color?: string;
+  };
+  icon?: { src: string; size: number; gap?: number };
+  className?: string;
+  data?: Record<string, string | number | boolean>;
+}
+
+export interface ContentControlBlockBoxOptions {
+  layout?: {
+    paddingInline?: number | { start: number; end: number };
+    paddingBlock?: number | { start: number; end: number };
+    borderWidth?: number;
+  };
+  appearance?: {
+    backgroundColor?: string;
+    borderColor?: string;
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
+    borderRadius?: number;
+  };
+  className?: string;
+}
+
+export interface ContentControlPresentation {
+  match: { tagPrefix: string };
+  inlineBox?: ContentControlInlineBoxOptions;
+  blockBox?: ContentControlBlockBoxOptions;
+}
+
 export interface ContentControlsConfig {
+  enabled?: boolean;
+  presentations?: ContentControlPresentation[];
   /**
    * Previous spelling for enabling or disabling SuperDoc's content-control chrome.
    * @deprecated replaceWith=`boolean ui.contentControls` compat-indefinitely=v2 configuration compatibility
@@ -4272,13 +4313,6 @@ export interface UIConfig {
   linkPopover?: boolean | LinkPopoverConfig;
   /** Built-in ruler. Disabled by default. */
   ruler?: boolean | RulerConfig;
-  /**
-   * Built-in chrome drawn around content controls (default: `true`). Set to
-   * `false` to hide the chrome.
-   *
-   * The previous `{ chrome: 'default' | 'none' }` form remains accepted for
-   * v2 compatibility. New integrations should use the boolean form.
-   */
   contentControls?: boolean | ContentControlsConfig;
 }
 
@@ -4472,6 +4506,18 @@ export interface Config {
    * can pass an explicit awareness color and have the runtime honor it
    * as an override - `SuperDoc#assignUserColor()` skips its hash-based
    * assignment when `user.color` is already set.
+   *
+   * Set `user` to the signed-in person, with a non-empty `name`. If you
+   * omit `user`, or give it no `name` (left out, `null`, `undefined`, or
+   * blank), SuperDoc uses
+   * `{ id: null, name: 'Default SuperDoc user', email: null }` and keeps
+   * any other fields you passed. New comments, replies, resolved comments
+   * and tracked changes are then credited to `Default SuperDoc user`,
+   * collaborators see that name on those comments and changes, and
+   * exported DOCX files store it as the comment and tracked-change author.
+   * Give each person their own email, or their own name if you don't set
+   * emails. People who share an email, or who share a name and have no
+   * email, count as one author of tracked changes.
    */
   user?: AwarenessUser;
   /** All users of this SuperDoc (can be used for "@"-mentions). */

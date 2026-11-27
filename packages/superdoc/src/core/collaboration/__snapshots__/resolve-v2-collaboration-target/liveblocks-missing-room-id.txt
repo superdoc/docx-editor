@@ -1,0 +1,14 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "liveblocks",
+    "publicApiKey": "pk_live_123"
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "invalid-document-id",
+  "message": "SuperDoc v2 collaboration requires a non-empty collaboration.documentId (or roomId) for the \"liveblocks\" provider."
+}

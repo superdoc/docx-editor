@@ -554,3 +554,25 @@ Once that round trip holds, migrate whatever else your application uses, working
 v2](/editor/migrate-from-v1/removed-apis) and the canonical API pages it links to.
 
 Next, follow the [Editor quickstart](/editor/quickstart) for a complete v2 mount, or learn the [Document API mental model](/document-api/mental-model) before migrating programmatic edits.
+
+## Export fonts and visual styling as HTML
+
+Use the active document's Document API after the document is open and its source is ready:
+
+```ts
+const html = await superdoc.activeEditor.doc.getHtml({ styling: 'inline' });
+const detail = await superdoc.activeEditor.doc.projectHtml({ styling: 'inline', includeSourceMap: true });
+```
+
+The active-document result is one HTML string. Await browser calls, including compact getters, because reads may cross
+the worker boundary. Headless compact getters remain synchronous. The detailed result includes that string as `content`
+and reports unsupported formatting in `diagnostics`.
+
+V2's default HTML is semantic output. Opt into inline styling for effective fonts, run styling, table presentation and
+supported inline images. This preserves bounded presentation rather than every V1 or Word layout feature; font files,
+floating-image layout and exact Word pagination are outside this path. See [output projections](/document-api/output-projections)
+for the image resource policy and remaining fidelity diagnostics.
+
+The old editor-level `activeEditor.getHTML()` is not the supported V2 export surface. The root `superdoc.getHTML()`
+compatibility method returns an empty array in V2 and exports nothing; do not confuse it with the active-document string
+API or use it to check whether styling was retained.

@@ -1,0 +1,177 @@
+{
+  "definition": {
+    "description": "Anchor a JSON metadata payload to a span of text. Wraps the target range in a hidden inline content control whose w:tag carries a stable id, and stores the payload in a namespaced Custom XML Data Storage Part. v1 supports text-range anchors only.",
+    "expectedResult": "Returns an AnchoredMetadataAttachResult with the assigned id and the backing Storage Part name on success.",
+    "memberPath": "metadata.attach",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "TARGET_NOT_FOUND",
+        "INVALID_TARGET",
+        "INVALID_INPUT",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "REVISION_MISMATCH"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "metadata/attach.mdx",
+    "referenceGroup": "metadata",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "namespace": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "payload": {},
+        "target": {
+          "$ref": "#/$defs/SelectionTarget"
+        }
+      },
+      "required": [
+        "target",
+        "namespace",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "namespace": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "partName": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "id",
+            "namespace",
+            "partName"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "namespace": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "partName": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "id",
+        "namespace",
+        "partName"
+      ],
+      "type": "object"
+    }
+  }
+}

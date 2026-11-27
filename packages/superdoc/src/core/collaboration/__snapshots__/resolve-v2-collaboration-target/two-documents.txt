@@ -1,0 +1,15 @@
+input:
+{
+  "v2Collaboration": {
+    "documentId": "room-1",
+    "serverUrl": "wss://x"
+  },
+  "documentCount": 2
+}
+
+result:
+{
+  "ok": false,
+  "reason": "unsupported-multi-document",
+  "message": "SuperDoc v2 collaboration supports exactly one document per room; received 2."
+}

@@ -1,0 +1,229 @@
+step: open the reply composer holding "<p>Keep my reply</p>", click Reply; the document refuses (PERMISSION_DENIED)
+
+document calls:
+comments.reply {"parentCommentId":"reply-denied","text":"Keep my reply"}
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "rejected": true,
+    "reason": "v2-reply-failed",
+    "code": "PERMISSION_DENIED",
+    "comment": {
+      "commentId": "reply-denied",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Parent",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+store:
+{
+  "activeComment": "reply-denied",
+  "editingCommentId": null,
+  "draft": "<p>Keep my reply</p>",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "reply-denied",
+      "commentText": "Parent"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+reply-denied: comment: Parent
+alert: Your comment could not be saved because you do not have permission. Your draft is still here. Try again or cancel.
+reply composer, Reply enabled
+buttons: Reply enabled
+
+---
+
+step: click Reply again while the document holds the write
+
+document calls:
+comments.reply {"parentCommentId":"reply-denied","text":"Keep my reply"}
+
+store:
+{
+  "activeComment": "reply-denied",
+  "editingCommentId": null,
+  "draft": "<p>Keep my reply</p>",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "reply-denied",
+      "commentText": "Parent"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+reply-denied: comment: Parent
+reply composer, Reply disabled
+buttons: Reply disabled
+
+---
+
+step: the document commits the retried reply
+
+document calls:
+(none)
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "reply-1",
+      "parentCommentId": "reply-denied",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Keep my reply",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+store:
+{
+  "activeComment": "reply-denied",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "reply-denied",
+      "commentText": "Parent"
+    },
+    {
+      "commentId": "reply-1",
+      "parentCommentId": "reply-denied",
+      "commentText": "Keep my reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+reply-denied: comment: Parent
+reply-1: comment: Keep my reply
+reply pill
+buttons: (none)
+
+---
+
+step: open the reply composer, type "<p>Another reply</p>", click Reply; the document refuses (PERMISSION_DENIED)
+
+document calls:
+comments.reply {"parentCommentId":"reply-denied","text":"Another reply"}
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "rejected": true,
+    "reason": "v2-reply-failed",
+    "code": "PERMISSION_DENIED",
+    "comment": {
+      "commentId": "reply-denied",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Parent",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+store:
+{
+  "activeComment": "reply-denied",
+  "editingCommentId": null,
+  "draft": "<p>Another reply</p>",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "reply-denied",
+      "commentText": "Parent"
+    },
+    {
+      "commentId": "reply-1",
+      "parentCommentId": "reply-denied",
+      "commentText": "Keep my reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+reply-denied: comment: Parent
+reply-1: comment: Keep my reply
+alert: Your comment could not be saved because you do not have permission. Your draft is still here. Try again or cancel.
+reply composer, Reply enabled
+buttons: Reply enabled
+
+---
+
+step: click Cancel, then open the reply composer again
+
+document calls:
+(none)
+
+store:
+{
+  "activeComment": "reply-denied",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "reply-denied",
+      "commentText": "Parent"
+    },
+    {
+      "commentId": "reply-1",
+      "parentCommentId": "reply-denied",
+      "commentText": "Keep my reply"
+    }
+  ]
+}
+
+thread dialog:
+classes: is-active
+reply-denied: comment: Parent
+reply-1: comment: Keep my reply
+reply composer, Reply disabled
+buttons: Reply disabled
+
+---

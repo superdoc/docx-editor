@@ -551,6 +551,7 @@ const paragraphBlocksEqual = (a: FlowBlock & { kind: 'paragraph' }, b: FlowBlock
   const aMarker = a.attrs?.wordLayout?.marker;
   const bMarker = b.attrs?.wordLayout?.marker;
   if ((aMarker?.markerText ?? null) !== (bMarker?.markerText ?? null)) return false;
+  if (aMarker?.originalMarkerLength !== bMarker?.originalMarkerLength) return false;
   if ((aMarker?.justification ?? null) !== (bMarker?.justification ?? null)) return false;
   if (markerRunSignature(aMarker?.run) !== markerRunSignature(bMarker?.run)) return false;
 

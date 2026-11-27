@@ -1,0 +1,19 @@
+step: mount while the source is loading
+  no reads
+  comments: pending []
+  trackChanges: pending []
+
+step: ui.trackChanges.list()
+  read doc.trackChanges.list({"in":"all"}) -> [tc-a] (partial coverage)
+  comments: pending []
+  trackChanges: stale [tc-a]
+
+step: the source completes
+  read doc.trackChanges.list({"in":"all"}) -> [tc-a, tc-b] (partial coverage)
+  comments: pending []
+  trackChanges: stale [tc-a, tc-b]
+
+step: the host reports source-complete again
+  no reads
+  comments: pending []
+  trackChanges: stale [tc-a, tc-b]

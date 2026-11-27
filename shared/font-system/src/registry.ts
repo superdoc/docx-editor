@@ -8,6 +8,7 @@ import type {
   RegisterFaceResult,
   RequiredFace,
 } from './types';
+import { unicodeCoverageFromCss } from './unicode-coverage';
 import { BUNDLED_MANIFEST } from './bundled-manifest';
 
 /**
@@ -49,6 +50,7 @@ export interface FontFaceLike {
   readonly family: string;
   load(): Promise<FontFaceLike>;
   readonly status?: string;
+  readonly unicodeRange?: string;
 }
 
 /** Structural slice of the global `FontFace` constructor. */
@@ -199,7 +201,7 @@ export class FontRegistry {
   /** In-flight face loads, so concurrent awaits of one face share a single probe. */
   readonly #faceInflight = new Map<string, Promise<FontFaceLoadResult>>();
   /** Registered `url(...)` source per face key, to name the failing URL on a face load error. */
-  readonly #faceSources = new Map<string, string>();
+  readonly #faceSources = new Map<string, Map<string, { source: string; face?: FontFaceLike }>>();
   /** Face keys seen per normalized family, for the family-level status rollup. Populated by BOTH
    *  registration AND awaiting (so getStatus rolls up the status of an awaited pass-through face). */
   readonly #facesByFamily = new Map<string, Set<string>>();
@@ -229,7 +231,14 @@ export class FontRegistry {
    * constructor: the family is recorded as `unloaded` and will resolve to
    * `fallback_used` when awaited.
    */
-  register(descriptor: FontFaceDescriptor, options: { preserveDescriptors?: boolean } = {}): RegisterFaceResult {
+  register(
+    descriptor: FontFaceDescriptor,
+    options: {
+      preserveDescriptors?: boolean;
+      allowUnicodeSubsets?: boolean;
+      captureFace?: (face: FontFaceLike, request: FontFaceRequest) => void;
+    } = {},
+  ): RegisterFaceResult {
     const { family, source, descriptors } = descriptor;
     // Identity source for the duplicate-face guard: canonicalize url(...) quoting so the SAME file
     // registered by the bundled pack (`url(/x)`) and by `fonts.add` (`url("/x")`) compares equal
@@ -245,9 +254,19 @@ export class FontRegistry {
     // FontFace - but a DIFFERENT source for the same face is rejected. Silently overwriting a
     // user-provided font source would make rendering depend on registration order. Binary sources
     // have no comparable identity here and are not de-duped.
+    const rangeKey =
+      options.allowUnicodeSubsets && descriptors?.unicodeRange
+        ? unicodeCoverageFromCss(descriptors.unicodeRange).cssUnicodeRange
+        : 'U+0-10FFFF';
+    const registeredSources = this.#faceSources.get(key);
     if (typeof identitySource === 'string') {
-      const existingSource = this.#faceSources.get(key);
-      if (existingSource === identitySource) return { family, status: this.getStatus(family), changed: false };
+      const existing = registeredSources?.get(rangeKey);
+      const existingSource = existing?.source;
+      if (existingSource === identitySource) {
+        const face = existing?.face;
+        if (face) options.captureFace?.(face, { family, weight, style });
+        return { family, status: this.getStatus(family), changed: false };
+      }
       if (existingSource !== undefined) {
         throw new Error(
           `[superdoc] font face "${key}" is already registered from a different source ` +
@@ -255,6 +274,7 @@ export class FontRegistry {
         );
       }
     }
+    let registeredFace: FontFaceLike | undefined;
     if (this.#FontFaceCtor && this.#fontSet) {
       // Bundled/V1 callers clamp physical faces to the run model's weight/style buckets.
       // Explicit V2 custom faces preserve CSS matching semantics across realms; their
@@ -266,6 +286,8 @@ export class FontRegistry {
       );
       this.#fontSet.add(face);
       this.#addManagedFace(family, key, face);
+      registeredFace = face;
+      options.captureFace?.(face, { family, weight, style });
     }
     if (typeof source === 'string') {
       const list = this.#sources.get(family) ?? [];
@@ -278,7 +300,11 @@ export class FontRegistry {
     // Seed face-level status so the gate can await this exact weight/style.
     this.#trackFace(family, key);
     if (!this.#faceStatus.has(key)) this.#faceStatus.set(key, 'unloaded');
-    if (typeof identitySource === 'string' && !this.#faceSources.has(key)) this.#faceSources.set(key, identitySource);
+    if (typeof identitySource === 'string') {
+      const sources = registeredSources ?? new Map<string, { source: string; face?: FontFaceLike }>();
+      sources.set(rangeKey, { source: identitySource, face: registeredFace });
+      this.#faceSources.set(key, sources);
+    }
     return { family, status: this.getStatus(family), changed: true };
   }
 
@@ -604,7 +630,7 @@ export class FontRegistry {
     }
     if (this.#warnedFaceFailures.has(key)) return;
     this.#warnedFaceFailures.add(key);
-    const src = this.#faceSources.get(key);
+    const src = [...(this.#faceSources.get(key)?.values() ?? [])].map((entry) => entry.source).join(', ');
     const detail = src ? ` from ${src}` : '';
     console.warn(
       `[superdoc] font face failed to load: "${request.family}" ${request.weight} ${request.style}${detail}. ` +

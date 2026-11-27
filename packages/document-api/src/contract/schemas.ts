@@ -2343,12 +2343,28 @@ const commentMetadataSchema: JsonSchema = {
   additionalProperties: true,
   description: 'Caller-owned JSON metadata persisted with the comment.',
 };
+const commentResolutionProperties: Record<string, JsonSchema> = {
+  resolvedTime: { type: 'number' },
+  resolvedById: { type: 'string' },
+  resolvedByEmail: { type: 'string' },
+  resolvedByName: { type: 'string' },
+};
 const commentReadMetadataProperties: Record<string, JsonSchema> = {
+  ...commentResolutionProperties,
   rootCommentId: { type: 'string' },
   replyCount: { type: 'number' },
   origin: { enum: ['word', 'google-docs', 'superdoc', 'custom', 'unknown'] },
   imported: { type: 'boolean' },
 };
+const commentsPatchSuccessSchema = objectSchema(
+  {
+    success: { const: true },
+    ...receiptSuccessMetadataProperties,
+    history: ref('HistoryReplay'),
+    ...commentResolutionProperties,
+  },
+  ['success'],
+);
 const commentInfoSchema = objectSchema(
   {
     paraId: { type: 'string', description: 'Source Word comment-body paragraph identity for threading.' },
@@ -3598,6 +3614,11 @@ const mergeRangeLocatorSchema: JsonSchema = {
         'rowIndex',
         'columnIndex',
       ]),
+      keepAllContent: {
+        type: 'boolean',
+        description:
+          'Set true to keep the content of every cell even when all cells hold the same text, as Word does. Defaults to false.',
+      },
     },
     ['start', 'end'],
   ),
@@ -4688,6 +4709,27 @@ const anchoredMetadataAttachMutation = refMutationSchemas(
   ['id', 'namespace', 'partName'],
 );
 const anchoredMetadataMutation = refMutationSchemas({ id: { type: 'string', minLength: 1 } }, ['id']);
+const anchoredMetadataLookupInputSchema: JsonSchema = {
+  ...objectSchema(
+    {
+      id: { type: 'string', minLength: 1 },
+      contentControlId: {
+        type: 'string',
+        minLength: 1,
+        description: 'Physical content control ID the record must be anchored to. Pass together with story.',
+      },
+      story: {
+        ...ref('StoryLocator'),
+        description: 'Story holding that content control. Pass together with contentControlId.',
+      },
+    },
+    ['id'],
+  ),
+  allOf: [
+    { if: { required: ['contentControlId'] }, then: { required: ['story'] } },
+    { if: { required: ['story'] }, then: { required: ['contentControlId'] } },
+  ],
+};
 // --- Footnote schemas ---
 const footnoteAddressSchema: JsonSchema = objectSchema(
   {
@@ -5029,6 +5071,15 @@ const diffPayloadSchema: JsonSchema = objectSchema(
   },
   ['version', 'engine', 'baseFingerprint', 'targetFingerprint', 'coverage', 'summary', 'payload'],
 );
+const diffDirectDefinitionChangeSchema = objectSchema(
+  { changeMode: { const: 'direct' }, partUris: arraySchema({ type: 'string' }) },
+  ['changeMode', 'partUris'],
+);
+const diffDefinitionPolicyInputs = {
+  styleChangeMode: { enum: ['direct', 'tracked'] },
+  settingsChangeMode: { enum: ['direct'] },
+  numberingChangeMode: { enum: ['direct'] },
+};
 const diffApplyResultSchema: JsonSchema = objectSchema(
   {
     appliedOperations: { type: 'integer' },
@@ -5036,6 +5087,8 @@ const diffApplyResultSchema: JsonSchema = objectSchema(
       { changeMode: { enum: ['direct', 'tracked'] }, partUris: arraySchema({ type: 'string' }) },
       ['changeMode', 'partUris'],
     ),
+    settingsChanges: diffDirectDefinitionChangeSchema,
+    numberingChanges: diffDirectDefinitionChangeSchema,
     operationReceipts: {
       type: 'array',
       items: {
@@ -5253,6 +5306,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   },
   getHtml: {
     input: objectSchema({
+      styling: { type: 'string', enum: ['inline'] },
       in: storyLocatorSchema,
       reviewMode: ref('SDProjectionReviewMode'),
       scope: ref('SDProjectionScope'),
@@ -5276,6 +5330,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
   },
   projectHtml: {
     input: objectSchema({
+      styling: { type: 'string', enum: ['inline'] },
       in: storyLocatorSchema,
       reviewMode: ref('SDProjectionReviewMode'),
       scope: ref('SDProjectionScope'),
@@ -6963,7 +7018,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         },
         ['target'],
       ),
-      oneOf: [
+      anyOf: [
         { required: ['target', 'top'] },
         { required: ['target', 'right'] },
         { required: ['target', 'bottom'] },
@@ -8224,8 +8279,8 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       },
       ['commentId'],
     ),
-    output: receiptResultSchemaFor('comments.patch'),
-    success: receiptSuccessSchema,
+    output: { oneOf: [commentsPatchSuccessSchema, receiptFailureResultSchemaFor('comments.patch')] },
+    success: commentsPatchSuccessSchema,
     failure: receiptFailureResultSchemaFor('comments.patch'),
   },
   'comments.delete': {
@@ -8897,6 +8952,11 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
         input: objectSchema(
           {
             includeText: { type: 'boolean' },
+            includeLogicalChanges: {
+              type: 'boolean',
+              description:
+                'Include logicalChangeIds for all overlapping inline, structural and property revisions. Omitted by default.',
+            },
           },
           [],
         ),
@@ -8944,6 +9004,11 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
             activeMarks: arraySchema({ type: 'string' }),
             activeCommentIds: arraySchema({ type: 'string' }),
             activeChangeIds: arraySchema({ type: 'string' }),
+            logicalChangeIds: {
+              ...arraySchema({ type: 'string' }),
+              description:
+                'Canonical logical tracked-change IDs intersecting the current selection, with aliases deduplicated. Present only when includeLogicalChanges is true.',
+            },
             text: { type: 'string' },
           },
           ['empty', 'target', 'activeMarks', 'activeCommentIds', 'activeChangeIds'],
@@ -9258,11 +9323,22 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       ...objectSchema({
         target: tableAddressSchema,
         nodeId: { type: 'string' },
-        preferredWidth: { type: 'number' },
-        preferredWidthType: { enum: ['dxa', 'auto', 'pct'] },
+        preferredWidth: {
+          type: 'number',
+          description:
+            'Preferred table width, in the unit set by preferredWidthType: "dxa" counts twentieths of a point (1440 is 1 inch), "pct" counts fiftieths of 1% (5000 is 100%). Ignored when autoFitMode is "fitWindow".',
+        },
+        preferredWidthType: {
+          enum: ['dxa', 'auto', 'pct'],
+          description: 'Unit of preferredWidth. Defaults to "dxa". "auto" takes no preferredWidth.',
+        },
         alignment: { enum: ['left', 'center', 'right'] },
         leftIndentPt: { type: 'number' },
-        autoFitMode: { enum: ['fixedWidth', 'fitContents', 'fitWindow'] },
+        autoFitMode: {
+          enum: ['fixedWidth', 'fitContents', 'fitWindow'],
+          description:
+            '"fitWindow" makes the table fill the available page width and needs no preferredWidth. "fixedWidth" keeps the authored column widths. "fitContents" sizes columns to their content.',
+        },
         tableDirection: { enum: ['ltr', 'rtl'] },
       }),
       oneOf: [{ required: ['target'] }, { required: ['nodeId'] }],
@@ -11840,14 +11916,14 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
       {
         targetSnapshot: diffSnapshotSchema,
         includeDisplay: { type: 'boolean' },
-        styleChangeMode: { enum: ['direct', 'tracked'] },
+        ...diffDefinitionPolicyInputs,
       },
       ['targetSnapshot'],
     ),
     output: diffPayloadSchema,
   },
   'diff.apply': {
-    input: objectSchema({ diff: diffPayloadSchema, styleChangeMode: { enum: ['direct', 'tracked'] } }, ['diff']),
+    input: objectSchema({ diff: diffPayloadSchema, ...diffDefinitionPolicyInputs }, ['diff']),
     output: diffApplyResultSchema,
     success: diffApplyResultSchema,
     failure: { type: 'object' },
@@ -12052,7 +12128,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     output: discoveryOutputSchema,
   },
   'metadata.get': {
-    input: objectSchema({ id: { type: 'string', minLength: 1 } }, ['id']),
+    input: anchoredMetadataLookupInputSchema,
     output: { oneOf: [{ type: 'object' }, { type: 'null' }] },
   },
   'metadata.update': {
@@ -12064,7 +12140,7 @@ const operationSchemas: Record<OperationId, OperationSchemaSet> = {
     ...anchoredMetadataMutation,
   },
   'metadata.resolve': {
-    input: objectSchema({ id: { type: 'string', minLength: 1 } }, ['id']),
+    input: anchoredMetadataLookupInputSchema,
     output: { oneOf: [{ type: 'object' }, { type: 'null' }] },
   },
   'clipboard.parse': {

@@ -190,6 +190,21 @@ scroll-position snapshot. Unsubscribe when the overlay is removed. Use `ui.zoom.
 to read and change zoom. Use the awaited `ui.viewport.scrollIntoView({ target })` to reveal a document range; check its
 `success` result.
 
+### Pinned toolbars and rulers
+
+If your application pins a toolbar, ruler or other chrome over the top of the document's scroll area, declare the
+covered height with CSS `scroll-padding-top` in pixels on the element that scrolls the document. When the page itself
+scrolls, set it on the `html` element. Use `scroll-padding-bottom` the same way for chrome pinned to the bottom.
+
+```css
+.document-scroll-area {
+  scroll-padding-top: 96px;
+}
+```
+
+`ui.viewport.scrollIntoView()`, search navigation and keyboard caret movement keep their targets below that inset.
+SuperDoc does not measure your overlays itself, so update the padding when the chrome's height changes.
+
 The older `superdoc.activeEditor.pageMetrics` facade also exposes page snapshots, subscriptions and `scrollToPage`.
 It remains typed as `unknown` on the editor facade, so consumers must validate its shape and recheck it when upgrading.
 Its page `viewport.xPx` and `viewport.yPx` describe zoomed layout-stage offsets; they are not browser client coordinates

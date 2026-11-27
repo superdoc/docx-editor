@@ -380,7 +380,7 @@ const onKeydown = (event: KeyboardEvent) => {
       break;
     case 'Tab':
       event.preventDefault();
-      applySelection();
+      if (appliedLabel.value || query.value.trim()) applySelection();
       closeList();
       inputRef.value?.blur();
       emit('tab-out', event);

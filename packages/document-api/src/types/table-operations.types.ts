@@ -244,18 +244,18 @@ export interface TableRowWidthSpec {
 
 export interface TablesSetLayoutInput extends TableLocator {
   /**
-   * Table preferred width in twips (1/1440 of an inch, 1/20 of a point).
-   * Only applies to `fixedWidth` mode. Ignored when `autoFitMode` is `fitWindow`.
+   * Preferred table width, in the unit set by `preferredWidthType`: `dxa` counts twentieths of a point
+   * (1440 is 1 inch), `pct` counts fiftieths of 1% (5000 is 100%). Ignored when `autoFitMode` is `fitWindow`.
    */
   preferredWidth?: number;
   /**
-   * Preferred width encoding for `fixedWidth` tables.
+   * Unit of `preferredWidth`. Defaults to `dxa`.
    *
-   * - `auto` writes `<w:tblW w:w="0" w:type="auto"/>`, allowing fixed-layout
-   *   tables whose overall width remains automatic while column widths are
-   *   authored separately.
-   * - `dxa` writes a twips-based width.
-   * - `pct` writes a percentage-based width.
+   * - `auto` writes `<w:tblW w:w="0" w:type="auto"/>` and takes no
+   *   `preferredWidth`, allowing fixed-layout tables whose overall width
+   *   remains automatic while column widths are authored separately.
+   * - `dxa` writes a width in twentieths of a point.
+   * - `pct` writes a width in fiftieths of 1% (5000 is 100%).
    *
    * When omitted, existing adapter behavior determines the fallback width encoding.
    */
@@ -382,7 +382,7 @@ export interface TablesDeleteCellInput extends CellLocator {
   mode: CellDeleteMode;
 }
 
-export type TablesMergeCellsInput = MergeRangeLocator;
+export type TablesMergeCellsInput = MergeRangeLocator & { keepAllContent?: boolean };
 
 export type TablesUnmergeCellsInput = CellLocator | TableScopedCellLocator;
 

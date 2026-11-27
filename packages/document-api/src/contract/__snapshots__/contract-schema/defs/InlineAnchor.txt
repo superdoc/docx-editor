@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "end": {
+      "$ref": "#/$defs/Position"
+    },
+    "start": {
+      "$ref": "#/$defs/Position"
+    }
+  },
+  "required": [
+    "start",
+    "end"
+  ],
+  "type": "object"
+}

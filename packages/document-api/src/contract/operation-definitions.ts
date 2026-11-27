@@ -1432,14 +1432,15 @@ export const OPERATION_DEFINITIONS = {
   },
   'create.sectionBreak': {
     memberPath: 'create.sectionBreak',
-    description: 'Create a section break at the target location with optional initial section properties.',
+    description:
+      'Create a section break at the target location with optional initial section properties. Page margins are in inches. In V2 the resulting sections must have positive usable width and height.',
     expectedResult: 'Returns a CreateSectionBreakResult with the new section break position and section address.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
       idempotency: 'non-idempotent',
       supportsDryRun: true,
       trackedSupport: 'always',
-      possibleFailureCodes: ['INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
+      possibleFailureCodes: ['INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_CREATE,
     }),
     referenceDocPath: 'create/section-break.mdx',
@@ -1459,13 +1460,14 @@ export const OPERATION_DEFINITIONS = {
   },
   'sections.get': {
     memberPath: 'sections.get',
-    description: 'Retrieve full section information by section address.',
+    description:
+      'Retrieve full section information by section address. In V2, sections with invalid page geometry raise PRECONDITION_FAILED. Use sections.list to find the section address and correct its geometry.',
     expectedResult:
       'Returns a SectionInfo object with full section properties including margins, columns, and header/footer refs.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
-      throws: T_SECTION_READ,
+      throws: [...T_SECTION_READ, 'PRECONDITION_FAILED'],
     }),
     referenceDocPath: 'sections/get.mdx',
     referenceGroup: 'sections',
@@ -1489,7 +1491,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'sections.setPageMargins': {
     memberPath: 'sections.setPageMargins',
-    description: 'Set page-edge margins for a section.',
+    description:
+      'Set page-edge margins in inches (1 inch = 1440 twips). Omitted margins keep their current values. In V2, usable page width and height must both stay positive after rounding to twips. Gutter counts toward the horizontal margins unless document settings place it at the top. To recover existing invalid margins, supply all needed corrections together.',
     expectedResult:
       'Returns a SectionMutationResult receipt; reports NO_OP if margins already match the requested values.',
     requiresDocumentContext: true,
@@ -1497,7 +1500,7 @@ export const OPERATION_DEFINITIONS = {
       idempotency: 'conditional',
       supportsDryRun: true,
       trackedSupport: 'always',
-      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
+      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
     }),
@@ -1524,7 +1527,7 @@ export const OPERATION_DEFINITIONS = {
   'sections.setPageSetup': {
     memberPath: 'sections.setPageSetup',
     description:
-      'Set page size/orientation properties for a section. Changing orientation writes only the page size: width and height swap so the long side matches the orientation, unless width or height is given. Page margins stay as they are; to change them with the orientation, call sections.setPageMargins. Portrait is written without an orient attribute, as Word does. No named paper sizes are defined, so a paperSize other than the paper code the section already has (as sections.get reports it) is rejected with INVALID_INPUT; set width and height instead.',
+      'Set page size/orientation properties for a section. Changing orientation writes only the page size: width and height swap so the long side matches the orientation, unless width or height is given. Page margins stay as they are; to change them with the orientation, call sections.setPageMargins. Portrait is written without an orient attribute, as Word does. No named paper sizes are defined, so a paperSize other than the paper code the section already has (as sections.get reports it) is rejected with INVALID_INPUT; set width and height instead. In V2, the resulting page size must leave positive area with the current margins.',
     expectedResult:
       'Returns a SectionMutationResult receipt; reports NO_OP if page size and orientation already match the requested values.',
     requiresDocumentContext: true,
@@ -1532,7 +1535,7 @@ export const OPERATION_DEFINITIONS = {
       idempotency: 'conditional',
       supportsDryRun: true,
       trackedSupport: 'always',
-      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'CAPABILITY_UNAVAILABLE'],
+      possibleFailureCodes: ['NO_OP', 'INVALID_TARGET', 'INVALID_INPUT', 'CAPABILITY_UNAVAILABLE'],
       throws: T_SECTION_MUTATION,
       historyUnsafe: true,
     }),
@@ -1557,7 +1560,12 @@ export const OPERATION_DEFINITIONS = {
   },
   'sections.setLineNumbering': {
     memberPath: 'sections.setLineNumbering',
-    description: 'Enable or configure line numbering for a section.',
+    description:
+      'Enable, configure, or disable line numbering for a section. Enabling with no countBy stores 1. ' +
+      'The start value is the stored Word offset. At a restart, start: 1 makes the first eligible line number 2. ' +
+      'The distance is in inches. Omitting distance or setting it to zero uses automatic placement. ' +
+      'Mounted SuperDoc v2 print layout shows multiples of countBy on eligible body lines and approximates automatic spacing from the physical columns. ' +
+      'Section reads can report enabled for imported numbering markup that has no positive integer countBy. Those settings produce no labels.',
     expectedResult: 'Returns a SectionMutationResult receipt; reports NO_OP if line numbering settings already match.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -3506,7 +3514,8 @@ export const OPERATION_DEFINITIONS = {
   // -------------------------------------------------------------------------
   'tables.setLayout': {
     memberPath: 'tables.setLayout',
-    description: 'Set the layout mode of the target table.',
+    description:
+      'Set the layout mode, preferred width, alignment and direction of the target table. Use autoFitMode "fitWindow" to make the table fill the page width.',
     expectedResult:
       'Returns a TableMutationResult receipt; reports NO_OP if the table already uses the requested layout mode.',
     requiresDocumentContext: true,
@@ -3757,7 +3766,8 @@ export const OPERATION_DEFINITIONS = {
   },
   'tables.mergeCells': {
     memberPath: 'tables.mergeCells',
-    description: 'Merge a range of table cells into one.',
+    description:
+      'Merge a range of table cells into one. When every cell in the range holds the same plain text (compared after trimming whitespace), the merged cell keeps the first cell only, so the value appears once. Otherwise the merged cell keeps the content of every cell in the range, one paragraph after another, as Word does. The same holds for tracked merges, for tables that contain a nested table, for header and footer tables, and when a repeated cell carries review marks, comments or bookmarks. Some hosts do not apply the rule and always keep the content of every cell. To be certain of a single value, empty the other cells first with tables.setCellText and text "". Pass keepAllContent true to keep the content of every cell even when all cells hold the same text. The paragraphs of an empty cell are dropped either way.',
     expectedResult: 'Returns a TableMutationResult receipt; reports NO_OP if the cells are already merged.',
     requiresDocumentContext: true,
     metadata: mutationOperation({
@@ -6356,6 +6366,7 @@ export const OPERATION_DEFINITIONS = {
       possibleFailureCodes: [
         'INVALID_INPUT',
         'INVALID_TARGET',
+        'INVALID_CONTEXT',
         'INVALID_PAYLOAD',
         'EMPTY_FRAGMENT',
         'INVALID_FRAGMENT',
@@ -7213,13 +7224,14 @@ export const OPERATION_DEFINITIONS = {
       'The mode alias selects trackedChanges; conflicting values and unknown policies reject with INVALID_INPUT. ' +
       'Unsupported revision semantics, loss of preserved comment anchors, and collaborative Document API export ' +
       'reject with CAPABILITY_UNSUPPORTED before returning bytes. Use browser export for collaborative sessions. ' +
+      'A section with invalid page geometry raises PRECONDITION_FAILED. Correct the section before retrying. ' +
       'Returns exported bytes and a structured report of allowed warnings without changing the live document.',
     expectedResult:
       'Returns an ExportToDocxResult with the resolved mode, base64 DOCX bytes, byte length, and a report.warnings array.',
     requiresDocumentContext: true,
     metadata: readOperation({
       idempotency: 'idempotent',
-      throws: ['INVALID_INPUT', 'CAPABILITY_UNSUPPORTED'],
+      throws: ['INVALID_INPUT', 'CAPABILITY_UNSUPPORTED', 'PRECONDITION_FAILED'],
     }),
     referenceDocPath: 'export/to-docx.mdx',
     referenceGroup: 'export',

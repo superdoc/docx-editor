@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "from": {
+      "type": "integer"
+    },
+    "to": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "from",
+    "to"
+  ],
+  "type": "object"
+}

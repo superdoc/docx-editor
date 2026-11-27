@@ -1,0 +1,7 @@
+ui: {
+  search: {
+    floating: {
+      placement: 'bottom-right'
+    },
+  },
+}

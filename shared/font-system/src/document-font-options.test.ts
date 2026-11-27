@@ -126,23 +126,16 @@ describe('buildFontFamilyOptions (custom UI font picker rows)', () => {
     { logicalFamily: 'Apple Chancery', previewFamily: 'Apple Chancery' },
   ];
 
-  it('with no pack configured: the baseline plus document fonts, alphabetical, no status field', () => {
-    const options = buildFontFamilyOptions(documentOptions);
-    expect(options.map((option) => option.label)).toEqual([
-      'Apple Chancery',
-      'Aptos',
-      'Arial',
-      'Bangla MN',
-      'Calibri',
-      'Courier New',
-      'Times New Roman',
-    ]);
-    // BASELINE_BUNDLED is the explicit form of the same default.
-    expect(buildFontFamilyOptions(documentOptions, BASELINE_BUNDLED).map((o) => o.label)).toEqual(
-      options.map((o) => o.label),
-    );
-    expect(options.filter((option) => option.label === 'Calibri')).toHaveLength(1);
-    expect(options.every((option) => !('status' in option))).toBe(true);
+  const section = (title: string, options: ReturnType<typeof buildFontFamilyOptions>): string =>
+    [title, ...options.map((o) => `  ${o.label} -> value ${o.value}, preview ${o.previewFamily}`)].join('\n');
+
+  it('lists the built-in set plus document fonts, alphabetical and deduped, with and without a pack', async () => {
+    const baseline = buildFontFamilyOptions(documentOptions);
+    const full = buildFontFamilyOptions(documentOptions, FULLY_ACTIVE_BUNDLED);
+    expect(buildFontFamilyOptions(documentOptions, BASELINE_BUNDLED)).toEqual(baseline);
+    expect(baseline.every((option) => !('status' in option))).toBe(true);
+    const recording = [section('no pack configured', baseline), section('pack configured', full)].join('\n\n');
+    await expect(`${recording}\n`).toMatchFileSnapshot('./__snapshots__/document-font-options/font-family-options.txt');
   });
 
   it('baseline built-in rows preview in the logical family; configured rows preview in the physical clone', () => {
@@ -153,38 +146,6 @@ describe('buildFontFamilyOptions (custom UI font picker rows)', () => {
     // With the pack configured the clone is served, so the preview uses the physical clone.
     const richTnr = buildFontFamilyOptions([], FULLY_ACTIVE_BUNDLED).find((o) => o.label === 'Times New Roman');
     expect(richTnr?.previewFamily).not.toBe('Times New Roman');
-  });
-
-  it('with the pack configured: the full built-in set plus document fonts', () => {
-    const options = buildFontFamilyOptions(documentOptions, FULLY_ACTIVE_BUNDLED);
-    expect(options.map((option) => option.label)).toEqual([
-      'Apple Chancery',
-      'Aptos',
-      'Arial',
-      'Arial Black',
-      'Arial Narrow',
-      'Bangla MN',
-      'Baskerville Old Face',
-      'Bookman Old Style',
-      'Brush Script MT',
-      'Calibri',
-      'Century',
-      'Century Gothic',
-      'Comic Sans MS',
-      'Cooper Black',
-      'Courier New',
-      'Garamond',
-      'Georgia',
-      'Gill Sans MT Condensed',
-      'Helvetica',
-      'Lucida Console',
-      'Segoe UI',
-      'Tahoma',
-      'Times New Roman',
-      'Trebuchet MS',
-      'Verdana',
-    ]);
-    expect(options.filter((option) => option.label === 'Calibri')).toHaveLength(1);
   });
 
   it('uses the logical family as the apply value and previewFamily only for row rendering', () => {

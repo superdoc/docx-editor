@@ -1,0 +1,238 @@
+{
+  "definition": {
+    "description": "Retrieve a single comment thread by ID.",
+    "expectedResult": "Returns a CommentInfo object with the comment text, author, date, and thread metadata.",
+    "inputAliases": {
+      "id": "commentId"
+    },
+    "intentAction": "get",
+    "intentGroup": "comment",
+    "memberPath": "comments.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "comments/get.mdx",
+    "referenceGroup": "comments",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "commentId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "commentId"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/CommentAddress"
+        },
+        "anchoredText": {
+          "type": "string"
+        },
+        "commentId": {
+          "type": "string"
+        },
+        "createdTime": {
+          "type": "number"
+        },
+        "creatorEmail": {
+          "type": "string"
+        },
+        "creatorId": {
+          "type": "string"
+        },
+        "creatorImage": {
+          "type": "string"
+        },
+        "creatorName": {
+          "type": "string"
+        },
+        "deletedText": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "durableId": {
+          "description": "Source Word durable comment identity, when present.",
+          "type": "string"
+        },
+        "externalId": {
+          "description": "Caller-owned durable integration id, distinct from the Word-compatible commentId.",
+          "type": "string"
+        },
+        "imported": {
+          "type": "boolean"
+        },
+        "importedId": {
+          "type": "string"
+        },
+        "insertedText": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isInternal": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Caller-owned JSON metadata persisted with the comment.",
+          "type": "object"
+        },
+        "origin": {
+          "enum": [
+            "word",
+            "google-docs",
+            "superdoc",
+            "custom",
+            "unknown"
+          ]
+        },
+        "paraId": {
+          "description": "Source Word comment-body paragraph identity for threading.",
+          "type": "string"
+        },
+        "parentCommentId": {
+          "type": "string"
+        },
+        "rawOoxmlId": {
+          "description": "Durable raw OOXML source identity: the comment's w:id exactly as it appears in comments.xml. Surfaced for every catalog-backed comment, even when commentId already equals it on a clean import. Omitted for synthetic comments that never had a comments.xml carrier.",
+          "type": "string"
+        },
+        "rawOoxmlOccurrenceIndex": {
+          "description": "Zero-based source occurrence among comments that share the same rawOoxmlId in comments.xml. Present only for duplicate raw OOXML ids.",
+          "type": "number"
+        },
+        "replyCount": {
+          "type": "number"
+        },
+        "resolvedByEmail": {
+          "type": "string"
+        },
+        "resolvedById": {
+          "type": "string"
+        },
+        "resolvedByName": {
+          "type": "string"
+        },
+        "resolvedTime": {
+          "type": "number"
+        },
+        "rootCommentId": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "resolved"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/TextTarget"
+        },
+        "text": {
+          "type": "string"
+        },
+        "trackedChange": {
+          "type": "boolean"
+        },
+        "trackedChangeAnchorKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trackedChangeDisplayType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trackedChangeLink": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CommentTrackedChangeLink"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trackedChangeParentId": {
+          "description": "SuperDoc logical tracked-change id when the comment anchor sits wholly inside exactly one active tracked change. Derived on read from the comment anchor index plus the tracked-change catalog.",
+          "type": "string"
+        },
+        "trackedChangeSide": {
+          "description": "Which side of the surrounding tracked change the comment anchor sits on. Pairs with `trackedChangeParentId`.",
+          "enum": [
+            "inserted",
+            "deleted",
+            "source",
+            "destination"
+          ]
+        },
+        "trackedChangeStory": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StoryLocator"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trackedChangeText": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trackedChangeThreadParentId": {
+          "description": "SuperDoc logical tracked-change id whose review conversation this comment explicitly belongs to. Persisted provenance; never inferred from anchor overlap.",
+          "type": "string"
+        },
+        "trackedChangeType": {
+          "enum": [
+            "insertion",
+            "deletion",
+            "replacement",
+            "formatting",
+            "move",
+            "structural",
+            "insert",
+            "delete",
+            "format"
+          ]
+        }
+      },
+      "required": [
+        "address",
+        "commentId",
+        "status"
+      ],
+      "type": "object"
+    }
+  }
+}

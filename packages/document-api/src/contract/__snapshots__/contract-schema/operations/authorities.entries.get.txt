@@ -1,0 +1,60 @@
+{
+  "definition": {
+    "description": "Get detailed information about a specific TA authority entry.",
+    "expectedResult": "Returns an AuthorityEntryInfo object with the entry's citations and category.",
+    "memberPath": "authorities.entries.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "authorities/entries-get.mdx",
+    "referenceGroup": "authorities",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "anchor": {
+              "$ref": "#/$defs/InlineAnchor"
+            },
+            "kind": {
+              "const": "inline"
+            },
+            "nodeType": {
+              "const": "authorityEntry"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "anchor"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

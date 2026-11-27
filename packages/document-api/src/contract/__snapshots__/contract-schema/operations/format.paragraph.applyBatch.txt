@@ -1,0 +1,1544 @@
+{
+  "definition": {
+    "description": "Apply an explicit ordered paragraph action program target-major to 1..1000 unique existing targets in one story, atomically. Accepts 1..1000 closed actions, at most 32000 expanded writer calls and 1048576 JSON bytes, cumulative across batches in an atomic plan. Uses existing writer validation; omitted groups are preserved. No nested plans, per-action targets/options or dry run. Expected revision is consumed once at batch start; live freshness is checked again before publication. Shared sessions support direct identity-preserving writes only.",
+    "expectedResult": "Resolves to ParagraphBatchMutationResult with resolution.targets, applied mode and tracked refs when committed, or indexed failure details. An all-no-op batch succeeds without revision, publication or history. Standalone commits once; inside an atomic plan shares its one preparation, publication and Undo/Redo unit.",
+    "memberPath": "format.paragraph.applyBatch",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_INPUT",
+        "TARGET_NOT_FOUND",
+        "REVISION_MISMATCH",
+        "PERMISSION_DENIED",
+        "CAPABILITY_UNAVAILABLE",
+        "PRECONDITION_FAILED"
+      ],
+      "supportsConditionalTrackedMode": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "conditional"
+    },
+    "referenceDocPath": "format/paragraph/apply-batch.mdx",
+    "referenceGroup": "format.paragraph",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_INPUT",
+                "TARGET_NOT_FOUND",
+                "REVISION_MISMATCH",
+                "PERMISSION_DENIED",
+                "CAPABILITY_UNAVAILABLE",
+                "PRECONDITION_FAILED"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "resolution": {
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ParagraphAddress"
+                },
+                {
+                  "$ref": "#/$defs/HeadingAddress"
+                },
+                {
+                  "$ref": "#/$defs/ListItemAddress"
+                }
+              ]
+            }
+          },
+          "required": [
+            "target"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "description": "At most 32000 expanded writes and 1048576 JSON bytes, cumulative per atomic plan; targets must resolve to unique nodes in one existing story. No dry run.",
+      "properties": {
+        "operations": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "styleId": {
+                        "description": "Named paragraph style ID (e.g. 'Normal', 'Heading1'). Unlike setStyle, existing run formatting is preserved.",
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "styleId"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "styles.paragraph.setStyleRef"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "styles.paragraph.clearStyle"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alignment": {
+                        "description": "Visual paragraph alignment. In RTL paragraphs, 'left' stores w:jc='right' and 'right' stores w:jc='left' so Word displays the requested side.",
+                        "enum": [
+                          "left",
+                          "center",
+                          "right",
+                          "justify"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "alignment"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setAlignment"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.clearAlignment"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "anyOf": [
+                      {
+                        "required": [
+                          "before"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "after"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "line"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "lineRule"
+                        ]
+                      }
+                    ],
+                    "if": {
+                      "required": [
+                        "line"
+                      ]
+                    },
+                    "properties": {
+                      "after": {
+                        "description": "Space after paragraph in twips (20 twips = 1pt).",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "before": {
+                        "description": "Space before paragraph in twips (20 twips = 1pt).",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "line": {
+                        "description": "Line spacing value. Meaning depends on lineRule. Must be provided together with lineRule.",
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "lineRule": {
+                        "description": "Line spacing rule. Required when 'line' is set.",
+                        "enum": [
+                          "auto",
+                          "exact",
+                          "atLeast"
+                        ]
+                      }
+                    },
+                    "required": [],
+                    "then": {
+                      "required": [
+                        "lineRule"
+                      ]
+                    },
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setSpacing"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.clearSpacing"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "anyOf": [
+                      {
+                        "required": [
+                          "left"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "right"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "firstLine"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "hanging"
+                        ]
+                      }
+                    ],
+                    "not": {
+                      "required": [
+                        "firstLine",
+                        "hanging"
+                      ]
+                    },
+                    "properties": {
+                      "firstLine": {
+                        "description": "First line indent in twips. Cannot be combined with hanging.",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "hanging": {
+                        "description": "Hanging indent in twips. Cannot be combined with firstLine.",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "left": {
+                        "description": "Left indentation in twips (1440 = 1 inch).",
+                        "type": "integer"
+                      },
+                      "right": {
+                        "description": "Right indentation in twips (1440 = 1 inch).",
+                        "type": "integer"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setIndentation"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.clearIndentation"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "anyOf": [
+                      {
+                        "required": [
+                          "keepNext"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "keepLines"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "widowControl"
+                        ]
+                      }
+                    ],
+                    "properties": {
+                      "keepLines": {
+                        "oneOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "keepNext": {
+                        "oneOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "widowControl": {
+                        "oneOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setKeepOptions"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "anyOf": [
+                      {
+                        "required": [
+                          "contextualSpacing"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "pageBreakBefore"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "suppressAutoHyphens"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "autoSpaceDE"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "autoSpaceDN"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "adjustRightInd"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "snapToGrid"
+                        ]
+                      }
+                    ],
+                    "properties": {
+                      "adjustRightInd": {
+                        "type": "boolean"
+                      },
+                      "autoSpaceDE": {
+                        "type": "boolean"
+                      },
+                      "autoSpaceDN": {
+                        "type": "boolean"
+                      },
+                      "contextualSpacing": {
+                        "oneOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "pageBreakBefore": {
+                        "oneOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "snapToGrid": {
+                        "type": "boolean"
+                      },
+                      "suppressAutoHyphens": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setFlowOptions"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "outlineLevel": {
+                        "oneOf": [
+                          {
+                            "maximum": 9,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "outlineLevel"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setOutlineLevel"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "color": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "side": {
+                        "enum": [
+                          "top",
+                          "bottom",
+                          "left",
+                          "right",
+                          "between",
+                          "bar"
+                        ]
+                      },
+                      "size": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "space": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "style": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "side",
+                      "style"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setBorder"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "side": {
+                        "enum": [
+                          "top",
+                          "bottom",
+                          "left",
+                          "right",
+                          "between",
+                          "bar",
+                          "all"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "side"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.clearBorder"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "anyOf": [
+                      {
+                        "required": [
+                          "fill"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "color"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "pattern"
+                        ]
+                      }
+                    ],
+                    "properties": {
+                      "color": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "fill": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "pattern": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setShading"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.clearShading"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alignment": {
+                        "enum": [
+                          "left",
+                          "center",
+                          "right",
+                          "decimal",
+                          "bar",
+                          "clear"
+                        ]
+                      },
+                      "leader": {
+                        "enum": [
+                          "none",
+                          "dot",
+                          "hyphen",
+                          "underscore",
+                          "heavy",
+                          "middleDot"
+                        ]
+                      },
+                      "position": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "position",
+                      "alignment"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setTabStop"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.clearAllTabStops"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "alignmentPolicy": {
+                        "enum": [
+                          "preserve",
+                          "matchDirection"
+                        ],
+                        "type": "string"
+                      },
+                      "direction": {
+                        "enum": [
+                          "ltr",
+                          "rtl"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "direction"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setDirection"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.clearDirection"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "markRunProps": {
+                        "additionalProperties": false,
+                        "description": "Paragraph-mark run properties (SDRunProps shape, e.g. fontSizeCs, specVanish).",
+                        "minProperties": 1,
+                        "properties": {
+                          "baselineShift": {
+                            "type": "number"
+                          },
+                          "bold": {
+                            "type": "boolean"
+                          },
+                          "boldCs": {
+                            "type": "boolean"
+                          },
+                          "border": {
+                            "additionalProperties": false,
+                            "minProperties": 1,
+                            "properties": {
+                              "color": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "rgb"
+                                      },
+                                      "value": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "theme"
+                                      },
+                                      "shade": {
+                                        "type": "integer"
+                                      },
+                                      "theme": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "tint": {
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "theme"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "auto"
+                                      }
+                                    },
+                                    "required": [
+                                      "model"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "frame": {
+                                "type": "boolean"
+                              },
+                              "shadow": {
+                                "type": "boolean"
+                              },
+                              "space": {
+                                "type": "number"
+                              },
+                              "style": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "width": {
+                                "type": "number"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "caps": {
+                            "type": "boolean"
+                          },
+                          "characterScale": {
+                            "type": "number"
+                          },
+                          "characterSpacing": {
+                            "type": "number"
+                          },
+                          "color": {
+                            "oneOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "model": {
+                                    "const": "rgb"
+                                  },
+                                  "value": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "model",
+                                  "value"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "model": {
+                                    "const": "theme"
+                                  },
+                                  "shade": {
+                                    "type": "integer"
+                                  },
+                                  "theme": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "tint": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "model",
+                                  "theme"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "model": {
+                                    "const": "auto"
+                                  }
+                                },
+                                "required": [
+                                  "model"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "cs": {
+                            "type": "boolean"
+                          },
+                          "doubleStrikethrough": {
+                            "type": "boolean"
+                          },
+                          "emboss": {
+                            "type": "boolean"
+                          },
+                          "fitTextWidth": {
+                            "type": "number"
+                          },
+                          "fontFamily": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "fontSize": {
+                            "type": "number"
+                          },
+                          "fontSizeCs": {
+                            "type": "number"
+                          },
+                          "fonts": {
+                            "additionalProperties": false,
+                            "minProperties": 1,
+                            "properties": {
+                              "ascii": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "asciiTheme": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "cs": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "csTheme": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "eastAsia": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "eastAsiaTheme": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "hAnsi": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "hAnsiTheme": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "hint": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "highlight": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "imprint": {
+                            "type": "boolean"
+                          },
+                          "italic": {
+                            "type": "boolean"
+                          },
+                          "italicCs": {
+                            "type": "boolean"
+                          },
+                          "kern": {
+                            "type": "number"
+                          },
+                          "lang": {
+                            "additionalProperties": false,
+                            "minProperties": 1,
+                            "properties": {
+                              "bidi": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "eastAsia": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "val": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "outline": {
+                            "type": "boolean"
+                          },
+                          "rtl": {
+                            "type": "boolean"
+                          },
+                          "shading": {
+                            "additionalProperties": false,
+                            "minProperties": 1,
+                            "properties": {
+                              "color": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "rgb"
+                                      },
+                                      "value": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "theme"
+                                      },
+                                      "shade": {
+                                        "type": "integer"
+                                      },
+                                      "theme": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "tint": {
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "theme"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "auto"
+                                      }
+                                    },
+                                    "required": [
+                                      "model"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "fill": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "rgb"
+                                      },
+                                      "value": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "theme"
+                                      },
+                                      "shade": {
+                                        "type": "integer"
+                                      },
+                                      "theme": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "tint": {
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "theme"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "auto"
+                                      }
+                                    },
+                                    "required": [
+                                      "model"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "pattern": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "shadow": {
+                            "type": "boolean"
+                          },
+                          "smallCaps": {
+                            "type": "boolean"
+                          },
+                          "specVanish": {
+                            "type": "boolean"
+                          },
+                          "strikethrough": {
+                            "type": "boolean"
+                          },
+                          "textEffect": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "underline": {
+                            "additionalProperties": false,
+                            "minProperties": 1,
+                            "properties": {
+                              "color": {
+                                "oneOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "rgb"
+                                      },
+                                      "value": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "value"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "theme"
+                                      },
+                                      "shade": {
+                                        "type": "integer"
+                                      },
+                                      "theme": {
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "tint": {
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "theme"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "model": {
+                                        "const": "auto"
+                                      }
+                                    },
+                                    "required": [
+                                      "model"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "style": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "vanish": {
+                            "type": "boolean"
+                          },
+                          "verticalAlign": {
+                            "enum": [
+                              "baseline",
+                              "superscript",
+                              "subscript"
+                            ]
+                          },
+                          "webHidden": {
+                            "type": "boolean"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "markRunProps"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "const": "format.paragraph.setMarkRunProps"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "input"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "targets": {
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ParagraphAddress"
+              },
+              {
+                "$ref": "#/$defs/HeadingAddress"
+              },
+              {
+                "$ref": "#/$defs/ListItemAddress"
+              }
+            ]
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "targets",
+        "operations"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "resolution": {
+              "additionalProperties": false,
+              "properties": {
+                "targets": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/ParagraphAddress"
+                      },
+                      {
+                        "$ref": "#/$defs/HeadingAddress"
+                      },
+                      {
+                        "$ref": "#/$defs/ListItemAddress"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "targets"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success",
+            "resolution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "INVALID_INPUT",
+                    "TARGET_NOT_FOUND",
+                    "REVISION_MISMATCH",
+                    "PERMISSION_DENIED",
+                    "CAPABILITY_UNAVAILABLE",
+                    "PRECONDITION_FAILED"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "resolution": {
+              "additionalProperties": false,
+              "properties": {
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/ParagraphAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/HeadingAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/ListItemAddress"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "target"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "resolution": {
+          "additionalProperties": false,
+          "properties": {
+            "targets": {
+              "items": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/ParagraphAddress"
+                  },
+                  {
+                    "$ref": "#/$defs/HeadingAddress"
+                  },
+                  {
+                    "$ref": "#/$defs/ListItemAddress"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "targets"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "resolution"
+      ],
+      "type": "object"
+    }
+  }
+}

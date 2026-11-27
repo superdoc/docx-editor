@@ -1,0 +1,172 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "affectedStories": {
+      "items": {
+        "$ref": "#/$defs/StoryLocator"
+      },
+      "type": "array"
+    },
+    "appliedChangeMode": {
+      "enum": [
+        "direct",
+        "tracked"
+      ]
+    },
+    "changeTag": {
+      "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+      "type": "string"
+    },
+    "changed": {
+      "type": "boolean"
+    },
+    "effects": {
+      "$ref": "#/$defs/ReceiptEffects"
+    },
+    "history": {
+      "$ref": "#/$defs/HistoryReplay"
+    },
+    "id": {
+      "type": "string"
+    },
+    "inserted": {
+      "items": {
+        "$ref": "#/$defs/EntityAddress"
+      },
+      "type": "array"
+    },
+    "invalidatedRefs": {
+      "items": {
+        "$ref": "#/$defs/AffectedRef"
+      },
+      "type": "array"
+    },
+    "remappedRefs": {
+      "items": {
+        "$ref": "#/$defs/AffectedRefRemapping"
+      },
+      "type": "array"
+    },
+    "removed": {
+      "items": {
+        "$ref": "#/$defs/EntityAddress"
+      },
+      "type": "array"
+    },
+    "resolution": {
+      "$ref": "#/$defs/TextMutationResolution"
+    },
+    "status": {
+      "const": "NO_OP"
+    },
+    "success": {
+      "const": true
+    },
+    "temporary": {
+      "additionalProperties": false,
+      "properties": {
+        "cancelledBy": {
+          "const": "native-edit",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "onNativeEdit": {
+          "enum": [
+            "cancel",
+            "preserve"
+          ],
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "begin",
+            "replace",
+            "rollback",
+            "commit"
+          ]
+        },
+        "tag": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "phase",
+        "tag"
+      ],
+      "type": "object"
+    },
+    "textRangeShifts": {
+      "items": {
+        "$ref": "#/$defs/TextRangeShift"
+      },
+      "type": "array"
+    },
+    "trackedChangeCount": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "trackedChangeOutcomes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "editIndex": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "trackedChangeCount": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "trackedChangeRefs": {
+            "items": {
+              "$ref": "#/$defs/TrackedChangeAddress"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "editIndex",
+          "trackedChangeCount",
+          "trackedChangeRefs"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "trackedChangeRefs": {
+      "items": {
+        "$ref": "#/$defs/TrackedChangeAddress"
+      },
+      "type": "array"
+    },
+    "trackedTextRangeShifts": {
+      "items": {
+        "$ref": "#/$defs/TrackedTextRangeShift"
+      },
+      "type": "array"
+    },
+    "txId": {
+      "type": "string"
+    },
+    "updated": {
+      "items": {
+        "$ref": "#/$defs/EntityAddress"
+      },
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "$ref": "#/$defs/ReviewWarning"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "success",
+    "resolution"
+  ],
+  "type": "object"
+}

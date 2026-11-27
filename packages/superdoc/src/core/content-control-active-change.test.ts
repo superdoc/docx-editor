@@ -139,7 +139,7 @@ afterEach(() => {
 });
 
 describe('onContentControlActiveChange', () => {
-  it('reports the active path only when the selected content controls change', () => {
+  it('reports the active path only when the selected content controls change', async () => {
     const selector = document.createElement('div');
     document.body.append(selector);
     const onContentControlActiveChange = vi.fn();
@@ -157,80 +157,12 @@ describe('onContentControlActiveChange', () => {
     publish(controls, ['outer']);
     publish(controls, []);
 
-    expect(onContentControlActiveChange).toHaveBeenCalledTimes(3);
-    expect(onContentControlActiveChange.mock.calls).toEqual([
-      [
-        {
-          active: {
-            alias: 'Inner',
-            controlType: 'text',
-            id: 'inner',
-            scope: 'inline',
-            tag: 'inner-tag',
-          },
-          previous: null,
-          activePath: [
-            {
-              alias: 'Inner',
-              controlType: 'text',
-              id: 'inner',
-              scope: 'inline',
-              tag: 'inner-tag',
-            },
-            {
-              alias: 'Outer',
-              controlType: 'text',
-              id: 'outer',
-              scope: 'block',
-              tag: 'outer-tag',
-            },
-          ],
-          source: 'keyboard',
-        },
-      ],
-      [
-        {
-          active: {
-            alias: 'Outer',
-            controlType: 'text',
-            id: 'outer',
-            scope: 'block',
-            tag: 'outer-tag',
-          },
-          previous: {
-            alias: 'Inner',
-            controlType: 'text',
-            id: 'inner',
-            scope: 'inline',
-            tag: 'inner-tag',
-          },
-          activePath: [
-            {
-              alias: 'Outer',
-              controlType: 'text',
-              id: 'outer',
-              scope: 'block',
-              tag: 'outer-tag',
-            },
-          ],
-          source: 'keyboard',
-        },
-      ],
-      [
-        {
-          active: null,
-          previous: {
-            alias: 'Outer',
-            controlType: 'text',
-            id: 'outer',
-            scope: 'block',
-            tag: 'outer-tag',
-          },
-          activePath: [],
-          source: 'keyboard',
-        },
-      ],
-    ]);
+    const calls = onContentControlActiveChange.mock.calls.map(
+      (args, index) => `call ${index + 1}: ${JSON.stringify(args, null, 2)}`,
+    );
+    await expect(`${calls.join('\n')}\n`).toMatchFileSnapshot(
+      './__snapshots__/content-control-active-change/selected-path-changes.txt',
+    );
   });
 
   it('reports pointer selection and detaches the observer on destroy', () => {

@@ -52,14 +52,46 @@ Both versions follow the same loop:
 3. Capture the document selection before the composer takes focus.
 4. Run `createFromCapture()`, `setActive()` with `scrollTo()`, or `resolve()` and `reopen()`. Show the returned result.
 
+## Wait for the comments to load
+
+SuperDoc reads the document's comments asynchronously, so the first snapshot can arrive before the list has loaded. Each
+snapshot has two readiness fields:
+
+- `listStatus` describes the comment list alone.
+- `status` combines `listStatus` with the selection read, so it also changes while the selection is re-read. Use it only
+  when your panel depends on the selection too, such as through `activeIds`.
+
+Both take one of three values:
+
+- `'pending'`: the list hasn't loaded yet. `items` is empty or holds only the comments on the painted pages, so it
+  doesn't tell you how many the document has.
+- `'ready'`: the latest read has finished, and `items` holds what it found. An empty `items` means the document
+  has no comments. Right after an edit, `listStatus` can stay `'ready'` with the previous list until the next read
+  starts.
+- `'stale'`: SuperDoc is re-reading the list, and `items` still holds the previous one.
+
+Once `listStatus` is `'ready'`, the snapshots `observe()` delivers list every comment in the document.
+`getSnapshot()` doesn't start that read. Its `items` can hold only the comments on the painted pages, and its
+`listStatus` can be `'ready'` for those pages alone. The example renders from `observe()` and shows `Loading comments...`
+until `listStatus` is `'ready'`:
+
+```ts
+ui.comments.observe(({ listStatus, items }) => {
+  const threads = items.filter((comment) => !comment.parentCommentId);
+  commentCount.textContent = listStatus === 'ready' ? `${threads.length} threads` : 'Loading comments...';
+});
+```
+
 ## Keep the comment target stable
 
 Capture the selection when the composer opens. The pointer path captures on `mousedown`, before focus moves to the
 button. Keyboard activation captures in the click handler. Submitting the saved capture keeps the draft anchored to the
 text that started it, even if the selection changes while someone writes.
 
-Use `ui.comments.createFromSelection()` only for an immediate action that does not move focus into a composer. Do not
-reconstruct a comment target from DOM ranges. See [Selection and viewport](/editor/custom-ui/selection-and-viewport)
+Use `ui.comments.createFromSelection()` only for an immediate action that does not move focus into a composer. If you
+keep SuperDoc's comments panel and only need an **Add comment** button, call
+[`ui.comments.openComposer()`](/editor/built-in-ui/comments#open-the-composer-from-your-toolbar) to open its built-in
+composer instead. Do not reconstruct a comment target from DOM ranges. See [Selection and viewport](/editor/custom-ui/selection-and-viewport)
 when you also need to position an application-owned popover.
 
 ## Paint comment highlights yourself

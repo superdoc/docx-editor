@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "block"
+    },
+    "nodeId": {
+      "type": "string"
+    },
+    "nodeType": {
+      "const": "tableCell"
+    }
+  },
+  "required": [
+    "kind",
+    "nodeType",
+    "nodeId"
+  ],
+  "type": "object"
+}

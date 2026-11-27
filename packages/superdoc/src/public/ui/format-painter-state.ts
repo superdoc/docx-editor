@@ -17,6 +17,7 @@ export interface FormatPainterSnapshot {
   inline: Record<string, unknown>;
   mixedInlineKeys: string[];
   paragraph: FormatPainterParagraphSnapshot | null;
+  paragraphFromWholeText: boolean;
 }
 
 export const FORMAT_PAINTER_BOOLEAN_KEYS = new Set([

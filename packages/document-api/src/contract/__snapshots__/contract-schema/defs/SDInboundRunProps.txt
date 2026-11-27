@@ -1,0 +1,60 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "bold": {
+      "type": "boolean"
+    },
+    "color": {
+      "$ref": "#/$defs/SDInboundColor"
+    },
+    "fontFamily": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "fontSize": {
+      "exclusiveMinimum": 0,
+      "type": "number"
+    },
+    "highlight": {
+      "enum": [
+        "black",
+        "blue",
+        "cyan",
+        "green",
+        "magenta",
+        "red",
+        "yellow",
+        "white",
+        "darkBlue",
+        "darkCyan",
+        "darkGreen",
+        "darkMagenta",
+        "darkRed",
+        "darkYellow",
+        "darkGray",
+        "lightGray",
+        "none"
+      ]
+    },
+    "italic": {
+      "type": "boolean"
+    },
+    "shading": {
+      "$ref": "#/$defs/SDInboundShading"
+    },
+    "strikethrough": {
+      "type": "boolean"
+    },
+    "underline": {
+      "$ref": "#/$defs/SDInboundUnderline"
+    },
+    "verticalAlign": {
+      "enum": [
+        "baseline",
+        "superscript",
+        "subscript"
+      ]
+    }
+  },
+  "type": "object"
+}

@@ -1,0 +1,9 @@
+input:
+{
+  "name": "empty"
+}
+
+className: sd-theme-empty
+
+css:
+

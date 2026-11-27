@@ -1,0 +1,76 @@
+{
+  "definition": {
+    "description": "Get the raw sdtPr properties of a content control as a passthrough hash.",
+    "expectedResult": "Returns a ContentControlsGetRawPropertiesResult with the raw properties.",
+    "memberPath": "contentControls.getRawProperties",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "content-controls/get-raw-properties.mdx",
+    "referenceGroup": "contentControls",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "block",
+                "inline"
+              ]
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "sdt"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "properties": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "properties"
+      ],
+      "type": "object"
+    }
+  }
+}

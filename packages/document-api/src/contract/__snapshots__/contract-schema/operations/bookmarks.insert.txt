@@ -1,0 +1,214 @@
+{
+  "definition": {
+    "description": "Insert a new named bookmark at a target location.",
+    "expectedResult": "Returns a BookmarkMutationResult indicating success with the bookmark address or a failure. Invalid nonempty creation names return INVALID_PAYLOAD without mutation.",
+    "memberPath": "bookmarks.insert",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_PAYLOAD",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "bookmarks/insert.mdx",
+    "referenceGroup": "bookmarks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/TextTarget"
+        },
+        "name": {
+          "description": "Bookmark creation name: starts with a Unicode letter or underscore, followed by letters, nonspacing/spacing combining marks, decimal digits or underscores; at most 40 UTF-16 code units. Invalid nonempty names return INVALID_PAYLOAD without mutation. Names are not normalized or truncated; imported names are unaffected.",
+          "type": "string"
+        },
+        "tableColumn": {
+          "additionalProperties": false,
+          "properties": {
+            "colFirst": {
+              "type": "integer"
+            },
+            "colLast": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "colFirst",
+            "colLast"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "at"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "bookmark": {
+              "additionalProperties": false,
+              "properties": {
+                "entityType": {
+                  "const": "bookmark"
+                },
+                "kind": {
+                  "const": "entity"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "kind",
+                "entityType",
+                "name"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "bookmark"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "bookmark": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "bookmark"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "name": {
+              "type": "string"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "name"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "bookmark"
+      ],
+      "type": "object"
+    }
+  }
+}

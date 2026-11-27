@@ -1,0 +1,111 @@
+{
+  "definition": {
+    "description": "Get a single header/footer slot entry by address.",
+    "expectedResult": "Returns a HeaderFooterSlotEntry for the targeted section slot.",
+    "memberPath": "headerFooters.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "header-footers/get.mdx",
+    "referenceGroup": "headerFooters",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "headerFooterKind": {
+              "enum": [
+                "header",
+                "footer"
+              ]
+            },
+            "kind": {
+              "const": "headerFooterSlot"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "variant": {
+              "enum": [
+                "default",
+                "first",
+                "even"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "section",
+            "headerFooterKind",
+            "variant"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "isExplicit": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "header",
+            "footer"
+          ]
+        },
+        "refId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "sectionIndex": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "variant": {
+          "enum": [
+            "default",
+            "first",
+            "even"
+          ]
+        }
+      },
+      "required": [
+        "section",
+        "sectionIndex",
+        "kind",
+        "variant",
+        "isExplicit"
+      ],
+      "type": "object"
+    }
+  }
+}

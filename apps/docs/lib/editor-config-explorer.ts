@@ -251,6 +251,7 @@ const presentation = {
   },
   user: {
     kind: 'starter',
+    default: "{ id: null, name: 'Default SuperDoc user', email: null }",
     example: {
       value: "{ id: 'jordan', name: 'Jordan Lee', … }",
       code: "user: {\n  id: 'jordan',\n  name: 'Jordan Lee',\n  email: 'jordan@example.com',\n}",

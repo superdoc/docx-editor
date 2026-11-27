@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { shallowRef, defineComponent, h, nextTick } from 'vue';
 import SurfaceHost from './SurfaceHost.vue';
 import SurfaceDialog from './SurfaceDialog.vue';
-import type { ActiveSurface } from '../../core/surface-manager.js';
+import { SurfaceManager, type ActiveSurface } from '../../core/surface-manager.js';
+import type { SurfaceHandle } from '../../core/types/index.js';
 import { domRect } from '../../test-support/dom-rect.js';
 
 /** Minimal SurfaceManager stub that exposes the same reactive refs */
@@ -286,162 +287,121 @@ describe('SurfaceHost', () => {
     expect(wrapper.find('.sd-surface-floating--top-left').exists()).toBe(true);
   });
 
-  describe('floating Escape — document-level listener', () => {
-    it('closes floating on Escape via document-level listener', async () => {
-      manager.activeFloating.value = createSurface({
-        id: 'float-1',
-        mode: 'floating',
-        request: {
-          id: 'float-1',
-          mode: 'floating',
-          closeOnEscape: true,
-          floating: { placement: 'top-right' },
-        },
-      });
-      const wrapper = mountHost(manager);
-      await nextTick();
+  describe('floating dismissal with the real surface manager', () => {
+    const realManagers: SurfaceManager[] = [];
+    const hosts: VueWrapper[] = [];
 
-      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
-      document.dispatchEvent(event);
-
-      expect(manager.close).toHaveBeenCalledWith('float-1');
-      wrapper.unmount();
+    afterEach(() => {
+      for (const host of hosts.splice(0)) host.unmount();
+      for (const real of realManagers.splice(0)) real.destroy();
     });
 
-    it('does not close floating on Escape when closeOnEscape is false', async () => {
-      manager.activeFloating.value = createSurface({
+    function openWithRealManager({
+      floating = {},
+      closeOnEscape,
+      withDialog = false,
+    }: {
+      floating?: { closeOnOutsidePointerDown?: boolean };
+      closeOnEscape?: boolean;
+      withDialog?: boolean;
+    } = {}) {
+      const real = new SurfaceManager({ getModuleConfig: () => undefined });
+      realManagers.push(real);
+      const dialog = withDialog
+        ? real.open({ id: 'dialog-1', mode: 'dialog', title: 'Dialog', component: TestContent })
+        : null;
+      const handle = real.open({
         id: 'float-1',
         mode: 'floating',
-        request: {
-          id: 'float-1',
-          mode: 'floating',
-          closeOnEscape: false,
-          floating: { placement: 'top-right' },
-        },
+        component: TestContent,
+        closeOnEscape,
+        floating: { placement: 'top-right', ...floating },
       });
-      const wrapper = mountHost(manager);
+      const host = mount(SurfaceHost, {
+        attachTo: document.body,
+        global: { provide: { surfaceManager: real }, stubs: { teleport: true } },
+      });
+      hosts.push(host);
+      const outcome = (target: SurfaceHandle | null = handle) =>
+        Promise.race([target?.result, Promise.resolve('open')]);
+      const floatingShown = () => host.find('.sd-surface-floating').exists();
+      return { host, real, dialog, outcome, floatingShown };
+    }
+
+    const press = (key: string) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    const pointerDown = (target: EventTarget) =>
+      target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+
+    it('closes the floating on Escape', async () => {
+      const surface = openWithRealManager();
+      await nextTick();
+      expect(surface.floatingShown()).toBe(true);
+
+      press('Escape');
       await nextTick();
 
-      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
-      document.dispatchEvent(event);
-
-      expect(manager.close).not.toHaveBeenCalled();
-      wrapper.unmount();
+      expect(surface.floatingShown()).toBe(false);
+      expect(await surface.outcome()).toEqual({ status: 'closed', reason: undefined });
     });
 
-    it('does not close floating on Escape when a dialog is also open', async () => {
-      manager.activeDialog.value = createSurface({ mode: 'dialog' });
-      manager.activeFloating.value = createSurface({
-        id: 'float-1',
-        mode: 'floating',
-        request: {
-          id: 'float-1',
-          mode: 'floating',
-          closeOnEscape: true,
-          floating: { placement: 'top-right' },
-        },
-      });
-      const wrapper = mountHost(manager);
+    it.each([
+      ['another key', { key: 'Enter' }],
+      ['closeOnEscape is false', { key: 'Escape', closeOnEscape: false }],
+      ['a dialog is also open', { key: 'Escape', withDialog: true }],
+    ])('keeps the floating open on a keydown when %s', async (_case, { key, ...options }) => {
+      const surface = openWithRealManager(options);
       await nextTick();
 
-      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
-      document.dispatchEvent(event);
+      press(key);
+      await nextTick();
 
-      // Floating Escape is suppressed when dialog is open — dialog owns Escape
-      expect(manager.close).not.toHaveBeenCalled();
-      wrapper.unmount();
+      expect(surface.floatingShown()).toBe(true);
+      expect(await surface.outcome()).toBe('open');
+      if (surface.dialog) expect(await surface.outcome(surface.dialog)).toBe('open');
     });
 
-    it('cleans up document listener when floating is removed', async () => {
-      manager.activeFloating.value = createSurface({
-        id: 'float-1',
-        mode: 'floating',
-        request: {
-          id: 'float-1',
-          mode: 'floating',
-          closeOnEscape: true,
-          floating: { placement: 'top-right' },
-        },
-      });
-      const wrapper = mountHost(manager);
+    it('closes a floating opened after the previous one was closed by its handle', async () => {
+      const surface = openWithRealManager();
+      await nextTick();
+      surface.real.close('float-1');
+      await nextTick();
+      expect(surface.floatingShown()).toBe(false);
+
+      const next = surface.real.open({ id: 'float-2', mode: 'floating', component: TestContent });
+      await nextTick();
+      expect(surface.floatingShown()).toBe(true);
+
+      press('Escape');
       await nextTick();
 
-      manager.activeFloating.value = null;
-      await nextTick();
-
-      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
-      document.dispatchEvent(event);
-
-      expect(manager.close).not.toHaveBeenCalled();
-      wrapper.unmount();
-    });
-  });
-
-  describe('floating outside-pointer-down', () => {
-    it('closes floating when closeOnOutsidePointerDown is true and pointer is outside', async () => {
-      manager.activeFloating.value = createSurface({
-        id: 'float-1',
-        mode: 'floating',
-        request: {
-          id: 'float-1',
-          mode: 'floating',
-          closeOnEscape: true,
-          floating: { placement: 'top-right', closeOnOutsidePointerDown: true },
-        },
-      });
-      const wrapper = mountHost(manager);
-      await nextTick();
-
-      const event = new PointerEvent('pointerdown', { bubbles: true });
-      document.dispatchEvent(event);
-
-      expect(manager.close).toHaveBeenCalledWith('float-1');
-      wrapper.unmount();
+      expect(surface.floatingShown()).toBe(false);
+      expect(await surface.outcome(next)).toEqual({ status: 'closed', reason: undefined });
     });
 
-    it('does not close floating when closeOnOutsidePointerDown is false (default)', async () => {
-      manager.activeFloating.value = createSurface({
-        id: 'float-1',
-        mode: 'floating',
-        request: {
-          id: 'float-1',
-          mode: 'floating',
-          closeOnEscape: true,
-          floating: { placement: 'top-right' },
-        },
-      });
-      const wrapper = mountHost(manager);
+    it('closes the floating on a pointer down outside it when closeOnOutsidePointerDown is true', async () => {
+      const surface = openWithRealManager({ floating: { closeOnOutsidePointerDown: true } });
       await nextTick();
 
-      // Pointer down outside — but closeOnOutsidePointerDown defaults to false
-      const event = new PointerEvent('pointerdown', { bubbles: true });
-      document.dispatchEvent(event);
+      pointerDown(document.body);
+      await nextTick();
 
-      expect(manager.close).not.toHaveBeenCalled();
-      wrapper.unmount();
+      expect(surface.floatingShown()).toBe(false);
+      expect(await surface.outcome()).toEqual({ status: 'closed', reason: undefined });
     });
 
-    it('does not close floating on outside pointer when a dialog is also open', async () => {
-      manager.activeDialog.value = createSurface({ mode: 'dialog' });
-      manager.activeFloating.value = createSurface({
-        id: 'float-1',
-        mode: 'floating',
-        request: {
-          id: 'float-1',
-          mode: 'floating',
-          closeOnEscape: true,
-          floating: { placement: 'top-right', closeOnOutsidePointerDown: true },
-        },
-      });
-      const wrapper = mountHost(manager);
+    it.each([
+      ['closeOnOutsidePointerDown is left at its default', {}, 'outside'],
+      ['a dialog is also open', { floating: { closeOnOutsidePointerDown: true }, withDialog: true }, 'outside'],
+      ['the pointer goes down inside the floating', { floating: { closeOnOutsidePointerDown: true } }, 'inside'],
+    ] as const)('keeps the floating open on a pointer down when %s', async (_case, options, where) => {
+      const surface = openWithRealManager(options);
       await nextTick();
 
-      const event = new PointerEvent('pointerdown', { bubbles: true });
-      document.dispatchEvent(event);
+      pointerDown(where === 'inside' ? surface.host.get('.test-content').element : document.body);
+      await nextTick();
 
-      // Outside-pointer-down is suppressed when dialog is open
-      expect(manager.close).not.toHaveBeenCalled();
-      wrapper.unmount();
+      expect(surface.floatingShown()).toBe(true);
+      expect(await surface.outcome()).toBe('open');
     });
   });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vite-plus/test';
+import { describe, expect, it } from 'vite-plus/test';
 import type { TableBlock } from '@superdoc/contracts';
 import type { FontMeasureContext } from '@superdoc/font-system';
 import {
@@ -13,11 +13,7 @@ import {
   finishTableRowMeasurementOwner,
   prepareTableMeasurementCell,
 } from './retained-table-measurement.js';
-
-vi.mock('./immutable-data-proof-cache.js', async (importOriginal) => {
-  const { createImmutableDataProofCache } = await importOriginal<typeof import('./immutable-data-proof-cache.js')>();
-  return { createImmutableDataProofCache: () => createImmutableDataProofCache(16) };
-});
+import { createImmutableDataProofCache } from './immutable-data-proof-cache.js';
 
 function frozenGrid(rowCount: number, columns: number): TableBlock {
   return Object.freeze({
@@ -59,14 +55,13 @@ function certify(table: TableBlock): void {
       }
       finishTableRowMeasurementOwner(owner, row);
     }
-    expect(owner).toMatchObject({ immutable: true, rowsCertified: table.rows.length, rowsReusable: true });
   } finally {
     disposeSurfaceMeasurementRuntime(runtime);
   }
 }
 
 describe('retained measurement proof eviction', () => {
-  it('reuses a warm proof and re-inspects it after independent source generations evict it', () => {
+  it('inspects a cold table once and reuses the warm proof', () => {
     let inspections = 0;
     const cell = new Proxy(frozenGrid(1, 1).rows[0]!.cells[0]!, {
       getPrototypeOf(target) {
@@ -80,11 +75,20 @@ describe('retained measurement proof eviction', () => {
       rows: Object.freeze([Object.freeze({ cells: Object.freeze([cell]) })]),
     }) as unknown as TableBlock;
     certify(table);
+    expect(inspections).toBeGreaterThan(0);
     inspections = 0;
     certify(table);
     expect(inspections).toBe(0);
-    for (let generation = 0; generation < 9; generation++) certify(frozenGrid(1, 5));
-    certify(table);
-    expect(inspections).toBeGreaterThan(0);
+  });
+
+  it('forgets the oldest proofs once eight segments are full', () => {
+    const cache = createImmutableDataProofCache(2);
+    const first = {};
+    cache.add(first);
+    for (let index = 0; index < 15; index++) cache.add({});
+    expect(cache.has(first)).toBe(true);
+
+    cache.add({});
+    expect(cache.has(first)).toBe(false);
   });
 });

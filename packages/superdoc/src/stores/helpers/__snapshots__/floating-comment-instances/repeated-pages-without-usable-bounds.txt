@@ -1,0 +1,88 @@
+input:
+{
+  "comment": {
+    "commentId": "tracked-change-invalid-repeat",
+    "trackedChange": true,
+    "trackedChangeStory": {
+      "kind": "story",
+      "storyType": "headerFooterPart",
+      "refId": "rId-footer"
+    }
+  },
+  "positionKey": "tc::hf:part:rId-footer::tracked-change-invalid-repeat",
+  "positionEntry": {
+    "pageIndex": 1,
+    "rects": [
+      {
+        "pageIndex": 0,
+        "top": 20,
+        "left": null,
+        "right": 60,
+        "bottom": 40
+      },
+      {
+        "pageIndex": 1,
+        "top": 120,
+        "left": "<undefined>",
+        "right": 72,
+        "bottom": 142
+      }
+    ],
+    "bounds": {
+      "top": 120,
+      "left": 16,
+      "right": 80,
+      "bottom": 146,
+      "width": 64,
+      "height": 26
+    }
+  },
+  "fallbackId": "fallback-thread-id"
+}
+
+instances:
+[
+  {
+    "id": "tc::hf:part:rId-footer::tracked-change-invalid-repeat",
+    "threadId": "tracked-change-invalid-repeat",
+    "comment": {
+      "commentId": "tracked-change-invalid-repeat",
+      "trackedChange": true,
+      "trackedChangeStory": {
+        "kind": "story",
+        "storyType": "headerFooterPart",
+        "refId": "rId-footer"
+      }
+    },
+    "positionKey": "tc::hf:part:rId-footer::tracked-change-invalid-repeat",
+    "positionEntry": {
+      "pageIndex": 1,
+      "rects": [
+        {
+          "pageIndex": 0,
+          "top": 20,
+          "left": null,
+          "right": 60,
+          "bottom": 40
+        },
+        {
+          "pageIndex": 1,
+          "top": 120,
+          "left": "<undefined>",
+          "right": 72,
+          "bottom": 142
+        }
+      ],
+      "bounds": {
+        "top": 120,
+        "left": 16,
+        "right": 80,
+        "bottom": 146,
+        "width": 64,
+        "height": 26
+      }
+    },
+    "pageIndex": 1,
+    "isPrimary": true
+  }
+]

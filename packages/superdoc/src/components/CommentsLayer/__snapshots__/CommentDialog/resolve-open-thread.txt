@@ -1,0 +1,85 @@
+before:
+
+store:
+{
+  "activeComment": "comment-allow-resolve-omitted",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-allow-resolve-omitted",
+      "commentText": "Open"
+    },
+    {
+      "commentId": "reply-allow-resolve-omitted",
+      "parentCommentId": "comment-allow-resolve-omitted",
+      "commentText": "Reply in the same thread"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-allow-resolve-omitted: comment: Open
+reply-allow-resolve-omitted: comment: Reply in the same thread
+reply pill
+
+action: header emits resolve
+
+document calls:
+comments.resolve {"commentId":"comment-allow-resolve-omitted"}
+comments.setActiveComment null
+
+comments-update events:
+[
+  {
+    "type": "resolved",
+    "comment": {
+      "commentId": "comment-allow-resolve-omitted",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Open",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      },
+      "isResolved": true
+    }
+  }
+]
+
+superdoc.focus calls: [
+  []
+]
+
+after:
+
+store:
+{
+  "activeComment": null,
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-allow-resolve-omitted",
+      "commentText": "Open"
+    },
+    {
+      "commentId": "reply-allow-resolve-omitted",
+      "parentCommentId": "comment-allow-resolve-omitted",
+      "commentText": "Reply in the same thread"
+    }
+  ]
+}
+
+dialog:
+classes: is-resolved
+badge: Resolved
+comment-allow-resolve-omitted: comment: Open
+reply-allow-resolve-omitted: comment: Reply in the same thread

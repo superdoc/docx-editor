@@ -1,0 +1,12 @@
+addRowBefore -> table-add-row-before
+addRowAfter -> table-add-row-after
+deleteRow -> table-delete-row
+addColumnBefore -> table-add-column-before
+addColumnAfter -> table-add-column-after
+deleteColumn -> table-delete-column
+deleteTable -> table-delete
+deleteCellAndTableBorders -> table-remove-borders
+mergeCells -> table-merge-cells
+splitCell -> table-split-cell
+fixTables -> table-fix
+tableActions is enabled while any of these is: table-add-row-before, table-add-row-after, table-delete-row, table-add-column-before, table-add-column-after, table-delete-column, table-delete, table-remove-borders, table-merge-cells, table-split-cell, table-fix

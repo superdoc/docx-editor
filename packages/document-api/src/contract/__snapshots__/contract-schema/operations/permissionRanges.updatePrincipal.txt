@@ -1,0 +1,74 @@
+{
+  "definition": {
+    "description": "Change which principal is allowed to edit a permission range. Updates the principal fields on the start marker.",
+    "expectedResult": "Returns a PermissionRangeMutationResult with the updated range info on success.",
+    "memberPath": "permissionRanges.updatePrincipal",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "permission-ranges/update-principal.mdx",
+    "referenceGroup": "permissionRanges",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "failure": {
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "principal": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "everyone",
+                "editor"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "principal"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    },
+    "success": {
+      "type": "object"
+    }
+  }
+}

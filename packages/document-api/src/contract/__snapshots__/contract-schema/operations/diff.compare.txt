@@ -1,0 +1,553 @@
+{
+  "definition": {
+    "description": "Compare the current document (base) against a previously captured target snapshot. Returns a versioned diff payload whose summary reports which components changed: body, comments, styles, numbering, header/footers, and parts.",
+    "expectedResult": "Returns a DiffPayload with a summary and opaque payload.",
+    "memberPath": "diff.compare",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNSUPPORTED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "diff/compare.mdx",
+    "referenceGroup": "diff",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "includeDisplay": {
+          "type": "boolean"
+        },
+        "numberingChangeMode": {
+          "enum": [
+            "direct"
+          ]
+        },
+        "settingsChangeMode": {
+          "enum": [
+            "direct"
+          ]
+        },
+        "styleChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "targetSnapshot": {
+          "additionalProperties": false,
+          "properties": {
+            "coverage": {
+              "additionalProperties": false,
+              "properties": {
+                "body": {
+                  "const": true,
+                  "type": "boolean"
+                },
+                "comments": {
+                  "type": "boolean"
+                },
+                "headerFooters": {
+                  "type": "boolean"
+                },
+                "numbering": {
+                  "type": "boolean"
+                },
+                "styles": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "body",
+                "comments",
+                "styles",
+                "numbering",
+                "headerFooters"
+              ],
+              "type": "object"
+            },
+            "engine": {
+              "enum": [
+                "superdoc-v2"
+              ],
+              "type": "string"
+            },
+            "fingerprint": {
+              "type": "string"
+            },
+            "payload": {
+              "description": "Opaque engine-owned snapshot data.",
+              "type": "object"
+            },
+            "version": {
+              "enum": [
+                "sd-diff-snapshot/v1",
+                "sd-diff-snapshot/v2"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "version",
+            "engine",
+            "fingerprint",
+            "coverage",
+            "payload"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "targetSnapshot"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "applyEligibility": {
+          "additionalProperties": false,
+          "properties": {
+            "direct": {
+              "additionalProperties": false,
+              "properties": {
+                "blockers": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "family-apply-lane-unavailable",
+                          "header-footer-physical-lifecycle-unsafe",
+                          "header-footer-tracked-lifecycle-unsupported",
+                          "comment-replay-unsafe",
+                          "comment-anchor-marker-semantics-unsafe",
+                          "styles-replay-unsafe",
+                          "numbering-replay-unsafe",
+                          "definition-replay-tracked-unsupported",
+                          "package-graph-tracked-unsupported",
+                          "section-reference-replay-unsafe",
+                          "structural-paragraph-unsupported"
+                        ],
+                        "type": "string"
+                      },
+                      "families": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "message"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "enum": [
+                    "candidate",
+                    "blocked"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "blockers"
+              ],
+              "type": "object"
+            },
+            "tracked": {
+              "additionalProperties": false,
+              "properties": {
+                "blockers": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "family-apply-lane-unavailable",
+                          "header-footer-physical-lifecycle-unsafe",
+                          "header-footer-tracked-lifecycle-unsupported",
+                          "comment-replay-unsafe",
+                          "comment-anchor-marker-semantics-unsafe",
+                          "styles-replay-unsafe",
+                          "numbering-replay-unsafe",
+                          "definition-replay-tracked-unsupported",
+                          "package-graph-tracked-unsupported",
+                          "section-reference-replay-unsafe",
+                          "structural-paragraph-unsupported"
+                        ],
+                        "type": "string"
+                      },
+                      "families": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "message"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "enum": [
+                    "candidate",
+                    "blocked"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "blockers"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "direct",
+            "tracked"
+          ],
+          "type": "object"
+        },
+        "baseFingerprint": {
+          "type": "string"
+        },
+        "coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "const": true,
+              "type": "boolean"
+            },
+            "comments": {
+              "type": "boolean"
+            },
+            "headerFooters": {
+              "type": "boolean"
+            },
+            "numbering": {
+              "type": "boolean"
+            },
+            "styles": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "body",
+            "comments",
+            "styles",
+            "numbering",
+            "headerFooters"
+          ],
+          "type": "object"
+        },
+        "display": {
+          "additionalProperties": false,
+          "properties": {
+            "changes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "after": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "target": {
+                            "$ref": "#/$defs/TextAddress"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "text",
+                          "target"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "before": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "target": {
+                            "$ref": "#/$defs/TextAddress"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "text",
+                          "target"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "insert",
+                      "delete",
+                      "replace",
+                      "format",
+                      "move"
+                    ]
+                  },
+                  "ordinal": {
+                    "type": "number"
+                  },
+                  "targetAnchor": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/TextAddress"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "before",
+                  "after",
+                  "targetAnchor",
+                  "ordinal"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "unrenderedFamilies": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "changes",
+            "unrenderedFamilies"
+          ],
+          "type": "object"
+        },
+        "engine": {
+          "enum": [
+            "superdoc-v2"
+          ],
+          "type": "string"
+        },
+        "partChanges": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "afterFingerprint": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "beforeFingerprint": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "added",
+                  "removed",
+                  "modified"
+                ],
+                "type": "string"
+              },
+              "partUri": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "partUri",
+              "kind",
+              "beforeFingerprint",
+              "afterFingerprint"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "payload": {
+          "description": "Opaque engine-owned diff data.",
+          "type": "object"
+        },
+        "summary": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "changedComponents": {
+              "items": {
+                "enum": [
+                  "body",
+                  "comments",
+                  "styles",
+                  "numbering",
+                  "headerFooters",
+                  "parts"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "comments": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "hasChanges": {
+              "type": "boolean"
+            },
+            "headerFooters": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "numbering": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "parts": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            },
+            "styles": {
+              "additionalProperties": false,
+              "properties": {
+                "hasChanges": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "hasChanges"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "hasChanges",
+            "changedComponents",
+            "body",
+            "comments",
+            "styles",
+            "numbering",
+            "headerFooters",
+            "parts"
+          ],
+          "type": "object"
+        },
+        "targetFingerprint": {
+          "type": "string"
+        },
+        "version": {
+          "enum": [
+            "sd-diff-payload/v1",
+            "sd-diff-payload/v2"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "engine",
+        "baseFingerprint",
+        "targetFingerprint",
+        "coverage",
+        "summary",
+        "payload"
+      ],
+      "type": "object"
+    }
+  }
+}

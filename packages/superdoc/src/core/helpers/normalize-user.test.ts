@@ -12,6 +12,14 @@ describe('normalizeSuperDocUser', () => {
     expect(first).not.toBe(second);
   });
 
+  it.each([null, undefined, '', '   '])('uses the default name when the configured name is %j', (name) => {
+    expect(normalizeSuperDocUser({ id: 'user-1', name, email: 'ada@example.com' })).toEqual({
+      id: 'user-1',
+      name: 'Default SuperDoc user',
+      email: 'ada@example.com',
+    });
+  });
+
   it('preserves configured identity fields while filling omitted defaults', () => {
     expect(
       normalizeSuperDocUser({

@@ -51,9 +51,41 @@ Both versions use one domain handle:
 - Set `ui.comments` to `false` to remove SuperDoc's comments and review sidebar without removing review data from the
   DOCX.
 - Use `observe()` or `useSuperDocTrackChanges()` to keep the list and active change current.
+- Show a list change with its row's `listLabel`, such as `Split list item`, `Merged list items` or
+  `Removed from list`. It is the label SuperDoc's review card shows, and it is absent for other changes.
 - Run `setActive()` with `scrollTo()`, or `navigatePrevious()` and `navigateNext()`, to move between document marks.
 - Run `acceptAsync()` or `rejectAsync()` with the row's `{ id, story }` and await the settled result. Keep the panel
   pending until it resolves, then report success or the failure message.
+
+## Wait for the changes to load
+
+SuperDoc reads the document's tracked changes asynchronously, so the first snapshot can arrive before the list has
+loaded. Each snapshot has two readiness fields:
+
+- `listStatus` describes the tracked-change list alone.
+- `status` combines `listStatus` with the selection read, so it also changes while the selection is re-read. Use it only
+  when your panel depends on the selection too, such as through `activeId`.
+
+Both take one of three values:
+
+- `'pending'`: the list hasn't loaded yet. `items` is empty or holds only the changes on the painted pages, so it
+  doesn't tell you how many the document has.
+- `'ready'`: the latest read has finished, and `items` holds what it found. An empty `items` means the document
+  has no open changes. Right after an edit or decision, `listStatus` can stay `'ready'` with the previous list
+  until the next read starts.
+- `'stale'`: the list may be incomplete. SuperDoc is re-reading it and `items` still holds the previous list, or
+  the document is still loading and `items` holds the changes found so far.
+
+Once `listStatus` is `'ready'`, the snapshots `observe()` delivers list every change in the document.
+`getSnapshot()` doesn't start that read. Its `items` can hold only the changes on the painted pages, and its
+`listStatus` can be `'ready'` for those pages alone. The example renders from `observe()` and shows `Loading changes...`
+until `listStatus` is `'ready'`:
+
+```ts
+ui.trackChanges.observe(({ listStatus, total }) => {
+  changeCount.textContent = listStatus === 'ready' ? `${total} open changes` : 'Loading changes...';
+});
+```
 
 ## Keep decisions synchronized
 

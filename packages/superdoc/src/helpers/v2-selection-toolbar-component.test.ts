@@ -5,6 +5,8 @@ import { defineComponent, h, nextTick } from 'vue';
 import { EventEmitter } from 'eventemitter3';
 import { DOCX } from '@superdoc/common';
 import { useSuperdocStore } from '../stores/superdoc-store.js';
+import { useCommentsStore } from '../stores/comments-store.js';
+import { createSuperDocUI } from '../public/ui/create-super-doc-ui.js';
 import { normalizeUiConfig } from '../core/config/normalize-ui-config.js';
 import SuperDoc from '../SuperDoc.vue';
 import { fixedCommentsLayout } from '../test-support/comments-layout.js';
@@ -50,6 +52,7 @@ async function mountShell() {
 
   const pinia = createPinia();
   const store = useSuperdocStore(pinia);
+  const comments = useCommentsStore(pinia);
   store.documents = [{ id: 'doc-a', type: DOCX, data: new Uint8Array(), editorMountNonce: 0 }];
   const config = { modules: { comments: {} }, ui: { comments: {} }, documentMode: 'editing' };
   const uiConfig = normalizeUiConfig(config);
@@ -108,14 +111,33 @@ async function mountShell() {
 
   editor.vm.$emit('v2-render', { epoch: 1, mountContainer });
   await flushFrames();
-  return { anchor, frames, mountContainer, store, superdoc, syncSelection, wrapper };
+  return { anchor, comments, frames, mountContainer, store, superdoc, syncSelection, wrapper };
 }
 
+const openFromFloatingTool = async (wrapper) => {
+  await wrapper.find('.superdoc__tools .tools-item[data-id="is-tool"]').trigger('mousedown');
+  return null;
+};
+
+const openFromPublicApi = async (_wrapper, superdoc) => {
+  const ui = createSuperDocUI({ superdoc });
+  try {
+    return await ui.comments.openComposer();
+  } finally {
+    ui.destroy();
+  }
+};
+
 describe('V2 floating comment action selection continuity', () => {
-  it.each([true, false])(
-    'flushes the latest native viewing range before comment capture and honors admission %s',
-    async (admitted) => {
-      const { anchor, frames, mountContainer, superdoc, syncSelection, wrapper } = await mountShell();
+  it.each([
+    [true, 'the floating tool', openFromFloatingTool, null],
+    [false, 'the floating tool', openFromFloatingTool, null],
+    [true, 'ui.comments.openComposer', openFromPublicApi, { ok: true }],
+    [false, 'ui.comments.openComposer', openFromPublicApi, { ok: false, reason: 'range-selection-required' }],
+  ])(
+    'flushes the latest native viewing range before comment capture and honors admission %s from %s',
+    async (admitted, _route, openComposer, expectedResult) => {
+      const { anchor, comments, frames, mountContainer, superdoc, syncSelection, wrapper } = await mountShell();
       const order = [];
       const target = {
         kind: 'selection',
@@ -159,10 +181,13 @@ describe('V2 floating comment action selection continuity', () => {
         window.getSelection().addRange(range);
         document.dispatchEvent(new Event('selectionchange'));
         expect(frames.size).toBeGreaterThan(0);
-        await wrapper.find('.superdoc__tools .tools-item[data-id="is-tool"]').trigger('mousedown');
+        const result = await openComposer(wrapper, superdoc);
         await flushPromises();
+        expect(result).toEqual(expectedResult);
         expect(order.slice(0, 2)).toEqual(admitted ? ['apply-native', 'capture'] : ['apply-native']);
         expect(superdoc.activeEditor.v2Comments.captureCurrentSelection).toHaveBeenCalledTimes(admitted ? 1 : 0);
+        expect(Boolean(comments.pendingComment)).toBe(admitted);
+        expect(wrapper.find('.superdoc__tools .tools-item[data-id="is-tool"]').exists()).toBe(false);
       } finally {
         window.getSelection().removeAllRanges();
         wrapper.element.remove();
@@ -191,5 +216,49 @@ describe('V2 floating comment action selection continuity', () => {
     await syncSelection(false);
     expect(store.activeSelection).toBeNull();
     expect(wrapper.find('.superdoc__tools .tools-item[data-id="is-tool"]').exists()).toBe(false);
+  });
+});
+
+describe('ui.comments.closeComposer', () => {
+  it('cancels an openComposer that is still capturing the selection', async () => {
+    const { comments, superdoc } = await mountShell();
+    let finishCapture;
+    superdoc.activeEditor.v2Comments = makeV2CommentsAdapter({
+      documentId: 'doc-a',
+      getCapabilityState: () => ({ canWrite: true }),
+      captureCurrentSelection: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            finishCapture = resolve;
+          }),
+      ),
+    });
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      const opening = ui.comments.openComposer();
+      await flushPromises();
+      expect(superdoc.activeEditor.v2Comments.captureCurrentSelection).toHaveBeenCalledTimes(1);
+      ui.comments.closeComposer();
+      finishCapture({
+        ok: true,
+        target: { kind: 'text', segments: [{ blockId: 'b1', range: { start: 0, end: 4 } }] },
+      });
+      expect(await opening).toEqual({ ok: false, reason: 'operation-unavailable' });
+      expect(comments.pendingComment).toBeNull();
+    } finally {
+      ui.destroy();
+    }
+  });
+
+  it('leaves an unrelated reply draft alone when no composer is open', async () => {
+    const { comments, superdoc } = await mountShell();
+    comments.currentCommentText = 'reply draft';
+    const ui = createSuperDocUI({ superdoc });
+    try {
+      ui.comments.closeComposer();
+      expect(comments.currentCommentText).toBe('reply draft');
+    } finally {
+      ui.destroy();
+    }
   });
 });

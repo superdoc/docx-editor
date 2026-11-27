@@ -1,0 +1,244 @@
+{
+  "definition": {
+    "description": "Delete an entire block node (paragraph, heading, list item, table, image, or sdt) deterministically.",
+    "expectedResult": "Returns a BlocksDeleteResult receipt confirming the block was removed, including a deletedBlock summary with ordinal, nodeType, and textPreview.",
+    "intentAction": "delete_block",
+    "intentGroup": "edit",
+    "memberPath": "blocks.delete",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "returnsReceipt": true,
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "AMBIGUOUS_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "INTERNAL_ERROR",
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "blocks/delete.mdx",
+    "referenceGroup": "blocks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "TARGET_NOT_FOUND",
+                "AMBIGUOUS_TARGET",
+                "CAPABILITY_UNAVAILABLE",
+                "INVALID_TARGET",
+                "INVALID_INPUT",
+                "INTERNAL_ERROR",
+                "STORY_NOT_FOUND",
+                "STORY_MISMATCH",
+                "STORY_NOT_SUPPORTED",
+                "CROSS_STORY_PLAN",
+                "MATERIALIZATION_FAILED"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/DeletableBlockNodeAddress"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "deleted": {
+          "$ref": "#/$defs/DeletableBlockNodeAddress"
+        },
+        "deletedBlock": {
+          "additionalProperties": false,
+          "properties": {
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "type": "string"
+            },
+            "ordinal": {
+              "type": "number"
+            },
+            "textPreview": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "success": {
+          "const": true
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "success",
+        "deleted"
+      ],
+      "type": "object"
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "deleted": {
+          "$ref": "#/$defs/DeletableBlockNodeAddress"
+        },
+        "deletedBlock": {
+          "additionalProperties": false,
+          "properties": {
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "type": "string"
+            },
+            "ordinal": {
+              "type": "number"
+            },
+            "textPreview": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "success": {
+          "const": true
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "success",
+        "deleted"
+      ],
+      "type": "object"
+    }
+  }
+}

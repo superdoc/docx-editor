@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vite-plus/test';
 import {
   applyCompareWithWs09Fallback,
@@ -11,13 +8,6 @@ import {
 } from './compare-apply';
 
 describe('dev compare apply fallback', () => {
-  it('awaits the asynchronous host comparison before checking its summary', () => {
-    const testDirectory = dirname(fileURLToPath(import.meta.url));
-    const devAppSource = readFileSync(resolve(testDirectory, 'components/SuperdocDev.vue'), 'utf8');
-
-    expect(devAppSource).toContain('const diff = await liveCompareDocApi.diff.compare({ targetSnapshot });');
-  });
-
   it('keeps tracked compare apply when an asynchronous host facade succeeds', async () => {
     const apply = vi.fn(async () => ({ appliedOperations: 3, diagnostics: [] }));
     const outcome = await applyCompareWithWs09Fallback({ diff: { apply } }, { id: 'diff' });

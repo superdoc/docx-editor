@@ -1,0 +1,31 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "block"
+    },
+    "nodeId": {
+      "type": "string"
+    },
+    "nodeType": {
+      "enum": [
+        "paragraph",
+        "heading",
+        "listItem",
+        "table",
+        "tableOfContents",
+        "sdt",
+        "image"
+      ]
+    },
+    "story": {
+      "$ref": "#/$defs/StoryLocator"
+    }
+  },
+  "required": [
+    "kind",
+    "nodeType",
+    "nodeId"
+  ],
+  "type": "object"
+}

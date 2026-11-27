@@ -1,0 +1,71 @@
+call 1: [
+  {
+    "active": {
+      "id": "inner",
+      "controlType": "text",
+      "scope": "inline",
+      "tag": "inner-tag",
+      "alias": "Inner"
+    },
+    "previous": null,
+    "activePath": [
+      {
+        "id": "inner",
+        "controlType": "text",
+        "scope": "inline",
+        "tag": "inner-tag",
+        "alias": "Inner"
+      },
+      {
+        "id": "outer",
+        "controlType": "text",
+        "scope": "block",
+        "tag": "outer-tag",
+        "alias": "Outer"
+      }
+    ],
+    "source": "keyboard"
+  }
+]
+call 2: [
+  {
+    "active": {
+      "id": "outer",
+      "controlType": "text",
+      "scope": "block",
+      "tag": "outer-tag",
+      "alias": "Outer"
+    },
+    "previous": {
+      "id": "inner",
+      "controlType": "text",
+      "scope": "inline",
+      "tag": "inner-tag",
+      "alias": "Inner"
+    },
+    "activePath": [
+      {
+        "id": "outer",
+        "controlType": "text",
+        "scope": "block",
+        "tag": "outer-tag",
+        "alias": "Outer"
+      }
+    ],
+    "source": "keyboard"
+  }
+]
+call 3: [
+  {
+    "active": null,
+    "previous": {
+      "id": "outer",
+      "controlType": "text",
+      "scope": "block",
+      "tag": "outer-tag",
+      "alias": "Outer"
+    },
+    "activePath": [],
+    "source": "keyboard"
+  }
+]

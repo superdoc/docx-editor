@@ -208,6 +208,10 @@ export type CommentsCreateReceiptSuccess = ReceiptSuccess & {
 
 export type CommentsCreateReceipt = CommentsCreateReceiptSuccess | ReceiptFailureResult;
 
+export type CommentsPatchReceiptSuccess = ReceiptSuccess &
+  Pick<CommentInfo, 'resolvedTime' | 'resolvedById' | 'resolvedByEmail' | 'resolvedByName'>;
+export type CommentsPatchReceipt = CommentsPatchReceiptSuccess | ReceiptFailureResult;
+
 /**
  * Engine-specific adapter that the comments API delegates to.
  */
@@ -221,7 +225,7 @@ export interface CommentsAdapter {
   /** Move a comment to a different text range. */
   move(input: MoveCommentInput, options?: RevisionGuardOptions): Receipt;
   /** Resolve an open comment. */
-  resolve(input: ResolveCommentInput, options?: RevisionGuardOptions): Receipt;
+  resolve(input: ResolveCommentInput, options?: RevisionGuardOptions): CommentsPatchReceipt;
   /**
    * Reopen a previously-resolved comment. Symmetric inverse of
    * {@link CommentsAdapter.resolve}: removes the
@@ -255,7 +259,7 @@ export interface CommentsAdapter {
  */
 export interface CommentsApi {
   create(input: CommentsCreateInput, options?: RevisionGuardOptions): CommentsCreateReceipt;
-  patch(input: CommentsPatchInput, options?: RevisionGuardOptions): Receipt;
+  patch(input: CommentsPatchInput, options?: RevisionGuardOptions): CommentsPatchReceipt;
   delete(input: CommentsDeleteInput, options?: RevisionGuardOptions): Receipt;
   get(input: GetCommentInput): CommentInfo;
   list(query?: CommentsListQuery): CommentsListResult;
@@ -650,7 +654,7 @@ export function executeCommentsPatch(
   adapter: CommentsAdapter,
   input: CommentsPatchInput,
   options?: RevisionGuardOptions,
-): Receipt {
+): CommentsPatchReceipt {
   validatePatchCommentInput(input);
 
   if (input.text !== undefined) {

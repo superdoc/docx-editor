@@ -282,6 +282,36 @@ describe('createListMarkerElement tracked-change marker review (Plan 5)', () => 
   const glyph = (container: HTMLElement): HTMLElement =>
     container.querySelector('.superdoc-paragraph-marker') as HTMLElement;
 
+  it('preserves spaces in renumbered markers and keeps revision metadata on the marker itself', () => {
+    const trackedChange: MarkerTrackedChangeView = { id: 'tc-renumbered', kind: 'format' };
+    const markerEl = glyph(
+      createListMarkerElement(
+        makeDoc(),
+        'ARTICLE I ARTICLE II',
+        run,
+        undefined,
+        resolvePhysicalFamily,
+        trackedChange,
+        undefined,
+        'ARTICLE I'.length,
+      ),
+    );
+    const original = markerEl.querySelector('.superdoc-list-marker-original');
+    const current = markerEl.querySelector('.superdoc-list-marker-current');
+    expect(markerEl.textContent).toBe('ARTICLE I ARTICLE II');
+    expect(original?.textContent).toBe('ARTICLE I');
+    expect(current?.textContent).toBe('ARTICLE II');
+    expect(original?.nextSibling?.textContent).toBe(' ');
+    expect(markerEl.dataset.trackChangeId).toBe('tc-renumbered');
+    expect(markerEl.querySelector('[data-track-change-id], [data-track-change-kind]')).toBeNull();
+  });
+
+  it('preserves authored marker text containing spaces in a single text node', () => {
+    const markerEl = glyph(createListMarkerElement(makeDoc(), 'ARTICLE I', run, undefined, resolvePhysicalFamily));
+    expect(markerEl.textContent).toBe('ARTICLE I');
+    expect(markerEl.children.length).toBe(0);
+  });
+
   it('leaves normal markers free of review metadata, classes, and styling when no tracked change is present', () => {
     const markerEl = glyph(createListMarkerElement(makeDoc(), '1.', run, undefined, resolvePhysicalFamily));
     expect(markerEl.dataset.trackChangeId).toBeUndefined();

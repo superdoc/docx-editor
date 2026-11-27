@@ -1,0 +1,54 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "blockId": {
+      "type": "string"
+    },
+    "coordinateSpace": {
+      "$ref": "#/$defs/TextCoordinateSpace"
+    },
+    "nodeType": {
+      "type": "string"
+    },
+    "paragraphStyle": {
+      "additionalProperties": false,
+      "properties": {
+        "isListItem": {
+          "type": "boolean"
+        },
+        "listLevel": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "styleId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "range": {
+      "$ref": "#/$defs/Range"
+    },
+    "ref": {
+      "type": "string"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/MatchRun"
+      },
+      "type": "array"
+    },
+    "text": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "blockId",
+    "nodeType",
+    "range",
+    "text",
+    "ref",
+    "runs"
+  ],
+  "type": "object"
+}

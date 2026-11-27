@@ -1,0 +1,14 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "liveblocks",
+    "documentId": "room-1"
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "missing-auth",
+  "message": "SuperDoc v2 Liveblocks collaboration requires exactly one auth mode: a publicApiKey or an authEndpoint. None was provided."
+}

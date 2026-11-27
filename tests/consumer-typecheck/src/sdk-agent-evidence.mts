@@ -47,7 +47,7 @@ applied.preSnapshot?.revision satisfies string | undefined;
 applied.postSnapshot?.counts?.paragraphs satisfies number | undefined;
 applied.executedOperations?.[0]?.operationId satisfies string | undefined;
 applied.verification?.[0]?.passed satisfies boolean | undefined;
-applied.status satisfies 'ok' | 'partial' | 'failed' | 'aborted';
+applied.status satisfies 'ok' | 'unchanged' | 'partial' | 'failed' | 'aborted';
 
 const trackedAction: Promise<unknown> = dispatchSuperDocTool(
   document,

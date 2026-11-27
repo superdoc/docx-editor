@@ -5,18 +5,32 @@ import {
   installBundledSubstitutes,
   setBundledFontAssetBase,
 } from './bundled';
-import type { FontRegistry } from './registry';
+import { FontRegistry, type FontFaceLike, type FontSetLike } from './registry';
 
-/** Captures registered sources per family without a DOM. */
-class CaptureRegistry {
-  readonly registered: { family: string; source: string; descriptors?: FontFaceDescriptors }[] = [];
-  register({ family, source, descriptors }: { family: string; source: string; descriptors?: FontFaceDescriptors }) {
-    this.registered.push({ family, source: source ?? '', descriptors });
-    return { family, status: 'unloaded' as const };
+type CreatedFace = { family: string; source: string; descriptors?: FontFaceDescriptors };
+
+class RecordingRegistry {
+  readonly registered: CreatedFace[] = [];
+  readonly registry: FontRegistry;
+
+  constructor() {
+    const registered = this.registered;
+    class RecordingFontFace implements FontFaceLike {
+      constructor(family: string, source: string | ArrayBuffer | ArrayBufferView, descriptors?: FontFaceDescriptors) {
+        registered.push({ family, source: typeof source === 'string' ? source : '', descriptors });
+      }
+      load(): Promise<FontFaceLike> {
+        return Promise.resolve(this);
+      }
+    }
+    const fontSet: FontSetLike = { add: () => {}, load: () => Promise.resolve([]), check: () => false };
+    this.registry = new FontRegistry({ fontSet, FontFaceCtor: RecordingFontFace });
   }
+
   asRegistry(): FontRegistry {
-    return this as unknown as FontRegistry;
+    return this.registry;
   }
+
   sourcesFor(family: string): string[] {
     return this.registered.filter((r) => r.family === family).map((r) => r.source);
   }
@@ -27,48 +41,18 @@ const FACE_COUNT = BUNDLED_MANIFEST.reduce((n, f) => n + f.faces.length, 0);
 describe('installBundledSubstitutes URL resolution', () => {
   beforeEach(() => setBundledFontAssetBase(DEFAULT_BUNDLED_FONT_BASE));
 
-  it('registers every manifest face once with the default /fonts/ base', () => {
-    const reg = new CaptureRegistry();
+  it('registers every manifest face once with the default /fonts/ base', async () => {
+    const reg = new RecordingRegistry();
     installBundledSubstitutes(reg.asRegistry());
     expect(reg.registered).toHaveLength(FACE_COUNT);
-    expect(reg.sourcesFor('Carlito')).toContain('url(/fonts/Carlito-Regular.woff2)');
-    expect(reg.sourcesFor('Liberation Sans')).toContain('url(/fonts/LiberationSans-Bold.woff2)');
-    expect(reg.sourcesFor('Liberation Sans Narrow')).toContain('url(/fonts/LiberationSansNarrow-BoldItalic.woff2)');
-    expect(reg.sourcesFor('C059')).toContain('url(/fonts/C059-BdIta.woff2)');
-    expect(reg.sourcesFor('URW Gothic')).toContain('url(/fonts/URWGothic-DemiOblique.woff2)');
-    expect(reg.sourcesFor('Caprasimo')).toEqual(['url(/fonts/Caprasimo-Regular.woff2)']);
-    expect(reg.sourcesFor('Archivo Black')).toEqual(['url(/fonts/ArchivoBlack-Regular.woff2)']);
-    expect(reg.sourcesFor('Bacasime Antique')).toEqual(['url(/fonts/BacasimeAntique-Regular.woff2)']);
-    expect(reg.sourcesFor('Oregano Italic')).toEqual(['url(/fonts/OreganoItalic-Regular.woff2)']);
-    expect(reg.sourcesFor('Gelasio')).toContain('url(/fonts/Gelasio-BoldItalic.woff2)');
-    expect(reg.sourcesFor('Cardo')).toEqual([
-      'url(/fonts/Cardo-Regular.woff2)',
-      'url(/fonts/Cardo-Bold.woff2)',
-      'url(/fonts/Cardo-Italic.woff2)',
-    ]);
-    expect(reg.sourcesFor('Comic Relief')).toEqual([
-      'url(/fonts/ComicRelief-Regular.woff2)',
-      'url(/fonts/ComicRelief-Bold.woff2)',
-    ]);
-    expect(reg.sourcesFor('Selawik')).toEqual(['url(/fonts/Selawik-Regular.woff2)', 'url(/fonts/Selawik-Bold.woff2)']);
-    expect(reg.sourcesFor('Noto Sans Mono')).toEqual([
-      'url(/fonts/NotoSansMono-Regular.woff2)',
-      'url(/fonts/NotoSansMono-Bold.woff2)',
-    ]);
-    expect(reg.sourcesFor('PT Sans Narrow')).toEqual([
-      'url(/fonts/PTSansNarrow-Regular.woff2)',
-      'url(/fonts/PTSansNarrow-Bold.woff2)',
-    ]);
-    expect(reg.sourcesFor('TeX Gyre Bonum')).toEqual([
-      'url(/fonts/TeXGyreBonum-Regular.woff2)',
-      'url(/fonts/TeXGyreBonum-Bold.woff2)',
-      'url(/fonts/TeXGyreBonum-Italic.woff2)',
-      'url(/fonts/TeXGyreBonum-BoldItalic.woff2)',
-    ]);
+    const recorded = reg.registered
+      .map(({ family, source, descriptors }) => `${family} | ${descriptors?.weight} ${descriptors?.style} | ${source}`)
+      .join('\n');
+    await expect(`${recorded}\n`).toMatchFileSnapshot('__snapshots__/bundled/default-base-faces.txt');
   });
 
   it('registers every shipped face with its generated cmap coverage', () => {
-    const reg = new CaptureRegistry();
+    const reg = new RecordingRegistry();
     installBundledSubstitutes(reg.asRegistry());
     expect(reg.registered.every((face) => typeof face.descriptors?.unicodeRange === 'string')).toBe(true);
     const carlito = reg.registered.find((face) => face.source.endsWith('/Carlito-Regular.woff2)'));
@@ -77,14 +61,14 @@ describe('installBundledSubstitutes URL resolution', () => {
   });
 
   it('uses assetBaseUrl and normalizes a missing trailing slash', () => {
-    const reg = new CaptureRegistry();
+    const reg = new RecordingRegistry();
     installBundledSubstitutes(reg.asRegistry(), { assetBaseUrl: 'https://cdn.example.com/superdoc-fonts/v1' });
     expect(reg.sourcesFor('Carlito')).toContain('url(https://cdn.example.com/superdoc-fonts/v1/Carlito-Regular.woff2)');
   });
 
   it('ignores a non-function resolveAssetUrl (raw misconfig), warns, and falls back to assetBaseUrl', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const reg = new CaptureRegistry();
+    const reg = new RecordingRegistry();
     // A hand-written `fonts.resolveAssetUrl` may be a string; calling it would throw at init. It must
     // be ignored (warned once) and fall back to the base-URL resolver instead of crashing.
     expect(() =>
@@ -100,7 +84,7 @@ describe('installBundledSubstitutes URL resolution', () => {
 
   it('warns about a non-function resolveAssetUrl once per document, not on every install call', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const reg = new CaptureRegistry();
+    const reg = new RecordingRegistry();
     const handle = reg.asRegistry();
     const opts = {
       resolveAssetUrl: '/cdn/' as unknown as () => string,
@@ -113,7 +97,7 @@ describe('installBundledSubstitutes URL resolution', () => {
   });
 
   it('resolveAssetUrl wins over assetBaseUrl and receives per-face context', () => {
-    const reg = new CaptureRegistry();
+    const reg = new RecordingRegistry();
     const seen: { file: string; family: string; weight: string; style: string; source: string }[] = [];
     installBundledSubstitutes(reg.asRegistry(), {
       assetBaseUrl: '/ignored/',
@@ -135,7 +119,7 @@ describe('installBundledSubstitutes URL resolution', () => {
 
   it('setBundledFontAssetBase overrides the default base', () => {
     setBundledFontAssetBase('https://cdn.jsdelivr.net/npm/@superdoc/fonts@1/assets/');
-    const reg = new CaptureRegistry();
+    const reg = new RecordingRegistry();
     installBundledSubstitutes(reg.asRegistry());
     expect(reg.sourcesFor('Caladea')).toContain(
       'url(https://cdn.jsdelivr.net/npm/@superdoc/fonts@1/assets/Caladea-Regular.woff2)',
@@ -143,7 +127,7 @@ describe('installBundledSubstitutes URL resolution', () => {
   });
 
   it('is idempotent per registry for the same config', () => {
-    const reg = new CaptureRegistry();
+    const reg = new RecordingRegistry();
     const handle = reg.asRegistry();
     installBundledSubstitutes(handle, { assetBaseUrl: '/fonts/' });
     installBundledSubstitutes(handle, { assetBaseUrl: '/fonts/' });
@@ -151,7 +135,7 @@ describe('installBundledSubstitutes URL resolution', () => {
   });
 
   it('keeps the first config and warns on a conflicting later install (shared registry)', () => {
-    const reg = new CaptureRegistry();
+    const reg = new RecordingRegistry();
     const handle = reg.asRegistry();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     installBundledSubstitutes(handle, { assetBaseUrl: '/first/' });

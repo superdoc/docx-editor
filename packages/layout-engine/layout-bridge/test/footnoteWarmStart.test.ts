@@ -9,8 +9,7 @@
  *   2. WORK — on an unchanged document a warm run paginates exactly ONCE
  *      (the initial pagination is built with the seed and the pass-1 plan
  *      validates it in place), while cold runs need the full convergence
- *      ladder. Counted via the layoutDocument spy, so the perf claim is a
- *      deterministic assertion, not a benchmark.
+ *      ladder. Counted by bridgeTiming.counters.paginationPasses.
  * Plus the capture guard: seeds are only captured from EXACT fixed points
  * (a captured seed always pass-1-validates on an identical rerun), and
  * oscillating documents never capture.
@@ -18,7 +17,6 @@
 
 import { describe, it, expect, vi } from 'vite-plus/test';
 import type { FlowBlock, Measure } from '@superdoc/contracts';
-import * as layoutEngine from '@superdoc/layout-engine';
 import { clearIncrementalModuleState, incrementalLayout, type FootnoteReserveSeed } from '../src/incrementalLayout';
 
 const makeParagraph = (id: string, text: string, pmStart: number): FlowBlock => ({
@@ -136,16 +134,14 @@ describe('footnote convergence warm-start (SD-3432)', () => {
     const seed = cold.footnoteReserveSeed!;
     expect(seed).toBeTruthy();
 
-    const spy = vi.spyOn(layoutEngine, 'layoutDocument');
     const warm = await run(bodyBlocks, options, measureBlock, seed);
-    const paginations = spy.mock.calls.length;
-    spy.mockRestore();
 
     expect(layoutJson(warm)).toEqual(layoutJson(cold));
     // A captured seed validates on an identical rerun with ZERO extra
     // re-paginations: the initial pagination is built WITH the seed and the
     // pass-1 plan reproduces it (SD-3432 single-pagination steady state).
-    expect(paginations).toBe(1);
+    expect(warm.bridgeTiming.counters.paginationPasses).toBe(1);
+    expect(cold.bridgeTiming.counters.paginationPasses).toBeGreaterThan(1);
     // Idempotence: the warm run re-captures the same fixed point.
     expect(warm.footnoteReserveSeed).toEqual(seed);
   });

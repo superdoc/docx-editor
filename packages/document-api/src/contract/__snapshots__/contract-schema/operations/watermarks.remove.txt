@@ -1,0 +1,164 @@
+{
+  "definition": {
+    "description": "Remove a watermark without removing unrelated header content.",
+    "expectedResult": "Returns the removed watermark identity, or TARGET_NOT_FOUND when its identity is stale.",
+    "memberPath": "watermarks.remove",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "TARGET_NOT_FOUND",
+        "PRECONDITION_FAILED",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "watermarks/remove.mdx",
+    "referenceGroup": "watermarks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "TARGET_NOT_FOUND",
+                "PRECONDITION_FAILED",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "watermark"
+            },
+            "watermarkId": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "watermarkId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "watermarkId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "success",
+            "watermarkId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "TARGET_NOT_FOUND",
+                    "PRECONDITION_FAILED",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "success": {
+          "const": true
+        },
+        "watermarkId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "success",
+        "watermarkId"
+      ],
+      "type": "object"
+    }
+  }
+}

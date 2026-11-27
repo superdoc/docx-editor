@@ -1,0 +1,190 @@
+{
+  "definition": {
+    "description": "Set or replace a section header/footer reference for a variant.",
+    "expectedResult": "Returns a SectionMutationResult receipt; reports NO_OP if the header/footer reference already matches.",
+    "memberPath": "sections.setHeaderFooterRef",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "sections/set-header-footer-ref.mdx",
+    "referenceGroup": "sections",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "header",
+            "footer"
+          ]
+        },
+        "refId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "variant": {
+          "enum": [
+            "default",
+            "first",
+            "even"
+          ]
+        }
+      },
+      "required": [
+        "target",
+        "kind",
+        "variant",
+        "refId"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "section"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "section"
+      ],
+      "type": "object"
+    }
+  }
+}

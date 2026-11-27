@@ -5,62 +5,167 @@
  * instance exposes it and that the toolbar — the one surface whose mount
  * decision lives in `SuperDoc.ts` rather than the Vue shell — follows it.
  */
-import { describe, expect, it, vi } from 'vite-plus/test';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { flushPromises } from '@vue/test-utils';
+import { defineComponent, h, watch } from 'vue';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import SuperDocSource from '../../SuperDoc.vue?raw';
-import { mergeCommentsConfig } from './merge-comments-config.js';
 import { normalizeUiConfig } from './normalize-ui-config.js';
 import type { SuperDoc } from '../SuperDoc.js';
 import type { Config, SurfaceResolver } from '../types/index.js';
 
+const receivedEditorOptions = vi.hoisted((): Record<string, unknown>[] => []);
+
+vi.mock('../v2-integration/v2-integration.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../v2-integration/v2-integration.js')>();
+  return {
+    ...actual,
+    loadDefaultV2IntegrationOrFallback: () => Promise.resolve(),
+    createDefaultV2Integration: () => ({
+      ...actual.createStubV2Integration(),
+      EditorComponent: defineComponent({
+        name: 'EditorOptionsRecorder',
+        props: { options: { type: Object, required: true }, documentId: String },
+        setup(props) {
+          watch(
+            () => props.options,
+            (options) => receivedEditorOptions.push(options),
+            { immediate: true },
+          );
+          return () => h('div');
+        },
+      }),
+    }),
+  };
+});
+
+const blankDocx = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../shared/common/data/blank.docx'),
+);
+
+type ShellWidths = { selector: number; [elementId: string]: number };
+
+const withClientWidth = (element: HTMLElement, width: number) => {
+  Object.defineProperty(element, 'clientWidth', { configurable: true, get: () => width });
+  return element;
+};
+
+const mountedShells = new Set<SuperDoc>();
+
+afterEach(() => {
+  for (const superdoc of mountedShells) superdoc.destroy();
+  mountedShells.clear();
+  document.body.innerHTML = '';
+});
+
+const mountShell = async (config: Partial<Config>, widths: ShellWidths = { selector: 0 }) => {
+  const { SuperDoc } = await import('../SuperDoc.js');
+  const { selector: selectorWidth, ...elementWidths } = widths;
+  const selector = withClientWidth(document.createElement('div'), selectorWidth);
+  const toolbarHost = document.createElement('div');
+  toolbarHost.id = 'toolbar-host';
+  document.body.append(selector, toolbarHost);
+  for (const [id, width] of Object.entries(elementWidths)) {
+    const element = withClientWidth(document.createElement('div'), width);
+    element.id = id;
+    document.body.append(element);
+  }
+  const optionsBefore = receivedEditorOptions.length;
+  const superdoc = new SuperDoc({
+    selector,
+    document: new File([blankDocx], 'blank.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }),
+    telemetry: { enabled: false },
+    ...config,
+  });
+  mountedShells.add(superdoc);
+  await vi.waitFor(() => expect(receivedEditorOptions.length).toBeGreaterThan(optionsBefore));
+  return { superdoc, toolbarHost };
+};
+
+const latestEditorOptions = () => receivedEditorOptions.at(-1);
+
+const reevaluateEditorOptions = async (superdoc: SuperDoc) => {
+  const optionsBefore = receivedEditorOptions.length;
+  superdoc.toggleRuler();
+  await vi.waitFor(() => expect(receivedEditorOptions.length).toBeGreaterThan(optionsBefore));
+};
+
+const unmountShell = (superdoc: SuperDoc) => {
+  mountedShells.delete(superdoc);
+  superdoc.destroy();
+  document.body.innerHTML = '';
+};
+
 describe('uiConfig reaches the runtime', () => {
   describe('toolbar mount decision', () => {
-    // Mirrors the `toolbarRequested` gate in SuperDoc#addToolbar. Kept as a
-    // pure function so the mount rule can be checked without standing up a
-    // document, a DOM, and the v2 engine.
-    const toolbarRequested = (config: Partial<Config>) => {
-      const ui = normalizeUiConfig(config);
-      const legacy = config.modules?.toolbar;
-      return (
-        ui.toolbar.enabled &&
-        (Boolean(ui.toolbar.container) ||
-          legacy === true ||
-          (legacy != null && typeof legacy === 'object') ||
-          (config.ui !== false && config.ui?.toolbar !== undefined))
-      );
+    const toolbarFor = async (config: Partial<Config>) => {
+      const { superdoc, toolbarHost } = await mountShell(config);
+      const result = {
+        handle: superdoc.toolbar !== null,
+        renderedInHost: toolbarHost.querySelector('[data-item]') !== null,
+        renderedAnywhere: document.querySelector('[data-item]') !== null,
+      };
+      unmountShell(superdoc);
+      return result;
     };
 
-    it('does not mount when nothing asks for a toolbar', () => {
-      expect(toolbarRequested({ selector: '#e' })).toBe(false);
+    it('does not mount when nothing asks for a toolbar', async () => {
+      expect(await toolbarFor({})).toStrictEqual({ handle: false, renderedInHost: false, renderedAnywhere: false });
     });
 
-    it('mounts from the top-level container alias', () => {
-      expect(toolbarRequested({ selector: '#e', toolbar: '#t' })).toBe(true);
+    it('mounts from the top-level container alias', async () => {
+      expect(await toolbarFor({ toolbar: '#toolbar-host' })).toStrictEqual({
+        handle: true,
+        renderedInHost: true,
+        renderedAnywhere: true,
+      });
     });
 
-    it('mounts from ui.toolbar with a container', () => {
-      expect(toolbarRequested({ selector: '#e', ui: { toolbar: { container: '#t' } } })).toBe(true);
+    it('mounts from ui.toolbar with a container', async () => {
+      expect(await toolbarFor({ ui: { toolbar: { container: '#toolbar-host' } } })).toStrictEqual({
+        handle: true,
+        renderedInHost: true,
+        renderedAnywhere: true,
+      });
     });
 
-    it('creates the handle for ui.toolbar: true even with nowhere to render', () => {
+    it('creates the handle for ui.toolbar: true even with nowhere to render', async () => {
       // Matches the documented `modules.toolbar: true` behavior: the
       // `superdoc.toolbar` handle exists so command routing works, but no
       // toolbar appears until a container resolves.
-      const config = { selector: '#e', ui: { toolbar: true } };
-
-      expect(toolbarRequested(config)).toBe(true);
-      expect(normalizeUiConfig(config).toolbar.container).toBeNull();
+      expect(await toolbarFor({ ui: { toolbar: true } })).toStrictEqual({
+        handle: true,
+        renderedInHost: false,
+        renderedAnywhere: false,
+      });
     });
 
-    it('does not mount when ui.toolbar is false, even with a container', () => {
-      expect(toolbarRequested({ selector: '#e', toolbar: '#t', ui: { toolbar: false } })).toBe(false);
+    it('does not mount when ui.toolbar is false, even with a container', async () => {
+      expect(await toolbarFor({ toolbar: '#toolbar-host', ui: { toolbar: false } })).toStrictEqual({
+        handle: false,
+        renderedInHost: false,
+        renderedAnywhere: false,
+      });
     });
 
-    it('does not mount under ui: false, even with a container', () => {
-      expect(toolbarRequested({ selector: '#e', toolbar: '#t', ui: false })).toBe(false);
+    it('does not mount under ui: false, even with a container', async () => {
+      expect(await toolbarFor({ toolbar: '#toolbar-host', ui: false })).toStrictEqual({
+        handle: false,
+        renderedInHost: false,
+        renderedAnywhere: false,
+      });
     });
 
-    it('still mounts from the legacy module block', () => {
-      expect(toolbarRequested({ selector: '#e', modules: { toolbar: { selector: '#t' } } })).toBe(true);
+    it('still mounts from the legacy module block', async () => {
+      expect(await toolbarFor({ modules: { toolbar: { selector: '#toolbar-host' } } })).toStrictEqual({
+        handle: true,
+        renderedInHost: true,
+        renderedAnywhere: true,
+      });
     });
   });
 
@@ -263,26 +368,27 @@ describe('uiConfig reaches the runtime', () => {
   });
 
   describe('the context-menu toggle survives a remount', () => {
-    // Mirrors what `editorOptions` forwards. It is re-evaluated per document,
-    // so reading only the profile would revert `setDisableContextMenu()` on
-    // every remount — the same shape as the ruler bug.
-    // `#init` seeds the live flag from the profile, so the OR starts from the
-    // profile's answer rather than the raw consumer value. `live` is what a
-    // later `setDisableContextMenu()` would have written.
-    const seed = (config: Partial<Config>) => !normalizeUiConfig(config).contextMenu.enabled;
-    const forwarded = (config: Partial<Config>, live = seed(config)) =>
-      !normalizeUiConfig(config).contextMenu.enabled || live === true;
+    it('honors a post-mount disable under the default profile', async () => {
+      const { superdoc } = await mountShell({});
+      expect(latestEditorOptions()?.disableContextMenu).toBe(false);
 
-    it('honors a post-mount disable under the default profile', () => {
-      expect(forwarded({ selector: '#e' })).toBe(false);
-      expect(forwarded({ selector: '#e' }, true)).toBe(true);
+      superdoc.setDisableContextMenu(true);
+      await reevaluateEditorOptions(superdoc);
+
+      expect(latestEditorOptions()?.disableContextMenu).toBe(true);
+      unmountShell(superdoc);
     });
 
-    it('does not let a leftover legacy flag re-disable an explicit opt-in', () => {
+    it('does not let a leftover legacy flag re-disable an explicit opt-in', async () => {
       // The hazard the seed exists for: ORing the raw consumer value back in
       // would undo `ui.contextMenu: true` for anyone mid-migration.
-      expect(forwarded({ ui: { contextMenu: true }, disableContextMenu: true })).toBe(false);
-      expect(forwarded({ disableContextMenu: true })).toBe(true);
+      const optedIn = await mountShell({ ui: { contextMenu: true }, disableContextMenu: true });
+      expect(latestEditorOptions()?.disableContextMenu).toBe(false);
+      unmountShell(optedIn.superdoc);
+
+      const legacy = await mountShell({ disableContextMenu: true });
+      expect(latestEditorOptions()?.disableContextMenu).toBe(true);
+      unmountShell(legacy.superdoc);
     });
 
     it('will not let setDisableContextMenu re-enable a forbidden surface', async () => {
@@ -335,10 +441,6 @@ describe('uiConfig reaches the runtime', () => {
     });
 
     it('seeds the live flag on a real instance rather than adopting the raw value', async () => {
-      // The cases above model the seed, so they cannot see it go missing.
-      // This asserts the instance actually performs it: without the seed,
-      // `config.disableContextMenu` stays the consumer's `true` and the OR in
-      // `editorOptions` re-disables a surface `ui.contextMenu: true` enabled.
       const { SuperDoc } = await import('../SuperDoc.js');
       const selector = document.createElement('div');
       document.body.append(selector);
@@ -354,9 +456,17 @@ describe('uiConfig reaches the runtime', () => {
       document.body.innerHTML = '';
     });
 
-    it('keeps a forbidden surface disabled regardless of the live value', () => {
-      expect(forwarded({ ui: false }, false)).toBe(true);
-      expect(forwarded({ ui: { contextMenu: false } }, false)).toBe(true);
+    it('keeps a forbidden surface disabled regardless of the live value', async () => {
+      for (const config of [{ ui: false }, { ui: { contextMenu: false } }] satisfies Partial<Config>[]) {
+        const { superdoc } = await mountShell(config);
+        expect(latestEditorOptions()?.disableContextMenu).toBe(true);
+
+        superdoc.config.disableContextMenu = false;
+        await reevaluateEditorOptions(superdoc);
+
+        expect(latestEditorOptions()?.disableContextMenu).toBe(true);
+        unmountShell(superdoc);
+      }
     });
   });
 
@@ -475,47 +585,23 @@ describe('uiConfig reaches the runtime', () => {
     });
 
     describe('find and replace', () => {
-      // Driven through the real composable rather than a mirror of the getter.
-      // `ui.search: true` passed the gate that draws the toolbar's Search
-      // button and failed the one that opens the panel, so asserting on
-      // `wouldOpen()` is what distinguishes a rendered-but-inert button from a
-      // working surface.
-      const drive = async (config: Partial<Config>) => {
-        const { useFindReplace } = await import('../../composables/use-find-replace.js');
-        const superdoc = await mountInstance(config);
-        const findReplace = useFindReplace({
-          getSurfaceManager: () => ({
-            open: () => ({ id: 's', mode: 'floating', close() {}, result: new Promise(() => {}) }),
-          }),
-          // A live search session, so `wouldOpen` reflects only the config.
-          getActiveEditor: () => ({ editorVersion: 2, commands: null }),
-          getSuperDocUI: () => ({
-            search: {
-              find: () => ({}),
-              getSnapshot: () => ({ available: true }),
-              next: () => ({ ok: true }),
-              previous: () => ({ ok: true }),
-              clear() {},
-              replace: () => ({ ok: true }),
-              replaceAll: () => ({ ok: true }),
-            },
-          }),
-          // The expression under test, copied from `SuperDoc.vue`.
-          getFindReplaceConfig: () => (superdoc.uiConfig.search.enabled ? superdoc.uiConfig.search.options : false),
-        });
-        return { superdoc, findReplace };
+      const findBarOpensOnRequest = async (config: Partial<Config>) => {
+        const { superdoc } = await mountShell(config);
+        Reflect.set(superdoc, 'activeEditor', { editorVersion: 2 });
+        superdoc.emit('search:open');
+        await vi.dynamicImportSettled();
+        await flushPromises();
+        const opened = document.querySelector('[role="dialog"][aria-label="Find text"]') !== null;
+        unmountShell(superdoc);
+        return opened;
       };
 
       it('opens for the canonical switch alone', async () => {
-        const { superdoc, findReplace } = await drive({ ui: { search: true } });
-        expect(findReplace.wouldOpen()).toBe(true);
-        cleanup(superdoc);
+        expect(await findBarOpensOnRequest({ ui: { search: true } })).toBe(true);
       });
 
       it('opens for the legacy switch alone', async () => {
-        const { superdoc, findReplace } = await drive({ modules: { surfaces: { findReplace: true } } });
-        expect(findReplace.wouldOpen()).toBe(true);
-        cleanup(superdoc);
+        expect(await findBarOpensOnRequest({ modules: { surfaces: { findReplace: true } } })).toBe(true);
       });
 
       it('stays closed when unset, or when either spelling is turned off', async () => {
@@ -524,9 +610,7 @@ describe('uiConfig reaches the runtime', () => {
           { ui: { search: false }, modules: { surfaces: { findReplace: true } } },
           { ui: false, modules: { surfaces: { findReplace: true } } },
         ] satisfies Partial<Config>[]) {
-          const { superdoc, findReplace } = await drive(config);
-          expect(findReplace.wouldOpen()).toBe(false);
-          cleanup(superdoc);
+          expect(await findBarOpensOnRequest(config)).toBe(false);
         }
       });
 
@@ -549,59 +633,67 @@ describe('uiConfig reaches the runtime', () => {
     });
 
     describe('comment presentation', () => {
-      // `commentsModuleConfig` merges the profile's presentation options over
-      // the live `modules.comments` block, so the assertion is on that merge:
-      // presentation arrives, and the policy the runtime assigned survives it.
-      const merged = (superdoc: SuperDoc) =>
-        mergeCommentsConfig(superdoc.config.modules.comments || {}, superdoc.uiConfig.comments.options);
+      const commentsLayoutFor = async (config: Partial<Config>, widths: ShellWidths) => {
+        const { superdoc } = await mountShell(config, widths);
+        await flushPromises();
+        const layout = superdoc.getCommentsLayout();
+        unmountShell(superdoc);
+        return layout;
+      };
 
       it('carries the canonical layout and responsive settings to the UI', async () => {
-        const superdoc = await mountInstance({
-          ui: { comments: { layout: 'auto', responsive: { target: '#workspace', breakpoint: 1200 } } },
-        });
-        expect(merged(superdoc)).toMatchObject({
-          layout: 'auto',
-          responsive: { target: '#workspace', breakpoint: 1200 },
-        });
-        cleanup(superdoc);
+        expect(
+          await commentsLayoutFor(
+            { ui: { comments: { layout: 'auto', responsive: { target: '#workspace', breakpoint: 1200 } } } },
+            { selector: 1300, workspace: 1180 },
+          ),
+        ).toStrictEqual({ requested: 'auto', effective: 'inline' });
       });
 
       it('combines responsive settings while each field is migrated independently', async () => {
-        const legacyTarget = await mountInstance({
-          modules: { comments: { compactMeasurementSelector: '#legacy-workspace' } },
-          ui: { comments: { responsive: { breakpoint: 1200 } } },
-        });
-        expect(merged(legacyTarget).responsive).toEqual({ target: '#legacy-workspace', breakpoint: 1200 });
-        cleanup(legacyTarget);
+        expect(
+          await commentsLayoutFor(
+            {
+              modules: { comments: { compactMeasurementSelector: '#legacy-workspace' } },
+              ui: { comments: { layout: 'auto', responsive: { breakpoint: 1200 } } },
+            },
+            { selector: 1300, 'legacy-workspace': 1180 },
+          ),
+        ).toStrictEqual({ requested: 'auto', effective: 'inline' });
 
-        const legacyBreakpoint = await mountInstance({
-          modules: { comments: { compactBreakpointPx: 960 } },
-          ui: { comments: { responsive: { target: '#workspace' } } },
-        });
-        expect(merged(legacyBreakpoint).responsive).toEqual({ target: '#workspace', breakpoint: 960 });
-        cleanup(legacyBreakpoint);
+        expect(
+          await commentsLayoutFor(
+            {
+              modules: { comments: { compactBreakpointPx: 960 } },
+              ui: { comments: { layout: 'auto', responsive: { target: '#workspace' } } },
+            },
+            { selector: 900, workspace: 1000 },
+          ),
+        ).toStrictEqual({ requested: 'auto', effective: 'sidebar' });
       });
 
       it('prefers canonical responsive settings when both spellings set the same field', async () => {
-        const superdoc = await mountInstance({
-          modules: {
-            comments: {
-              compactMeasurementSelector: '#legacy-workspace',
-              compactBreakpointPx: 960,
+        expect(
+          await commentsLayoutFor(
+            {
+              modules: {
+                comments: {
+                  compactMeasurementSelector: '#legacy-workspace',
+                  compactBreakpointPx: 960,
+                },
+              },
+              ui: { comments: { layout: 'auto', responsive: { target: '#workspace', breakpoint: 1200 } } },
             },
-          },
-          ui: { comments: { responsive: { target: '#workspace', breakpoint: 1200 } } },
-        });
-
-        expect(merged(superdoc).responsive).toEqual({ target: '#workspace', breakpoint: 1200 });
-        cleanup(superdoc);
+            { selector: 1300, workspace: 1180, 'legacy-workspace': 1250 },
+          ),
+        ).toStrictEqual({ requested: 'auto', effective: 'inline' });
       });
 
       it('validates the canonical spelling the same way the legacy block is validated', async () => {
-        // @ts-expect-error 'bogus' is not a CommentsLayout and the normalizer drops it
-        const superdoc = await mountInstance({ ui: { comments: { layout: 'bogus' } } });
-        expect(merged(superdoc).layout).toBeUndefined();
-        cleanup(superdoc);
+        expect(
+          // @ts-expect-error 'bogus' is not a CommentsLayout and the normalizer drops it
+          await commentsLayoutFor({ ui: { comments: { layout: 'bogus' } } }, { selector: 300 }),
+        ).toStrictEqual({ requested: 'sidebar', effective: 'sidebar' });
 
         const bad = normalizeUiConfig({ ui: { comments: { responsive: { breakpoint: -1 } } } });
         expect(bad.comments.options).toEqual({});
@@ -629,10 +721,9 @@ describe('uiConfig reaches the runtime', () => {
 
         expect(superdoc.uiConfig.comments.options).toEqual({ layout: 'auto' });
 
-        const view = merged(superdoc);
-        expect(view.readOnly).toBe(false);
-        expect(view.allowResolve).toBe(true);
-        expect(view.permissionResolver).toBeUndefined();
+        const commentsBlock = superdoc.config.modules.comments;
+        expect(commentsBlock).toMatchObject({ readOnly: false, allowResolve: true });
+        expect(commentsBlock).not.toHaveProperty('permissionResolver');
         cleanup(superdoc);
       });
 

@@ -1,0 +1,651 @@
+{
+  "definition": {
+    "description": "Convert an HTML string into an SDM/1 structural fragment.",
+    "expectedResult": "Returns an SDHtmlToFragmentResult with the converted fragment, lossy flag, and diagnostics.",
+    "memberPath": "htmlToFragment",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "html-to-fragment.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "html": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "html"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "enum": [
+                  "conversion-normalized-construct",
+                  "conversion-unsupported-construct",
+                  "conversion-dropped-style",
+                  "conversion-unsafe-content",
+                  "conversion-unsafe-url",
+                  "conversion-source-limit-exceeded",
+                  "conversion-depth-limit-exceeded",
+                  "conversion-malformed-input",
+                  "conversion-empty-result"
+                ]
+              },
+              "construct": {
+                "enum": [
+                  "document",
+                  "source",
+                  "text",
+                  "paragraph",
+                  "emptyParagraph",
+                  "softBreak",
+                  "lineBreak",
+                  "heading",
+                  "bold",
+                  "italic",
+                  "underline",
+                  "strike",
+                  "hyperlink",
+                  "list",
+                  "table",
+                  "tableHeader",
+                  "colSpan",
+                  "rowSpan",
+                  "horizontalRule",
+                  "inlineCode",
+                  "codeBlock",
+                  "blockquote",
+                  "taskList",
+                  "image",
+                  "footnote",
+                  "rawHtml",
+                  "unknownWrapper",
+                  "script",
+                  "style",
+                  "eventHandler"
+                ]
+              },
+              "disposition": {
+                "enum": [
+                  "preserved",
+                  "normalized",
+                  "downgraded",
+                  "dropped",
+                  "rejected"
+                ]
+              },
+              "lossy": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ]
+              },
+              "source": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "enum": [
+                      "html",
+                      "markdown"
+                    ]
+                  },
+                  "range": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "endColumn": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "endLine": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "endOffset": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "startColumn": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "startLine": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "startOffset": {
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "startOffset",
+                      "endOffset"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "format"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "message",
+              "construct",
+              "disposition",
+              "lossy",
+              "source"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "fragment": {
+          "oneOf": [
+            {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "paragraph"
+                    },
+                    "paragraph": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "inlines": {
+                          "items": {
+                            "$ref": "#/$defs/SDInboundInlineNode"
+                          },
+                          "type": "array"
+                        },
+                        "props": {
+                          "$ref": "#/$defs/SDInboundParagraphProps"
+                        },
+                        "styleRef": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "inlines"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "paragraph"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "heading": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "inlines": {
+                          "items": {
+                            "$ref": "#/$defs/SDInboundInlineNode"
+                          },
+                          "type": "array"
+                        },
+                        "level": {
+                          "maximum": 9,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "props": {
+                          "$ref": "#/$defs/SDInboundParagraphProps"
+                        },
+                        "styleRef": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "level",
+                        "inlines"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "heading"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "heading"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "list"
+                    },
+                    "list": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/$defs/SDInboundListItem"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "levels": {
+                          "items": {
+                            "$ref": "#/$defs/SDInboundListLevel"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "items"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "list"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "table"
+                    },
+                    "table": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "rows": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "cells": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "colSpan": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "content": {
+                                      "items": {
+                                        "$ref": "#/$defs/SDInboundContentNode"
+                                      },
+                                      "minItems": 1,
+                                      "type": "array"
+                                    },
+                                    "header": {
+                                      "type": "boolean"
+                                    },
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "props": {
+                                      "$ref": "#/$defs/SDInboundCellProps"
+                                    },
+                                    "rowSpan": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "content"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "cells"
+                            ],
+                            "type": "object"
+                          },
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "rows"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "table"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "horizontalRule": {
+                      "additionalProperties": false,
+                      "properties": {},
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "horizontalRule"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "horizontalRule"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            {
+              "items": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "paragraph"
+                      },
+                      "paragraph": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "inlines": {
+                            "items": {
+                              "$ref": "#/$defs/SDInboundInlineNode"
+                            },
+                            "type": "array"
+                          },
+                          "props": {
+                            "$ref": "#/$defs/SDInboundParagraphProps"
+                          },
+                          "styleRef": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "inlines"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "paragraph"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "heading": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "inlines": {
+                            "items": {
+                              "$ref": "#/$defs/SDInboundInlineNode"
+                            },
+                            "type": "array"
+                          },
+                          "level": {
+                            "maximum": 9,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "props": {
+                            "$ref": "#/$defs/SDInboundParagraphProps"
+                          },
+                          "styleRef": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "level",
+                          "inlines"
+                        ],
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "heading"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "heading"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "list"
+                      },
+                      "list": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "items": {
+                            "items": {
+                              "$ref": "#/$defs/SDInboundListItem"
+                            },
+                            "minItems": 1,
+                            "type": "array"
+                          },
+                          "levels": {
+                            "items": {
+                              "$ref": "#/$defs/SDInboundListLevel"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "items"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "list"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "table"
+                      },
+                      "table": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "rows": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "cells": {
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "colSpan": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      "content": {
+                                        "items": {
+                                          "$ref": "#/$defs/SDInboundContentNode"
+                                        },
+                                        "minItems": 1,
+                                        "type": "array"
+                                      },
+                                      "header": {
+                                        "type": "boolean"
+                                      },
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "props": {
+                                        "$ref": "#/$defs/SDInboundCellProps"
+                                      },
+                                      "rowSpan": {
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "content"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                "id": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "cells"
+                              ],
+                              "type": "object"
+                            },
+                            "minItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "rows"
+                        ],
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "table"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "horizontalRule": {
+                        "additionalProperties": false,
+                        "properties": {},
+                        "type": "object"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "horizontalRule"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "horizontalRule"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          ]
+        },
+        "lossy": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "fragment",
+        "lossy",
+        "diagnostics"
+      ],
+      "type": "object"
+    }
+  }
+}

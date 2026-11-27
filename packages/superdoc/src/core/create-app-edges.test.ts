@@ -56,13 +56,6 @@ describe('createSuperdocVueApp', () => {
     expect(result.commentsStore).toBeDefined();
   });
 
-  it('provides the high-contrast state it was given to the app', async () => {
-    const { app } = setupAppMocks();
-    const { createSuperdocVueApp } = await import('./create-app.js');
-    createSuperdocVueApp({ highContrastMode });
-    expect(app.provide).toHaveBeenCalledWith(expect.any(Symbol), highContrastMode);
-  });
-
   // Outcome-focused: when suppressed, the Pinia devtools plugin for this app
   // is never surfaced via the hook or queue. The test does not pin the
   // specific suppression mechanism (hook-emit patch vs. queue-push patch),

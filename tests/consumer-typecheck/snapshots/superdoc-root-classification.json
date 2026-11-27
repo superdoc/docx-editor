@@ -1,13 +1,13 @@
 {
   "generatedAt": "2026-09-02T00:00:00.000Z",
   "summary": {
-    "total": 325,
+    "total": 331,
     "byBucket": {
       "legacy-root": 3,
-      "supported-root": 322
+      "supported-root": 328
     },
     "byConfidence": {
-      "high": 275,
+      "high": 281,
       "medium": 50
     }
   },
@@ -255,9 +255,42 @@
       "inCjs": false
     },
     {
+      "name": "ContentControlInlineBoxOptions",
+      "bucket": "supported-root",
+      "rationale": "Measured inline box options for a tag-matched content-control presentation.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ContentControlBlockBoxOptions",
+      "bucket": "supported-root",
+      "rationale": "Measured block frame options for a tag-matched content-control presentation.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "ContentControlPresentation",
+      "bucket": "supported-root",
+      "rationale": "Tag-matched content-control presentation in ui.contentControls.presentations.",
+      "confidence": "high",
+      "source": "config-supported",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
       "name": "ContentControlsConfig",
       "bucket": "supported-root",
-      "rationale": "Deprecated object form retained for v2 source compatibility; use boolean ui.contentControls.",
+      "rationale": "Canonical object form of ui.contentControls: default-chrome toggle plus tag-matched presentations.",
       "confidence": "high",
       "source": "config-supported",
       "inDts": true,
@@ -3582,6 +3615,39 @@
       "rationale": "Document API per-block change entry inside ChangeRecord.changes.",
       "confidence": "high",
       "source": "doc-api",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "EditorRendering",
+      "bucket": "supported-root",
+      "rationale": "SD-7121 public renderer recovery and health contract.",
+      "confidence": "high",
+      "source": "rendering",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "RenderHealthSnapshot",
+      "bucket": "supported-root",
+      "rationale": "SD-7121 public renderer recovery and health contract.",
+      "confidence": "high",
+      "source": "rendering",
+      "inDts": true,
+      "inDcts": true,
+      "inEsm": false,
+      "inCjs": false
+    },
+    {
+      "name": "RenderHealthStatus",
+      "bucket": "supported-root",
+      "rationale": "SD-7121 public renderer recovery and health contract.",
+      "confidence": "high",
+      "source": "rendering",
       "inDts": true,
       "inDcts": true,
       "inEsm": false,

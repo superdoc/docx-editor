@@ -357,16 +357,16 @@ describe('SuperDocUIProvider — against a real SuperDoc', () => {
     render();
     runEffectsAndUnmount();
 
-    // Unmounting a React tree must not disturb the instance's controller, which
-    // the toolbar is still bound to.
-    expect((toolbar as unknown as { ui: unknown }).ui).toBe(superdoc.ui);
-    expect(() => superdoc.ui.commands.get('bold').getState()).not.toThrow();
+    const run = vi.fn(() => true);
+    superdoc.ui.commands.register({ id: 'provider-remount-probe', execute: run });
+    expect(toolbar.ui?.commands.execute('provider-remount-probe')).toBe(true);
+    expect(run).toHaveBeenCalledTimes(1);
 
-    // And it can bind again to the same live controller.
     dispatcher.slots.length = 0;
     const second = render();
     second.setSuperDoc(superdoc as unknown as SuperDocLike);
-    expect(render().ui).toBe(superdoc.ui);
+    expect(render().ui?.commands.execute('provider-remount-probe')).toBe(true);
+    expect(run).toHaveBeenCalledTimes(2);
 
     toolbar.destroy();
   });

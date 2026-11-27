@@ -1,0 +1,6 @@
+mount: no reads
+observe(listener): doc.contentControls.list()
+edit while observed: doc.contentControls.list()
+stop observing: no reads
+edit after stop: no reads
+snapshot: stale

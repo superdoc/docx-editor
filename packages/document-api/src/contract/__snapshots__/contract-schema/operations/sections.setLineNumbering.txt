@@ -1,0 +1,193 @@
+{
+  "definition": {
+    "description": "Enable, configure, or disable line numbering for a section. Enabling with no countBy stores 1. The start value is the stored Word offset. At a restart, start: 1 makes the first eligible line number 2. The distance is in inches. Omitting distance or setting it to zero uses automatic placement. Mounted SuperDoc v2 print layout shows multiples of countBy on eligible body lines and approximates automatic spacing from the physical columns. Section reads can report enabled for imported numbering markup that has no positive integer countBy. Those settings produce no labels.",
+    "expectedResult": "Returns a SectionMutationResult receipt; reports NO_OP if line numbering settings already match.",
+    "memberPath": "sections.setLineNumbering",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "historyUnsafe": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "sections/set-line-numbering.mdx",
+    "referenceGroup": "sections",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "countBy": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "distance": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "restart": {
+          "enum": [
+            "continuous",
+            "newPage",
+            "newSection"
+          ]
+        },
+        "start": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "target": {
+          "$ref": "#/$defs/SectionAddress"
+        }
+      },
+      "required": [
+        "target",
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "dryRun": {
+              "type": "boolean"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "section"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "section": {
+          "$ref": "#/$defs/SectionAddress"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "section"
+      ],
+      "type": "object"
+    }
+  }
+}

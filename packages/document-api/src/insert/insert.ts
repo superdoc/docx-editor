@@ -14,6 +14,11 @@ import type { SelectionTarget, TargetLocator, SDMutationReceipt } from '../types
 import type { SDInsertInput } from '../types/structural-input.js';
 import type { SDFragment } from '../types/fragment.js';
 import type { StoryLocator } from '../types/story.types.js';
+import type {
+  TemporaryBlockInsertInput,
+  TemporaryMutationInput,
+  TemporaryMutationOperation,
+} from '../types/temporary-mutation.js';
 import { type BlockNodeAddress } from '../types/base.js';
 import { PLACEMENT_VALUES, type Placement } from '../types/placement.js';
 import { DocumentApiValidationError } from '../errors.js';
@@ -103,6 +108,35 @@ const VALID_INSERT_TYPES: ReadonlySet<string> = new Set(['text', 'markdown', 'ht
 /** Returns true when the input uses the structural SDFragment shape. */
 export function isStructuralInsertInput(input: InsertInput): input is SDInsertInput {
   return 'content' in input && input.content !== undefined;
+}
+
+export function isTemporaryBlockInsertInput(input: unknown): input is TemporaryBlockInsertInput {
+  if (!isRecord(input) || !isBlockNodeAddress(input.target)) return false;
+  if (input.placement !== undefined && input.placement !== 'before' && input.placement !== 'after') return false;
+  if (input.in !== undefined || input.ref !== undefined || input.nestingPolicy !== undefined) return false;
+  const structural = input.content !== undefined && input.value === undefined && input.type === undefined;
+  const rich =
+    input.content === undefined &&
+    typeof input.value === 'string' &&
+    (input.type === 'markdown' || input.type === 'html');
+  return structural || rich;
+}
+
+export function isTemporaryPlainTextInsertInput(input: unknown): boolean {
+  return isRecord(input) && typeof input.value === 'string' && (input.type === undefined || input.type === 'text');
+}
+
+export const TEMPORARY_OPERATION_SUPPORT_MESSAGE =
+  'Temporary insert supports plain text, or block content before or after a block target; temporary replace supports plain text.';
+
+export function temporaryBlockInsertNativeEditConflict(
+  policy: TemporaryMutationInput['onNativeEdit'],
+  operations: readonly TemporaryMutationOperation[],
+): string | undefined {
+  return policy === 'preserve' &&
+    operations.some((item) => item.operation === 'insert' && isTemporaryBlockInsertInput(item.input))
+    ? 'Temporary block inserts support onNativeEdit "cancel" or no native-edit policy, not "preserve".'
+    : undefined;
 }
 
 // ---------------------------------------------------------------------------

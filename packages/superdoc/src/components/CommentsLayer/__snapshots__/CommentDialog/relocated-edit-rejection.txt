@@ -1,0 +1,167 @@
+step: open the edit composer, type "Submitted during layout switch", click Update
+
+document calls:
+comments.setActiveComment "layout-root"
+comments.edit {"commentId":"layout-root","text":"Submitted during layout switch"}
+
+store:
+{
+  "activeComment": "layout-root",
+  "editingCommentId": "layout-root",
+  "draft": "Submitted during layout switch",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "layout-root",
+      "commentText": "Original"
+    }
+  ]
+}
+
+original dialog:
+classes: is-active
+layout-root: editing
+buttons: Update enabled
+
+---
+
+step: layout moves the thread into a new dialog while the document holds the write
+
+document calls:
+(none)
+
+store:
+{
+  "activeComment": "layout-root",
+  "editingCommentId": "layout-root",
+  "draft": "Submitted during layout switch",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "layout-root",
+      "commentText": "Original"
+    }
+  ]
+}
+
+relocated dialog:
+classes: is-active
+layout-root: editing
+buttons: Update enabled
+
+---
+
+step: the document refuses the write
+
+document calls:
+(none)
+
+comments-update events:
+[
+  {
+    "type": "update",
+    "rejected": true,
+    "reason": "v2-edit-failed",
+    "code": "INTERNAL_ERROR",
+    "comment": {
+      "commentId": "layout-root",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Original",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    },
+    "changes": [
+      {
+        "key": "text",
+        "value": "Submitted during layout switch"
+      }
+    ]
+  }
+]
+
+store:
+{
+  "activeComment": "layout-root",
+  "editingCommentId": "layout-root",
+  "draft": "Submitted during layout switch",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "layout-root",
+      "commentText": "Original"
+    }
+  ]
+}
+
+relocated dialog:
+classes: is-active
+layout-root: editing
+alert: Your comment could not be saved. Your draft is still here. Try again or cancel.
+buttons: Update enabled
+
+---
+
+step: click Update again; the document commits it
+
+document calls:
+comments.edit {"commentId":"layout-root","text":"Submitted during layout switch"}
+
+comments-update events:
+[
+  {
+    "type": "update",
+    "comment": {
+      "commentId": "layout-root",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Submitted during layout switch",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    },
+    "changes": [
+      {
+        "key": "text",
+        "value": "Submitted during layout switch"
+      }
+    ]
+  }
+]
+
+store:
+{
+  "activeComment": "layout-root",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "layout-root",
+      "commentText": "Submitted during layout switch"
+    }
+  ]
+}
+
+relocated dialog:
+classes: is-active
+layout-root: comment: Submitted during layout switch
+reply pill
+buttons: (none)
+
+---

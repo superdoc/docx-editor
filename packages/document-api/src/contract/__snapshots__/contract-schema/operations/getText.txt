@@ -1,0 +1,45 @@
+{
+  "definition": {
+    "description": "Extract the plain-text content of the document.",
+    "expectedResult": "Returns the full plain-text content of the document as a string.",
+    "intentAction": "text",
+    "intentGroup": "get_content",
+    "memberPath": "getText",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "get-text.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "type": "string"
+    }
+  }
+}

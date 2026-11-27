@@ -1,0 +1,59 @@
+{
+  "definition": {
+    "description": "Serialize the current or supplied model selection into text/plain, text/html, and application/x-superdoc-v2-fragment clipboard payloads.",
+    "expectedResult": "Returns a ClipboardSerializeResult containing the payload and normalized insert plan.",
+    "memberPath": "clipboard.serializeSelection",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "clipboard/serialize-selection.mdx",
+    "referenceGroup": "clipboard",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "includeHtml": {
+          "type": "boolean"
+        },
+        "target": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "payload": {
+          "type": "object"
+        },
+        "plan": {
+          "type": "object"
+        },
+        "warnings": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "payload",
+        "plan"
+      ],
+      "type": "object"
+    }
+  }
+}

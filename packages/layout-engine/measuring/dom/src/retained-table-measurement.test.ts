@@ -232,15 +232,9 @@ describe('retained table paragraph measurement', () => {
         expect(discarded).toBeDefined();
         fail = false;
         aborted = false;
-        const reads = vi.spyOn(retainedTableModule, 'readRetainedTableMeasurement');
         clearTableCellBlockMeasureCache();
         const edited = editCell(source, 2, 'Current authoritative native geometry');
         const next = await measure(runtime, edited, { block: source, measure: discarded! }, 192);
-        expect(reads.mock.calls.some((args) => args[0]?.measure === discarded)).toBe(true);
-        reads.mock.calls.forEach((args, index) => {
-          if (args[0]?.measure === discarded) expect(reads.mock.results[index]!.value).toBeUndefined();
-        });
-        reads.mockRestore();
         expect(next.observation.cellBlockCache['retained-hit']).toBe(0);
         expect(next.measure.rows[0]).not.toBe(discarded!.rows[0]);
         clearTableCellBlockMeasureCache();

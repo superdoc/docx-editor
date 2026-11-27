@@ -1,0 +1,46 @@
+{
+  "definition": {
+    "description": "List all caption paragraphs in the document.",
+    "expectedResult": "Returns a CaptionsListResult containing discovered captions with address and domain data.",
+    "memberPath": "captions.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "captions/list.mdx",
+    "referenceGroup": "captions",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

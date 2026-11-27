@@ -93,3 +93,35 @@ describe('isBootDiagnosticRedundant', () => {
     expect(isBootDiagnosticRedundant(null, 'source-load-failed', [{}])).toBe(false);
   });
 });
+
+describe('render failure episodes', () => {
+  it('reports another failure after recovery while retaining unrelated diagnostic dedupe', () => {
+    const dedupe = createV2DiagnosticDedupe();
+    expect(dedupe.shouldEmit('doc', 1, 'render.typed.failed')).toBe(true);
+    expect(dedupe.shouldEmit('doc', 1, 'render.typed.failed')).toBe(false);
+    expect(dedupe.shouldEmit('doc', 1, 'render.provider-error')).toBe(true);
+    dedupe.markRenderRecovered('doc', 1);
+    expect(dedupe.shouldEmit('doc', 1, 'render.typed.failed')).toBe(true);
+    expect(dedupe.shouldEmit('doc', 1, 'render.typed.failed')).toBe(false);
+    expect(dedupe.shouldEmit('doc', 1, 'render.provider-error')).toBe(false);
+  });
+
+  it('does not reset another document or a newer open attempt', () => {
+    const dedupe = createV2DiagnosticDedupe();
+    expect(dedupe.shouldEmit('doc', 2, 'worker-dom.failed')).toBe(true);
+    dedupe.markRenderRecovered('other', 2);
+    dedupe.markRenderRecovered('doc', 1);
+    expect(dedupe.shouldEmit('doc', 2, 'worker-dom.failed')).toBe(false);
+    dedupe.markRenderRecovered('doc', 2);
+    expect(dedupe.shouldEmit('doc', 2, 'worker-dom.failed')).toBe(true);
+  });
+});
+
+it('ignores retained failure diagnostics on current presentation without suppressing the next episode', () => {
+  const dedupe = createV2DiagnosticDedupe();
+  expect(dedupe.shouldEmit('doc', 1, 'worker-dom.failed')).toBe(true);
+  dedupe.markRenderRecovered('doc', 1);
+  expect(dedupe.shouldEmit('doc', 1, 'worker-dom.failed', true)).toBe(false);
+  expect(dedupe.shouldEmit('doc', 1, 'worker-dom.failed', true)).toBe(false);
+  expect(dedupe.shouldEmit('doc', 1, 'worker-dom.failed')).toBe(true);
+});

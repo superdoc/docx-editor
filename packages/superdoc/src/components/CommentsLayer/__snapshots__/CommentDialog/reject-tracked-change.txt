@@ -1,0 +1,52 @@
+before:
+
+store:
+{
+  "activeComment": "tc-inserted-words",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "tc-inserted-words",
+      "trackedChange": true
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+tc-inserted-words: tracked change: Added "inserted words"
+reply pill
+
+action: header emits reject
+
+document calls:
+trackedChanges.reject {"row":{"commentId":"tc-inserted-words","trackedChangeCanonicalId":null}}
+comments.setActiveComment null
+
+comments-update events:
+[]
+
+superdoc.focus calls: [
+  [
+    {
+      "preventScroll": true
+    }
+  ]
+]
+
+after:
+
+store:
+{
+  "activeComment": null,
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": []
+}
+
+dialog:
+classes: (none)
+tc-inserted-words: tracked change: Added "inserted words"

@@ -1,0 +1,76 @@
+before:
+
+store:
+{
+  "activeComment": "comment-root",
+  "editingCommentId": null,
+  "draft": "<p>ordinary reply</p>",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-root",
+      "commentText": "<p>Root comment</p>"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-root: comment: Root comment
+reply pill
+
+action: open the reply composer and click Reply
+
+document calls:
+comments.reply {"parentCommentId":"comment-root","text":"ordinary reply"}
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "ordinary-reply",
+      "parentCommentId": "comment-root",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "ordinary reply",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+superdoc.focus calls: []
+
+after:
+
+store:
+{
+  "activeComment": "comment-root",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-root",
+      "commentText": "<p>Root comment</p>"
+    },
+    {
+      "commentId": "ordinary-reply",
+      "parentCommentId": "comment-root",
+      "commentText": "ordinary reply"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-root: comment: Root comment
+ordinary-reply: comment: ordinary reply
+reply pill

@@ -1,0 +1,233 @@
+{
+  "definition": {
+    "description": "Merge a range of table cells into one. When every cell in the range holds the same plain text (compared after trimming whitespace), the merged cell keeps the first cell only, so the value appears once. Otherwise the merged cell keeps the content of every cell in the range, one paragraph after another, as Word does. The same holds for tracked merges, for tables that contain a nested table, for header and footer tables, and when a repeated cell carries review marks, comments or bookmarks. Some hosts do not apply the rule and always keep the content of every cell. To be certain of a single value, empty the other cells first with tables.setCellText and text \"\". Pass keepAllContent true to keep the content of every cell even when all cells hold the same text. The paragraphs of an empty cell are dropped either way.",
+    "expectedResult": "Returns a TableMutationResult receipt; reports NO_OP if the cells are already merged.",
+    "intentAction": "merge_cells",
+    "intentGroup": "table",
+    "memberPath": "tables.mergeCells",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "NO_OP",
+        "INVALID_CONTEXT",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_CONTEXT"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "tables/merge-cells.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "target"
+          ]
+        },
+        {
+          "required": [
+            "nodeId"
+          ]
+        }
+      ],
+      "properties": {
+        "end": {
+          "additionalProperties": false,
+          "properties": {
+            "columnIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rowIndex": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "rowIndex",
+            "columnIndex"
+          ],
+          "type": "object"
+        },
+        "keepAllContent": {
+          "description": "Set true to keep the content of every cell even when all cells hold the same text, as Word does. Defaults to false.",
+          "type": "boolean"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "start": {
+          "additionalProperties": false,
+          "properties": {
+            "columnIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rowIndex": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "rowIndex",
+            "columnIndex"
+          ],
+          "type": "object"
+        },
+        "target": {
+          "$ref": "#/$defs/TableAddress"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "success": {
+              "const": true
+            },
+            "table": {
+              "$ref": "#/$defs/TableAddress"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "success": {
+          "const": true
+        },
+        "table": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

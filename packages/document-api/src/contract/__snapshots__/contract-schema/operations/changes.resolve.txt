@@ -1,0 +1,553 @@
+{
+  "definition": {
+    "batchable": false,
+    "description": "List the retained change records that touched a block, following the blocks it was split from or merged with.",
+    "expectedResult": "Returns a ChangesResolveResult with the block id, its lineage (the block plus the blocks it was split from or merged with) and the matching records, oldest to newest.",
+    "memberPath": "changes.resolve",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "returnsPromise": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "changes/resolve.mdx",
+    "referenceGroup": "changes",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "blockId": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "limit": {
+          "description": "Maximum number of records to return. Defaults to 100.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "blockId"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "blockId": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "claim": {
+                        "description": "Application-supplied identity claim. SuperDoc does not verify it.",
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "actorType": {
+                "oneOf": [
+                  {
+                    "enum": [
+                      "human",
+                      "code"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "at": {
+                "additionalProperties": false,
+                "properties": {
+                  "declared": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "observed": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "declared",
+                  "observed"
+                ],
+                "type": "object"
+              },
+              "cause": {
+                "oneOf": [
+                  {
+                    "enum": [
+                      "user",
+                      "api",
+                      "undo",
+                      "redo"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "changeTag": {
+                "type": "string"
+              },
+              "changes": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "blockId": {
+                          "type": "string"
+                        },
+                        "deleted": {
+                          "type": "string"
+                        },
+                        "inserted": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "text"
+                        },
+                        "range": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "end": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "start": {
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "start",
+                            "end"
+                          ],
+                          "type": "object"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "blockId",
+                        "range",
+                        "inserted",
+                        "deleted"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attributes": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "blockId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "format"
+                        },
+                        "range": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "end": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "start": {
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "start",
+                            "end"
+                          ],
+                          "type": "object"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "blockId",
+                        "range",
+                        "attributes"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "blockId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "paragraph"
+                        },
+                        "properties": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "blockId",
+                        "properties"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "blockId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "split"
+                        },
+                        "offset": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        },
+                        "tailBlockId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "blockId",
+                        "tailBlockId",
+                        "offset"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "blockId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "merge"
+                        },
+                        "mergedBlockId": {
+                          "type": "string"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "blockId",
+                        "mergedBlockId"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "afterBlockId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "blockId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "move"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "blockId",
+                        "afterBlockId"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "blockId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "create"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "blockId",
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "blockId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "remove"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "blockId",
+                        "text"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "detail": {
+                          "additionalProperties": true,
+                          "type": "object"
+                        },
+                        "kind": {
+                          "const": "table"
+                        },
+                        "story": {
+                          "$ref": "#/$defs/StoryLocator"
+                        },
+                        "tableId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "story",
+                        "tableId",
+                        "detail"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "affects": {
+                          "enum": [
+                            "comment",
+                            "trackedChange",
+                            "bookmark"
+                          ]
+                        },
+                        "ids": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "const": "sidecar"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "affects",
+                        "ids"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "contributors": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "claim": {
+                      "description": "Application-supplied identity claim. SuperDoc does not verify it.",
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "id": {
+                "description": "Deterministic id: identical transactions yield identical ids in every session.",
+                "type": "string"
+              },
+              "origin": {
+                "enum": [
+                  "local",
+                  "remote"
+                ]
+              },
+              "provenance": {
+                "enum": [
+                  "authored",
+                  "declared",
+                  "relayed",
+                  "unknown"
+                ]
+              },
+              "revision": {
+                "type": "string"
+              },
+              "seq": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "session": {
+                "additionalProperties": false,
+                "properties": {
+                  "clientId": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "clientId"
+                ],
+                "type": "object"
+              },
+              "update": {
+                "description": "Base64 Yjs v1 update for exactly this transaction.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "seq",
+              "revision",
+              "origin",
+              "actor",
+              "actorType",
+              "cause",
+              "provenance",
+              "at",
+              "session",
+              "changes"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "lineage": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "blockId",
+        "lineage",
+        "items"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "oneOf": [
+    {
+      "$ref": "#/$defs/BlockAddress"
+    },
+    {
+      "$ref": "#/$defs/BlockRange"
+    }
+  ]
+}

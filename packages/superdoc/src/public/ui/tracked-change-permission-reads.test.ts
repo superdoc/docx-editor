@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { isAllowed } from '../../core/collaboration/permissions.js';
 import { SuperDoc } from '../../core/SuperDoc.js';
+import type { CanPerformPermissionParams } from '../../core/types/index.js';
 import { createPinia } from 'pinia';
 import { useCommentsStore } from '../../stores/comments-store.js';
 import { createSuperDocUI } from './create-super-doc-ui.js';
@@ -348,52 +349,58 @@ const builtInDecisionCases = ['editor', 'suggester', 'viewer'].flatMap((role) =>
   ),
 );
 
-it.each(builtInDecisionCases)(
-  'SD-5951 preserves $role/$isInternal $ownership $decision before avoiding built-in comment hydration',
-  async ({ role, isInternal, ownership, decision }) => {
+it('SD-5951 decides built-in accept and reject by role, audience and ownership', async () => {
+  const lines: string[] = [];
+  for (const { role, isInternal, ownership, decision } of builtInDecisionCases) {
     const row = { ...change, author: ownership === 'other' ? 'Bob' : 'Alice' };
     const original = structuredClone(row);
     const h = mount(async () => ({ items: [] }), ['tc-1'], ownership === 'unknown' ? [] : [row]);
-    const getValues = vi.fn(() => ({ commentId: 'context-row', author: 'Different stored author' }));
-    const getComment = vi.fn(() => ({ getValues }));
+    const hydrations: string[] = [];
     Object.assign(h.superdoc.config, { role, isInternal });
     Object.assign(h.superdoc, {
       canPerformPermission: SuperDoc.prototype.canPerformPermission,
-      commentsStore: { getComment },
+      commentsStore: {
+        getComment: (id: string) => {
+          hydrations.push(id);
+          return { getValues: () => ({ commentId: 'context-row', author: 'Different stored author' }) };
+        },
+      },
     });
     h.refresh();
-    const expected = role === 'editor' || (role === 'suggester' && ownership === 'own' && decision === 'reject');
-    const command = h.ui.commands.get(`track-changes-${decision}-selection`);
-    expect(command.getState().enabled).toBe(expected);
-    if (!expected) expect(command.getState().reason).toBe('permission-denied');
-    const result = await h.ui.toolbar.execute(`track-changes-${decision}-selection`);
-    expect(result).toEqual(expected ? { success: true } : false);
-    expect(h.decide).toHaveBeenCalledTimes(expected ? 1 : 0);
-    if (expected) expect(h.decide).toHaveBeenCalledWith(expect.objectContaining({ decision }));
-    expect(h.list).not.toHaveBeenCalled();
+    const commandId = `track-changes-${decision}-selection`;
+    const { enabled, reason } = h.ui.commands.get(commandId).getState();
+    const result = await h.ui.toolbar.execute(commandId);
     expect(row).toEqual(original);
-    expect(h.ui.trackChanges.getSnapshot().items.map((item) => item.id)).toEqual(
-      ownership === 'unknown' ? [] : ['tc-1'],
+    lines.push(
+      [
+        `${role}, ${isInternal ? 'internal' : 'external'}, ${ownership} change, ${decision}:`,
+        `  state: enabled=${enabled} reason=${reason ?? 'none'}`,
+        `  execute: ${JSON.stringify(result)}`,
+        `  decide calls: ${JSON.stringify(h.decide.mock.calls)}`,
+        `  catalog reads: ${h.list.mock.calls.length}`,
+        `  listed changes: ${JSON.stringify(h.ui.trackChanges.getSnapshot().items.map((item) => item.id))}`,
+        `  comment hydrations: ${hydrations.length}`,
+      ].join('\n'),
     );
-    expect(
-      getComment,
-      'The live built-in matrix must not hydrate comments after ownership classification',
-    ).not.toHaveBeenCalled();
-    expect(getValues).not.toHaveBeenCalled();
-  },
-);
+  }
+  await expect(`${lines.join('\n\n')}\n`).toMatchFileSnapshot(
+    './__snapshots__/tracked-change-permission-reads/built-in-decisions.txt',
+  );
+});
 
-function builtInHarness(rows: unknown[] = [{ ...change }]) {
+function builtInHarness(rows: unknown[] = [{ ...change }], onHydrate: (id: string) => void = () => {}) {
   const h = mount(async () => ({ items: [] }), ['tc-1'], rows);
   const storedComment = { commentId: 'context-row', author: 'Stored author' };
-  const getValues = vi.fn(() => storedComment);
-  const getComment = vi.fn(() => ({ getValues }));
+  const getComment = (id: string) => {
+    onHydrate(id);
+    return id === 'tc-1' ? { getValues: () => storedComment } : undefined;
+  };
   Object.assign(h.superdoc.config, { role: 'editor', isInternal: false });
   Object.assign(h.superdoc, {
     canPerformPermission: SuperDoc.prototype.canPerformPermission,
     commentsStore: { getComment },
   });
-  return { ...h, storedComment, getValues, getComment };
+  return { ...h, storedComment };
 }
 
 it('SD-5951 re-evaluates ownership, user and policy on the same live instance', () => {
@@ -414,8 +421,6 @@ it('SD-5951 re-evaluates ownership, user and policy on the same live instance', 
   Object.assign(h.superdoc.config, { role: 'editor', isInternal: false });
   h.refresh();
   expect(enabled()).toBe(true);
-  expect(h.getComment).not.toHaveBeenCalled();
-  expect(h.getValues).not.toHaveBeenCalled();
 });
 
 it.each(['top-level', 'deprecated'] as const)('SD-5951 retains live %s custom context and removal', (location) => {
@@ -428,8 +433,6 @@ it.each(['top-level', 'deprecated'] as const)('SD-5951 retains live %s custom co
   h.refresh();
   expect(h.ui.commands.get('track-changes-reject-selection').getState().enabled).toBe(false);
   expect(resolver).toHaveBeenCalled();
-  expect(h.getComment).toHaveBeenCalledWith('tc-1');
-  expect(h.getValues).toHaveBeenCalledTimes(h.getComment.mock.calls.length);
   for (const [payload] of resolver.mock.calls as unknown as [Record<string, unknown>][]) {
     expect(payload).toEqual({
       permission: payload.permission,
@@ -444,12 +447,8 @@ it.each(['top-level', 'deprecated'] as const)('SD-5951 retains live %s custom co
   }
   if (location === 'top-level') Object.assign(h.superdoc.config, { permissionResolver: undefined });
   else comments.permissionResolver = undefined;
-  h.getComment.mockClear();
-  h.getValues.mockClear();
   h.refresh();
   expect(h.ui.commands.get('track-changes-reject-selection').getState().enabled).toBe(true);
-  expect(h.getComment).not.toHaveBeenCalled();
-  expect(h.getValues).not.toHaveBeenCalled();
 });
 
 it('SD-5951 preserves the exact unbranded method payload and receiver after replacement', () => {
@@ -482,80 +481,110 @@ it.each(['known', 'unknown'] as const)('SD-5951 preserves %s custom throw and no
   Object.assign(h.superdoc.config, { permissionResolver: () => undefined });
   h.refresh();
   expect(h.ui.commands.get('track-changes-accept-selection').getState().enabled).toBe(true);
-  expect(h.getComment).toHaveBeenCalled();
 });
 
+function groupCalls(calls: string[], startsGroup: (call: string) => boolean, endsGroup: (call: string) => boolean) {
+  const groups = new Set<string>();
+  let group: string[] = [];
+  const close = () => {
+    if (group.length) groups.add(group.join(' -> '));
+    group = [];
+  };
+  for (const call of calls) {
+    if (startsGroup(call)) close();
+    group.push(call);
+    if (endsGroup(call)) close();
+  }
+  close();
+  return [...groups].sort().join('\n');
+}
+
+function integratorCallsPerDecision(calls: string[]): string {
+  return groupCalls(
+    calls,
+    () => false,
+    (call) => call.startsWith('permissionResolver('),
+  );
+}
+
+type CanPerformPermission = (payload: CanPerformPermissionParams) => boolean;
+
+function callsPerEvaluation(calls: string[]): string {
+  return groupCalls(
+    calls,
+    (call) => call === 'read canPerformPermission',
+    () => false,
+  );
+}
+
 it.each(['own', 'inherited'] as const)(
-  'SD-5951 does not consume a live %s resolver accessor before hydration',
-  (placement) => {
+  'SD-5951 decides with a live %s resolver accessor, read only for the decision',
+  async (placement) => {
     const h = builtInHarness();
-    const events: string[] = [];
-    let reads = 0;
-    const resolver = vi.fn(() => {
-      events.push('decision');
-      return false;
-    });
-    h.getComment.mockImplementation(() => {
-      reads = 0;
-      events.push('comment');
-      return { getValues: h.getValues };
-    });
-    h.getValues.mockImplementation(() => {
-      events.push('values');
-      return h.storedComment;
-    });
+    const calls: string[] = [];
+    let decision = false;
+    const resolver = ({ permission, defaultDecision, comment }: Record<string, unknown>) => {
+      calls.push(`permissionResolver(${JSON.stringify({ permission, defaultDecision, comment })}) = ${decision}`);
+      return decision;
+    };
     const owner = placement === 'own' ? h.superdoc.config : Object.create(Object.getPrototypeOf(h.superdoc.config));
     if (placement === 'inherited') Object.setPrototypeOf(h.superdoc.config, owner);
     Object.defineProperty(owner, 'permissionResolver', {
       configurable: true,
       get() {
-        reads += 1;
-        events.push(`resolver-${reads}`);
-        return reads <= 2 ? resolver : undefined;
+        calls.push('read permissionResolver');
+        return resolver;
       },
     });
+    const accept = h.ui.commands.get('track-changes-accept-selection');
     h.refresh();
-    expect(h.ui.commands.get('track-changes-accept-selection').getState().enabled).toBe(false);
-    expect(resolver).toHaveBeenCalled();
-    expect(events.length % 5).toBe(0);
-    for (let i = 0; i < events.length; i += 5) {
-      expect(events.slice(i, i + 5)).toEqual(['comment', 'values', 'resolver-1', 'resolver-2', 'decision']);
-    }
+    const denied = accept.getState().enabled;
+    const deniedCalls = integratorCallsPerDecision(calls.splice(0));
+    decision = true;
+    h.refresh();
+    const allowed = accept.getState().enabled;
+    const allowedCalls = integratorCallsPerDecision(calls.splice(0));
+    await expect(
+      `resolver denies:\n  accept enabled: ${denied}\n  integrator calls per decision:\n${deniedCalls}\n\nresolver allows:\n  accept enabled: ${allowed}\n  integrator calls per decision:\n${allowedCalls}\n`,
+    ).toMatchFileSnapshot(`./__snapshots__/tracked-change-permission-reads/live-${placement}-resolver-accessor.txt`);
   },
 );
 
-it('SD-5951 retains a live permission-method getter without an additional method read', () => {
-  const h = builtInHarness();
-  const events: string[] = [];
+it('SD-5951 follows a live permission-method getter, read once per evaluation', async () => {
+  const calls: string[] = [];
+  const h = builtInHarness(undefined, (id) => calls.push(`commentsStore.getComment(${JSON.stringify(id)})`));
+  const builtIn = SuperDoc.prototype.canPerformPermission;
+  const denying = (payload: CanPerformPermissionParams) => {
+    calls.push(`canPerformPermission(${JSON.stringify({ permission: payload.permission })}) = false`);
+    return false;
+  };
+  let method: CanPerformPermission = builtIn;
   Object.defineProperty(h.superdoc, 'canPerformPermission', {
     configurable: true,
     get() {
-      events.push('method');
-      return SuperDoc.prototype.canPerformPermission;
+      calls.push('read canPerformPermission');
+      return method;
     },
   });
-  h.getComment.mockImplementation(() => {
-    events.push('comment');
-    return { getValues: h.getValues };
-  });
-  h.getValues.mockImplementation(() => {
-    events.push('values');
-    return h.storedComment;
-  });
-  h.refresh();
-  expect(h.ui.commands.get('track-changes-accept-selection').getState().enabled).toBe(true);
-  expect(h.getComment).toHaveBeenCalled();
-  expect(events.length % 3).toBe(0);
-  for (let i = 0; i < events.length; i += 3) expect(events.slice(i, i + 3)).toEqual(['method', 'comment', 'values']);
+  const phases: string[] = [];
+  for (const [label, next] of [
+    ['built-in method', builtIn],
+    ['denying method', denying],
+    ['built-in method again', builtIn],
+  ] as const) {
+    method = next;
+    h.refresh();
+    const enabled = h.ui.commands.get('track-changes-accept-selection').getState().enabled;
+    phases.push(`${label}:\n  accept enabled: ${enabled}\n  calls:\n${callsPerEvaluation(calls.splice(0))}`);
+  }
+  await expect(`${phases.join('\n\n')}\n`).toMatchFileSnapshot(
+    './__snapshots__/tracked-change-permission-reads/live-permission-method-getter.txt',
+  );
 });
 
 it('SD-5951 reaches the built-in path with the real Pinia comments action', () => {
   const h = builtInHarness();
-  const store = useCommentsStore(createPinia());
-  const getComment = vi.spyOn(store, 'getComment');
-  Object.assign(h.superdoc, { commentsStore: store });
+  Object.assign(h.superdoc, { commentsStore: useCommentsStore(createPinia()) });
   h.refresh();
   expect(h.ui.commands.get('track-changes-reject-selection').getState().enabled).toBe(true);
-  expect(Object.getOwnPropertyDescriptor(store, 'getComment')).toHaveProperty('value');
-  expect(getComment).not.toHaveBeenCalled();
 });

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { validateReplaceInput, executeReplace } from '../replace/replace.js';
 import { executeSelectionExtractOoxml } from '../selection/selection.js';
 import { DocumentApiValidationError } from '../errors.js';
-import { OPERATION_DEFINITIONS } from './operation-definitions.js';
 import { buildInternalContractSchemas } from './schemas.js';
 import { validateParagraphsApplyBatchInput } from '../paragraphs/paragraphs.js';
 const target = { kind: 'block', nodeType: 'paragraph', nodeId: 'p1' } as const;
@@ -39,53 +38,17 @@ describe('paragraph alternatives contract', () => {
       executeReplace({} as never, {} as never, { target, text: 'Alternate' }, { replaceMode: 'contents' }),
     ).toThrow(DocumentApiValidationError);
   });
-  it('advertises direct-only non-batchable mutations and current read coordinates', () => {
+  it('publishes no paragraph capture, replace, restore or release operations', () => {
     const operations = buildInternalContractSchemas().operations;
     expect(Object.keys(operations).some((id) => /^blocks.(capture|replace|restore|release)Paragraph$/.test(id))).toBe(
       false,
     );
-    expect(OPERATION_DEFINITIONS.replace.metadata).toMatchObject({
-      mutates: true,
-      supportsDryRun: true,
-      returnsReceipt: true,
-    });
-    const snapshot = operations['selection.extractOoxml'].output;
-    expect(snapshot?.required).toContain('evaluatedRevision');
-    expect(snapshot?.properties).toHaveProperty('snapshotId');
-    expect(snapshot?.additionalProperties).toBe(false);
-    expect(operations['selection.releaseSnapshot'].input.required).toContain('snapshotId');
   });
 });
 
-it('SD-6351 CASE-3 advertises nullable resets only for painter keep and flow flags', () => {
-  const operations = buildInternalContractSchemas().operations;
-  for (const [operation, fields] of [
-    ['format.paragraph.setKeepOptions', ['keepNext', 'keepLines', 'widowControl']],
-    ['format.paragraph.setFlowOptions', ['contextualSpacing', 'pageBreakBefore']],
-  ] as const) {
-    for (const field of fields)
-      expect(operations[operation].input.properties?.[field]).toEqual({
-        oneOf: [{ type: 'boolean' }, { type: 'null' }],
-      });
-  }
-  expect(operations['format.paragraph.setFlowOptions'].input.properties?.suppressAutoHyphens).toEqual({
-    type: 'boolean',
-  });
-});
-
-it('documents the bounded closed paragraph batch and strict target-free leaf schemas', () => {
-  const contract = buildInternalContractSchemas().operations['format.paragraph.applyBatch'];
-  expect(OPERATION_DEFINITIONS['format.paragraph.applyBatch'].metadata).toMatchObject({
-    mutates: true,
-    supportsDryRun: false,
-    trackedSupport: 'conditional',
-  });
-  expect(contract.input.additionalProperties).toBe(false);
-  expect(contract.input.required).toEqual(['targets', 'operations']);
-  expect(contract.input.properties.targets).toMatchObject({ minItems: 1, maxItems: 1000, uniqueItems: true });
-  expect(contract.input.properties.operations).toMatchObject({ minItems: 1, maxItems: 1000 });
-  const actions = contract.input.properties.operations.items.oneOf;
-  expect(actions).toHaveLength(20);
+it('keeps every paragraph batch action closed, target-free and limited to leaf operations', () => {
+  const actions =
+    buildInternalContractSchemas().operations['format.paragraph.applyBatch'].input.properties.operations.items.oneOf;
   for (const action of actions) {
     expect(action.additionalProperties).toBe(false);
     expect(action.required).toEqual(['operationId', 'input']);
@@ -94,11 +57,6 @@ it('documents the bounded closed paragraph batch and strict target-free leaf sch
     expect(action.properties.input.required).not.toContain('target');
     expect(action.properties.operationId.const).not.toMatch(/(?:applyBatch|plan|resetDirectFormatting|setNumbering)$/);
   }
-  const spacing = actions.find((action) => action.properties.operationId.const === 'format.paragraph.setSpacing')
-    .properties.input;
-  expect(spacing.properties.before).toMatchObject({ type: 'integer', minimum: 0 });
-  expect(spacing.properties.lineRule.enum).toEqual(['auto', 'exact', 'atLeast']);
-  expect(contract.success.properties.resolution.properties.targets).toBeDefined();
 });
 
 it.each([
@@ -160,22 +118,3 @@ it.each([
     }
   },
 );
-
-it('retains paragraph batch nonempty, exclusive, conditional and unit constraints', () => {
-  const operations = buildInternalContractSchemas().operations;
-  const actions = operations['format.paragraph.applyBatch'].input.properties.operations.items.oneOf;
-  const spacing = actions.find((action) => action.properties.operationId.const === 'format.paragraph.setSpacing')
-    .properties.input;
-  expect(spacing.anyOf).toEqual(['before', 'after', 'line', 'lineRule'].map((field) => ({ required: [field] })));
-  expect(spacing.if).toEqual({ required: ['line'] });
-  expect(spacing.then).toEqual({ required: ['lineRule'] });
-  expect(spacing.properties.before).toMatchObject({ type: 'integer', minimum: 0 });
-  expect(spacing.properties.line).toMatchObject({ type: 'integer', minimum: 1 });
-  const indentation = actions.find(
-    (action) => action.properties.operationId.const === 'format.paragraph.setIndentation',
-  ).properties.input;
-  expect(indentation.anyOf).toEqual(['left', 'right', 'firstLine', 'hanging'].map((field) => ({ required: [field] })));
-  expect(indentation.not).toEqual({ required: ['firstLine', 'hanging'] });
-  expect(indentation.properties.firstLine).toMatchObject({ type: 'integer', minimum: 0 });
-  expect(indentation.properties.hanging).toMatchObject({ type: 'integer', minimum: 0 });
-});

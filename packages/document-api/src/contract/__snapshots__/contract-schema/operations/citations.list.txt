@@ -1,0 +1,45 @@
+{
+  "definition": {
+    "description": "List all citation marks in the document.",
+    "expectedResult": "Returns a CitationsListResult containing discovered citation marks with address and domain data.",
+    "memberPath": "citations.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "citations/list.mdx",
+    "referenceGroup": "citations",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

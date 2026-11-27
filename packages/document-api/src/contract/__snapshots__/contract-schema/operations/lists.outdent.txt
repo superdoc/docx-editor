@@ -1,0 +1,404 @@
+{
+  "definition": {
+    "description": "Decrease the indentation level of a list item.",
+    "expectedResult": "Returns a ListsMutateItemResult receipt; reports NO_OP if the item is already at the root level.",
+    "intentAction": "outdent",
+    "intentGroup": "list",
+    "memberPath": "lists.outdent",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "INVALID_TARGET",
+        "LEVEL_OUT_OF_RANGE",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "lists/outdent.mdx",
+    "referenceGroup": "lists",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "LEVEL_OUT_OF_RANGE",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/ListItemAddress"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "affectedStories": {
+              "items": {
+                "$ref": "#/$defs/StoryLocator"
+              },
+              "type": "array"
+            },
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "changeTag": {
+              "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+              "type": "string"
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "effects": {
+              "$ref": "#/$defs/ReceiptEffects"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inserted": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "invalidatedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRef"
+              },
+              "type": "array"
+            },
+            "item": {
+              "$ref": "#/$defs/ListItemAddress"
+            },
+            "remappedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRefRemapping"
+              },
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "status": {
+              "const": "NO_OP"
+            },
+            "success": {
+              "const": true
+            },
+            "temporary": {
+              "additionalProperties": false,
+              "properties": {
+                "cancelledBy": {
+                  "const": "native-edit",
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "onNativeEdit": {
+                  "enum": [
+                    "cancel",
+                    "preserve"
+                  ],
+                  "type": "string"
+                },
+                "phase": {
+                  "enum": [
+                    "begin",
+                    "replace",
+                    "rollback",
+                    "commit"
+                  ]
+                },
+                "tag": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "phase",
+                "tag"
+              ],
+              "type": "object"
+            },
+            "textRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TextRangeShift"
+              },
+              "type": "array"
+            },
+            "trackedChangeCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "type": "array"
+            },
+            "trackedTextRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TrackedTextRangeShift"
+              },
+              "type": "array"
+            },
+            "txId": {
+              "type": "string"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "warnings": {
+              "items": {
+                "$ref": "#/$defs/ReviewWarning"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success",
+            "item"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "LEVEL_OUT_OF_RANGE",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "changeTag": {
+          "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "effects": {
+          "$ref": "#/$defs/ReceiptEffects"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "item": {
+          "$ref": "#/$defs/ListItemAddress"
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "NO_OP"
+        },
+        "success": {
+          "const": true
+        },
+        "temporary": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelledBy": {
+              "const": "native-edit",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "onNativeEdit": {
+              "enum": [
+                "cancel",
+                "preserve"
+              ],
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "begin",
+                "replace",
+                "rollback",
+                "commit"
+              ]
+            },
+            "tag": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "phase",
+            "tag"
+          ],
+          "type": "object"
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/ReviewWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "item"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -71,22 +71,32 @@ describe('sdRunPropsToInlineRunPatch', () => {
   it('projects fonts to rFonts and lang with every field', () => {
     expect(
       sdRunPropsToInlineRunPatch({
-        fonts: { ascii: 'Calibri', eastAsia: 'MS Mincho', csTheme: 'minorBidi' },
-        lang: { val: 'en-US', bidi: 'ar-SA' },
+        fonts: {
+          ascii: 'Calibri',
+          hAnsi: 'Cambria',
+          eastAsia: 'MS Mincho',
+          cs: 'Arial',
+          asciiTheme: 'minorHAnsi',
+          hAnsiTheme: 'majorHAnsi',
+          eastAsiaTheme: 'minorEastAsia',
+          csTheme: 'minorBidi',
+          hint: 'eastAsia',
+        },
+        lang: { val: 'en-US', eastAsia: 'ja-JP', bidi: 'ar-SA' },
       }),
-    ).toEqual({
+    ).toStrictEqual({
       rFonts: {
         ascii: 'Calibri',
-        hAnsi: undefined,
+        hAnsi: 'Cambria',
         eastAsia: 'MS Mincho',
-        cs: undefined,
-        asciiTheme: undefined,
-        hAnsiTheme: undefined,
-        eastAsiaTheme: undefined,
+        cs: 'Arial',
+        asciiTheme: 'minorHAnsi',
+        hAnsiTheme: 'majorHAnsi',
+        eastAsiaTheme: 'minorEastAsia',
         csTheme: 'minorBidi',
-        hint: undefined,
+        hint: 'eastAsia',
       },
-      lang: { val: 'en-US', eastAsia: undefined, bidi: 'ar-SA' },
+      lang: { val: 'en-US', eastAsia: 'ja-JP', bidi: 'ar-SA' },
     });
   });
 

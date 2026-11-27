@@ -1,0 +1,15 @@
+peer Other <other@example.com> writes c1, a duplicate c1 and c2
+store:
+c1: Hello
+c2: Another
+
+the current user writes c3
+store:
+c1: Hello
+c2: Another
+
+peer other-id, who shares the current user email, writes
+store:
+c1: Hello
+c2: Another
+c3: Own echo

@@ -114,7 +114,7 @@ describe('engines-tabs computeTabStops', () => {
       paragraphIndent: { left: 0, hanging: 567 },
     });
 
-    expect(stops[0]).toEqual({ val: 'start', pos: 0, leader: 'none', source: 'default' });
+    expect(stops[0]).toEqual({ val: 'start', pos: 0, leader: 'none', source: 'default', implicitIndent: true });
     expect(stops.find((stop) => stop.pos === 720)).toBeDefined();
   });
 
@@ -131,8 +131,8 @@ describe('engines-tabs computeTabStops', () => {
       paragraphIndent: { left: -600, hanging: 141 },
     });
 
-    expect(stops[0]).toEqual({ val: 'start', pos: 0, leader: 'none', source: 'default' });
-    expect(stops[1]).toEqual({ val: 'start', pos: 600, leader: 'none', source: 'default' });
+    expect(stops[0]).toEqual({ val: 'start', pos: 0, leader: 'none', source: 'default', implicitIndent: true });
+    expect(stops[1]).toEqual({ val: 'start', pos: 600, leader: 'none', source: 'default', implicitIndent: true });
     expect(stops.find((stop) => stop.pos === 720)).toBeDefined();
   });
 
@@ -143,7 +143,7 @@ describe('engines-tabs computeTabStops', () => {
       paragraphIndent: { left: -567, hanging: 0 },
     });
 
-    expect(stops[0]).toEqual({ val: 'start', pos: 0, leader: 'none', source: 'default' });
+    expect(stops[0]).toEqual({ val: 'start', pos: 0, leader: 'none', source: 'default', implicitIndent: true });
     expect(stops.find((stop) => stop.pos === 567)).toBeUndefined();
     expect(stops.find((stop) => stop.pos === 720)).toBeDefined();
   });
@@ -156,7 +156,7 @@ describe('engines-tabs computeTabStops', () => {
       rawParagraphIndent: { left: -567, hanging: 0 },
     });
 
-    expect(stops[0]).toEqual({ val: 'start', pos: 0, leader: 'none', source: 'default' });
+    expect(stops[0]).toEqual({ val: 'start', pos: 0, leader: 'none', source: 'default', implicitIndent: true });
     expect(stops.find((stop) => stop.pos === 567)).toBeUndefined();
     expect(stops.find((stop) => stop.pos === 720)).toBeDefined();
   });
@@ -244,6 +244,7 @@ describe('engines-tabs computeTabStops', () => {
       val: 'start',
       leader: 'none',
       source: 'default',
+      implicitIndent: true,
     });
     expect(stops[0]?.pos).toBe(1000);
     expect(stops.find((stop) => stop.pos === 720)).toBeUndefined();
@@ -315,8 +316,13 @@ describe('engines-tabs computeTabStops', () => {
     });
 
     expect(stops.filter((stop) => stop.pos === 720)).toHaveLength(1);
-    expect(stops[0]).toEqual({ val: 'start', pos: 720, leader: 'none', source: 'default' });
-    expect(stops.find((stop) => stop.pos === 1440)).toBeDefined();
+    expect(stops[0]).toEqual({ val: 'start', pos: 720, leader: 'none', source: 'default', implicitIndent: true });
+    expect(stops.find((stop) => stop.pos === 1440)).toEqual({
+      val: 'start',
+      pos: 1440,
+      leader: 'none',
+      source: 'default',
+    });
   });
 
   it('preserves legacy defaults-after-rightmost behavior when a start stop is present', () => {

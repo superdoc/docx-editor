@@ -1,0 +1,133 @@
+{
+  "definition": {
+    "description": "Resolve the effective header/footer reference for a slot, walking the section inheritance chain.",
+    "expectedResult": "Returns a HeaderFooterResolveResult indicating explicit, inherited, or none status with the resolved refId.",
+    "memberPath": "headerFooters.resolve",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "header-footers/resolve.mdx",
+    "referenceGroup": "headerFooters",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "headerFooterKind": {
+              "enum": [
+                "header",
+                "footer"
+              ]
+            },
+            "kind": {
+              "const": "headerFooterSlot"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "variant": {
+              "enum": [
+                "default",
+                "first",
+                "even"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "section",
+            "headerFooterKind",
+            "variant"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "refId": {
+              "type": "string"
+            },
+            "section": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "status": {
+              "const": "explicit"
+            }
+          },
+          "required": [
+            "status",
+            "refId",
+            "section"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "refId": {
+              "type": "string"
+            },
+            "resolvedFromSection": {
+              "$ref": "#/$defs/SectionAddress"
+            },
+            "resolvedVariant": {
+              "enum": [
+                "default",
+                "first",
+                "even"
+              ]
+            },
+            "status": {
+              "const": "inherited"
+            }
+          },
+          "required": [
+            "status",
+            "refId",
+            "resolvedFromSection",
+            "resolvedVariant"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  }
+}

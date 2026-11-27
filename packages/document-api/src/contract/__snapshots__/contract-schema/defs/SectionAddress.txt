@@ -1,0 +1,16 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "section"
+    },
+    "sectionId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "sectionId"
+  ],
+  "type": "object"
+}

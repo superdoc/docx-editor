@@ -32,10 +32,19 @@ Copy any user or mode options you chose on the previous pages into this configur
 movement or pagination. Downloading a copy does not save changes to your application, so it does not clear the
 **Unsaved changes** status.
 
-In a collaborative room, `onEditorUpdate` also fires when another collaborator's change reaches this editor. The event's
-`isRemote` field is `true` for those changes and `false` for edits, undo, and redo made here. Skip `isRemote` events
-when the handler writes back to your application or marks this user's changes as unsaved. A remote event always
-reports `surface: 'body'` because the room does not say which part of the document changed.
+In a ready V2 collaboration room, the SuperDoc instance emits `editor-update` after applying committed document edits
+from another collaborator, such as adding a heading or changing a shared list numbering definition.
+Subscribe with `superdoc.on('editor-update', handler)` or the `onEditorUpdate` configuration option. Both use
+`EditorUpdateEvent`, whose boolean `isRemote` is `true` for remote changes and `false` for local edits, undo, and redo.
+
+The receiving editor emits one event per applied edit batch. A batch can contain multiple changes.
+A Document API read started in the handler can read the applied state. Use this event to refresh an outline or index,
+and skip remote events in handlers that mark this user's changes as unsaved or write an edit back. In V2, a remote
+event's `surface: 'body'` is a default value. Read the document to determine which content changed.
+
+Use `onCollaborationReady` to load the initial room state. Presence-only changes are reported through
+`awareness-update`. To observe comment-only changes, such as resolving or reopening a thread, use
+`superdoc.ui.comments.observe()`.
 
 ## Choose where to listen
 
@@ -48,7 +57,7 @@ reports committed changes, and `onX()` reports an interaction.
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Is the document open, and did opening it fail?                | `onReady`, `onException`                                                                                                |
 | Is the document locked, and is collaboration still connected? | [`onLocked`](/editor/locks-and-protection#coordinate-editors-with-the-document-lock), `onCollaborationConnectionChange` |
-| Did the built-in comments list appear or disappear?           | `onCommentsListChange`                                                                                                  |
+| Did the built-in comments list appear or disappear?           | [`onCommentsListChange`](/editor/built-in-ui/comments#show-every-comment-and-change-in-your-panel)                      |
 | What changed in the document?                                 | `superdoc.ui.document.onChange()`                                                                                       |
 | What is the zoom, the mode, or the undo depth right now?      | `superdoc.ui.zoom`, `superdoc.ui.document`, `superdoc.ui.history`                                                       |
 
@@ -165,3 +174,27 @@ belongs to that instance and does not survive a page reload. Capture failures ar
 
 History is diagnostic evidence, not a complete replay or audit log. Selection events may be coalesced,
 older events may be evicted, and each collaboration peer records its own observation order.
+
+## Observe and recover rendering
+
+The active editor's `rendering` API observes presentation health independently of document edits. A failed presentation can leave accepted changes and undo history available even when the view stops updating.
+
+```ts
+const rendering = superdoc.activeEditor?.rendering;
+if (rendering) {
+  console.log(rendering.getSnapshot());
+  const unsubscribe = rendering.subscribe(({ status, diagnostics }) => {
+    console.log(status, diagnostics);
+  });
+  const accepted = rendering.retry();
+  console.log('Recovery attempt accepted:', accepted);
+}
+```
+
+`getSnapshot()` returns a detached snapshot with `status` and `diagnostics`. Status is `unavailable` before a mounted presentation, `rendering` during initial rendering, `current` once presentation is current, `failed` after a render failure, or `recovering` while recovery is in progress. Each diagnostic contains a `code`, `message`, and `severity`. Diagnostic messages can include document details; review them before sending them to another service.
+
+`subscribe()` observes subsequent health updates and returns an unsubscribe function. Read `getSnapshot()` for the initial state, and unsubscribe when switching documents or destroying the editor. A healthy editor can emit updates without changing status.
+
+`retry()` starts an in-place recovery attempt and returns synchronously. `true` means the attempt was accepted; observe the health subscription for completion. `false` means no attempt was started, including a healthy presentation, an attempt already in progress, an unavailable presentation, or an invalidated collaboration connection. Persistent faults remain observable as failures; acceptance does not guarantee recovery. Automatic recovery can also occur without a host request.
+
+Recovery retains the document session and undo/redo history, including in collaboration. A retry repairs presentation; it does not recreate a terminated document worker or repair a terminal collaboration connection. Reopening a document creates a new session and does not retain its undo history. `onException` reports each distinct render-failure episode; repeated reports during the same episode are suppressed until presentation recovers.

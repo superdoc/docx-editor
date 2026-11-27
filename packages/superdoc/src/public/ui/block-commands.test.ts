@@ -40,11 +40,13 @@ describe('buildTableCommandInput', () => {
       nodeId: 't1',
       start: { rowIndex: 0, columnIndex: 0 },
       end: { rowIndex: 1, columnIndex: 1 },
+      keepAllContent: true,
     });
     expect(buildTableCommandInput('merge-cells', { ...context, mergeRange: null })).toEqual({
       nodeId: 't1',
       start: { rowIndex: 2, columnIndex: 1 },
       end: { rowIndex: 2, columnIndex: 1 },
+      keepAllContent: true,
     });
   });
 

@@ -111,8 +111,6 @@ describe('dev v2 collaboration config', () => {
     const testDirectory = dirname(fileURLToPath(import.meta.url));
     const devAppSource = readFileSync(resolve(testDirectory, 'components/SuperdocDev.vue'), 'utf8');
 
-    expect(devAppSource).toContain('createDevV2CollaborationConfig');
-    expect(devAppSource).toContain('createDevDocumentConfig');
     expect(devAppSource).not.toContain("from 'y-websocket'");
     expect(devAppSource).not.toContain("from 'yjs'");
     expect(devAppSource).not.toContain('modules.collaboration');

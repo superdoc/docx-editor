@@ -1,0 +1,225 @@
+{
+  "definition": {
+    "description": "Convert consecutive paragraphs from a starting block, or exactly the whole paragraphs in a selection, into a table. Selection endpoints must be at paragraph boundaries.",
+    "expectedResult": "Returns a TableMutationResult receipt confirming text was converted into a table.",
+    "memberPath": "tables.convertFromText",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "TARGET_NOT_FOUND",
+        "PRECONDITION_FAILED",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "tables/convert-from-text.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "target"
+          ]
+        },
+        {
+          "required": [
+            "nodeId"
+          ]
+        }
+      ],
+      "properties": {
+        "columns": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "delimiter": {
+          "oneOf": [
+            {
+              "enum": [
+                "tab",
+                "comma",
+                "paragraph"
+              ]
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "custom": {
+                  "maxLength": 1,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "custom"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "inferColumns": {
+          "type": "boolean"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "target": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/BlockNodeAddress"
+            },
+            {
+              "$ref": "#/$defs/SelectionTarget"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "success": {
+              "const": true
+            },
+            "table": {
+              "$ref": "#/$defs/TableAddress"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "success": {
+          "const": true
+        },
+        "table": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

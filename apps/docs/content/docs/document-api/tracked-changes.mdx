@@ -125,6 +125,12 @@ console.log({
 
 The list searches the document body by default. Pass `in: 'all'` when the workflow must include supported headers, footers, footnotes, and endnotes.
 
+When SuperDoc synthesizes both first-paint IDs for an imported inline text replacement in the document body,
+pass either span's `data-track-change-id` to `doc.trackChanges.get({ id })`. From `onReady`, the returned
+`id` matches the same `list()` item for both sides when the revision has a unique replacement owner.
+This also works in shared rooms. Revisions with explicitly stored IDs (RSIDs) can resolve to individual
+sides. A legacy `imported:N` alias resolves when it identifies a unique listed change.
+
 ### Quote a replacement safely
 
 A tracked replacement is one logical change with two sides, and the API always keeps them in separate fields. A `trackChanges.list` entry carries `insertedText` (the new text) and `deletedText` (the struck text). `trackChanges.get({ id })` returns the full `TrackChangeInfo`, which adds `replacement.inserted.excerpt` and `replacement.deleted.excerpt` for grouped replacements. None of these fields ever contains the other side.

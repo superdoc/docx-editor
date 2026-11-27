@@ -1,0 +1,2 @@
+indent-increase -> {"success":true}
+  format.paragraph.setIndentation {"target":{"kind":"block","nodeType":"paragraph","nodeId":"P1"},"left":1440}

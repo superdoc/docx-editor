@@ -18,6 +18,7 @@ export function normalizeSuperDocUser(user: User | null | undefined): User {
   return {
     ...DEFAULT_SUPERDOC_USER,
     ...user,
+    name: typeof user.name === 'string' && user.name.trim() ? user.name : DEFAULT_SUPERDOC_USER.name,
     ...(user.commentIdentity !== undefined ? { commentIdentity: normalizeCommentIdentity(user.commentIdentity) } : {}),
   };
 }

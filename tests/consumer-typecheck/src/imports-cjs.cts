@@ -24,3 +24,7 @@ void _SuperDoc;
 void _createTheme;
 void _defineExtension;
 void _instance;
+
+import collaboration = require('superdoc/collaboration');
+const _collaborationResolver: (documentId: string) => string = collaboration.resolveCollaborationRoomName;
+void _collaborationResolver;

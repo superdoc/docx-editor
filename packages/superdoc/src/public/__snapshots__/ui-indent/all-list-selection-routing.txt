@@ -1,0 +1,4 @@
+indent-increase -> {"success":true}
+  lists.indent {"target":{"kind":"block","nodeType":"listItem","nodeId":"P1"}}
+  lists.indent {"target":{"kind":"block","nodeType":"listItem","nodeId":"P2"}}
+  lists.indent {"target":{"kind":"block","nodeType":"listItem","nodeId":"P3"}}

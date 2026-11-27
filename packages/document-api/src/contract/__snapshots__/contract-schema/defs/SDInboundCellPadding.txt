@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "bottom": {
+      "minimum": 0,
+      "type": "number"
+    },
+    "left": {
+      "minimum": 0,
+      "type": "number"
+    },
+    "right": {
+      "minimum": 0,
+      "type": "number"
+    },
+    "top": {
+      "minimum": 0,
+      "type": "number"
+    }
+  },
+  "type": "object"
+}

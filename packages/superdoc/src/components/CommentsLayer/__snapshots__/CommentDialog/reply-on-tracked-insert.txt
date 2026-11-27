@@ -1,0 +1,79 @@
+before:
+
+store:
+{
+  "activeComment": "tc-insert",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "tc-insert",
+      "trackedChange": true,
+      "trackedChangeCanonicalId": "insert-1"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+tc-insert: tracked change: 
+reply pill
+
+action: open the reply composer, type "<p>Tracked change reply</p>", click Reply
+
+document calls:
+comments.reply {"parentCommentId":"insert-1","text":"Tracked change reply"}
+comments.commitPendingComment {"text":"Tracked change reply","target":{"kind":"trackedChange","trackedChangeId":"insert-1"}}
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "tracked-change-reply",
+      "trackedChangeThreadParentId": "insert-1",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Tracked change reply",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+superdoc.focus calls: []
+
+after:
+
+store:
+{
+  "activeComment": "tc-insert",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "tc-insert",
+      "trackedChange": true,
+      "trackedChangeCanonicalId": "insert-1"
+    },
+    {
+      "commentId": "tracked-change-reply",
+      "commentText": "Tracked change reply",
+      "trackedChangeThreadParentId": "insert-1"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+tc-insert: tracked change: 
+tracked-change-reply: comment: Tracked change reply
+reply pill

@@ -1,0 +1,78 @@
+{
+  "definition": {
+    "batchable": false,
+    "description": "Capture the current revision, change cursor and collaboration state vector so a verifier can later replay or compare change records against this point.",
+    "expectedResult": "Returns a ChangesSnapshotResult with the revision, change cursor, last change id, base64 state vector, optional base64 full state and capture time.",
+    "memberPath": "changes.snapshot",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "returnsPromise": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "changes/snapshot.mdx",
+    "referenceGroup": "changes",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "includeState": {
+          "description": "Include the base64 Yjs v1 state update, deleted content included.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastChangeId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "stateVector": {
+          "description": "Base64 Yjs state vector. Empty when the session has no room document.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "cursor",
+        "lastChangeId",
+        "stateVector",
+        "at"
+      ],
+      "type": "object"
+    }
+  }
+}

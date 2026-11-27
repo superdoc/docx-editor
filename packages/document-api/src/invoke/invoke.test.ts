@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test';
 import { OPERATION_IDS, type OperationId } from '../contract/types.js';
+import { memberPathForOperation } from '../contract/operation-map.js';
 import { createDocumentApi, type DocumentApi, type DocumentApiAdapters } from '../index.js';
-import { buildDispatchTable } from './invoke.js';
 import type { FindAdapter } from '../find/find.js';
 import type { GetNodeAdapter } from '../get-node/get-node.js';
 import type { WriteAdapter } from '../write/write.js';
@@ -478,21 +478,16 @@ describe('invoke', () => {
   });
 
   describe('dispatch table completeness', () => {
-    it('has an entry for every OperationId', () => {
+    it('resolves every operation member path to a method on the api', () => {
       const { adapters } = makeAdapters();
       const api = createDocumentApi(adapters);
-      const dispatchKeys = Object.keys(buildDispatchTable(api)).sort();
-      const operationIds = [...OPERATION_IDS].sort();
-      expect(dispatchKeys).toEqual(operationIds);
-    });
-
-    it('has no extra entries beyond OperationId', () => {
-      const { adapters } = makeAdapters();
-      const api = createDocumentApi(adapters);
-      const dispatchKeys = Object.keys(buildDispatchTable(api));
-      const operationIdSet = new Set<string>(OPERATION_IDS);
-      const extraKeys = dispatchKeys.filter((key) => !operationIdSet.has(key));
-      expect(extraKeys).toEqual([]);
+      const unresolved = OPERATION_IDS.filter((operationId) => {
+        const member = memberPathForOperation(operationId)
+          .split('.')
+          .reduce<unknown>((owner, segment) => (owner as Record<string, unknown> | undefined)?.[segment], api);
+        return typeof member !== 'function';
+      });
+      expect(unresolved).toEqual([]);
     });
   });
 

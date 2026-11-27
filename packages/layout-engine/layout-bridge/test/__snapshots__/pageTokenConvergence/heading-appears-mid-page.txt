@@ -1,0 +1,7 @@
+page 1
+  heading-1 lines 0-1 at x 10, y 10
+  filler-a lines 0-6 at x 10, y 20
+  page-field-1 lines 0-1 at x 10, y 80 text "2‑1"
+  page-field-2 lines 0-1 at x 55, y 10 text "2‑1"
+  heading-2 lines 0-1 at x 55, y 20
+  filler-tail lines 0-1 at x 55, y 30

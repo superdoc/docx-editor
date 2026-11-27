@@ -1,0 +1,303 @@
+{
+  "definition": {
+    "description": "Create a new table at the target position.",
+    "expectedResult": "Returns a CreateTableResult with the new table block ID and address.",
+    "intentAction": "table",
+    "intentGroup": "create",
+    "memberPath": "create.table",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET",
+          "AMBIGUOUS_TARGET"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "create/table.mdx",
+    "referenceGroup": "create",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "documentStart"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "documentEnd"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "before"
+                },
+                "target": {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "after"
+                },
+                "target": {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "before"
+                },
+                "nodeId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "nodeId"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "after"
+                },
+                "nodeId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "nodeId"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "coordinateSpace": {
+                  "enum": [
+                    "visible",
+                    "tracked"
+                  ]
+                },
+                "kind": {
+                  "const": "inParagraph"
+                },
+                "offset": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "target": {
+                  "$ref": "#/$defs/BlockNodeAddress"
+                }
+              },
+              "required": [
+                "kind",
+                "target",
+                "offset"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "columns": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "rows": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "columns"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "success": {
+              "const": true
+            },
+            "table": {
+              "$ref": "#/$defs/TableAddress"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success",
+            "table"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "success": {
+          "const": true
+        },
+        "table": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "table"
+      ],
+      "type": "object"
+    }
+  }
+}

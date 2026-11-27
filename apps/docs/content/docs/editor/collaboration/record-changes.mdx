@@ -163,6 +163,8 @@ Every `changes` operation returns a promise:
 
 `superdoc.ui.document.onChange` reports a collaborator's edit with `cause: 'remote'`. That change carries the records behind it in `records`, oldest first, when the session recorded them. For edits made in this editor, read `doc.changes.list`.
 
+When a collaborator accepts a settled temporary preview, its commit callback carries the accepted program's changes with the recorded author and record identity. This callback projection excludes superseded preview versions; the raw `doc.changes.list` window still retains their original records. The session's retention and size limits apply. A partial callback includes `paragraph.properties.truncated` with the omitted character and change counts described above. If matching attribution is unavailable or cannot be verified, the ordinary remote notification still fires without inventing records. Quiet preview callbacks require a receiving runtime that understands display attribution; older receivers and mixed or unmarked updates keep ordinary delivery.
+
 ## Which sessions record
 
 - A session in a collaboration room records its own edits and the edits it receives. `changes.list` reports `collaboration: true`.

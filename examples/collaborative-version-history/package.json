@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@hocuspocus/server": "2.15.3",
-    "@superdoc/sdk": "2.26.0",
+    "@superdoc/sdk": "2.33.0",
     "superdoc": "^2.24.0",
     "yjs": "13.6.31"
   },

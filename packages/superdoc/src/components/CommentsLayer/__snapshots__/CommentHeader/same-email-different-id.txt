@@ -1,0 +1,46 @@
+role: editor, isInternal: false, allowed permissions: COMMENTS_DELETE_OWN
+current user: {
+  "id": "bob-id",
+  "email": "shared@example.com",
+  "name": "Bob"
+}
+comment: {
+  "creatorId": "alice-id",
+  "creatorEmail": "shared@example.com",
+  "creatorName": "Alice",
+  "createdTime": 1767225600000,
+  "resolvedTime": null,
+  "trackedChange": false,
+  "parentCommentId": null,
+  "trackedChangeParentId": null,
+  "origin": null,
+  "importedAuthor": null,
+  "getCommentUser": "[Function getCommentUser]"
+}
+
+resolver calls:
+{
+  "permission": "RESOLVE_OTHER",
+  "role": "editor",
+  "isInternal": false,
+  "defaultDecision": true,
+  "comment": "the comment prop",
+  "currentUser": "the configured user",
+  "superdoc": "the SuperDoc instance",
+  "trackedChange": null,
+  "returned": false
+}
+{
+  "permission": "COMMENTS_DELETE_OTHER",
+  "role": "editor",
+  "isInternal": false,
+  "defaultDecision": true,
+  "comment": "the comment prop",
+  "currentUser": "the configured user",
+  "superdoc": "the SuperDoc instance",
+  "trackedChange": null,
+  "returned": false
+}
+
+actions: (none)
+overflow options: (none)

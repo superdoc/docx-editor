@@ -1,7 +1,7 @@
 {
   "name": "superdoc",
   "type": "module",
-  "version": "2.29.0",
+  "version": "2.36.0",
   "description": "Browser DOCX editor for reviewing, filling, and editing Word documents.",
   "keywords": [
     "docx editor",
@@ -89,7 +89,15 @@
       "require": "./dist/public/collaboration-worker.cjs"
     },
     "./style.css": "./dist/style.css",
-    "./style.layered.css": "./dist/style.layered.css"
+    "./style.layered.css": "./dist/style.layered.css",
+    "./collaboration": {
+      "types": {
+        "import": "./dist/superdoc/src/public/collaboration.d.ts",
+        "require": "./dist/superdoc/src/public/collaboration.d.cts"
+      },
+      "import": "./dist/public/collaboration.es.js",
+      "require": "./dist/public/collaboration.cjs"
+    }
   },
   "types": "./dist/superdoc/src/public/index.d.ts",
   "typesVersions": {
@@ -108,6 +116,9 @@
       ],
       "collaboration-worker": [
         "./dist/superdoc/src/public/collaboration-worker.d.ts"
+      ],
+      "collaboration": [
+        "./dist/superdoc/src/public/collaboration.d.ts"
       ]
     }
   },
@@ -146,7 +157,7 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@superdoc/docx-engine": "0.28.0",
+    "@superdoc/docx-engine": "0.35.0",
     "@types/ws": "catalog:",
     "eventemitter3": "catalog:",
     "konva": "catalog:",

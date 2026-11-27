@@ -1,0 +1,110 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "enum": [
+        "projection-normalized-construct",
+        "projection-downgraded-construct",
+        "projection-unsupported-construct",
+        "projection-placeholder-emitted",
+        "projection-annotation-omitted",
+        "projection-numbering-unresolved",
+        "projection-source-coverage-incomplete",
+        "projection-scope-unsupported",
+        "projection-limit-exceeded",
+        "projection-revision-changed",
+        "projection-malformed-source"
+      ]
+    },
+    "construct": {
+      "$ref": "#/$defs/SDProjectionConstruct"
+    },
+    "disposition": {
+      "$ref": "#/$defs/SDProjectionDisposition"
+    },
+    "lossy": {
+      "type": "boolean"
+    },
+    "message": {
+      "type": "string"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/SDProjectionFormat"
+        },
+        "range": {
+          "$ref": "#/$defs/Range"
+        }
+      },
+      "required": [
+        "format"
+      ],
+      "type": "object"
+    },
+    "path": {
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "severity": {
+      "enum": [
+        "error",
+        "warning",
+        "info"
+      ]
+    },
+    "source": {
+      "additionalProperties": false,
+      "properties": {
+        "blockId": {
+          "type": "string"
+        },
+        "changeIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "commentIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "coordinateSpace": {
+          "const": "tracked"
+        },
+        "range": {
+          "$ref": "#/$defs/Range"
+        },
+        "story": {
+          "$ref": "#/$defs/StoryLocator"
+        }
+      },
+      "required": [
+        "story"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "code",
+    "severity",
+    "message",
+    "construct",
+    "disposition",
+    "lossy",
+    "source"
+  ],
+  "type": "object"
+}

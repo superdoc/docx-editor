@@ -1,45 +1,33 @@
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import type { FlowBlock, HeaderFooterLayout, Measure } from '@superdoc/contracts';
+import { beforeEach, describe, expect, it } from 'vite-plus/test';
+import type { FlowBlock, Line, ParagraphBlock, ParagraphMeasure } from '@superdoc/contracts';
+import { clearIncrementalModuleState, incrementalLayout, type IncrementalLayoutResult } from '../src/index.js';
 
-const layoutEngineMocks = vi.hoisted(() => ({
-  layoutDocument: vi.fn(),
-  resolvePageNumberTokens: vi.fn(),
-}));
+const CHAR_WIDTH = 10;
+const LINE_HEIGHT = 10;
 
-const headerFooterMocks = vi.hoisted(() => ({
-  layoutHeaderFooterWithCache: vi.fn(),
-}));
+const blockText = (block: ParagraphBlock): string =>
+  block.runs.map((run) => ('text' in run && typeof run.text === 'string' ? run.text : '')).join('');
 
-vi.mock('@superdoc/layout-engine', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@superdoc/layout-engine')>();
-  return {
-    ...actual,
-    layoutDocument: layoutEngineMocks.layoutDocument,
-    resolvePageNumberTokens: layoutEngineMocks.resolvePageNumberTokens,
-  };
-});
+const measureRequests: string[] = [];
 
-vi.mock('../src/layoutHeaderFooter', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/layoutHeaderFooter')>();
-  return {
-    ...actual,
-    layoutHeaderFooterWithCache: headerFooterMocks.layoutHeaderFooterWithCache,
-  };
-});
-
-const { incrementalLayout, measureCache } = await import('../src/incrementalLayout');
-
-const makeMeasure = (): Measure => ({
-  kind: 'paragraph',
-  hasPageTokens: false,
-  lines: [{ fromRun: 0, fromChar: 0, toRun: 0, toChar: 1, width: 10, ascent: 8, descent: 2, lineHeight: 10 }],
-  totalHeight: 10,
-});
-
-const makeHeaderFooterLayout = (): HeaderFooterLayout => ({
-  height: 10,
-  pages: [{ number: 1, fragments: [], blocks: [], measures: [] }],
-});
+const measureByText = async (block: FlowBlock, constraints: { maxWidth: number }): Promise<ParagraphMeasure> => {
+  if (block.kind !== 'paragraph') throw new Error(`unexpected block kind ${block.kind}`);
+  const text = blockText(block);
+  if (block.id.startsWith('header')) measureRequests.push(`${block.id} "${text}" at width ${constraints.maxWidth}`);
+  const charsPerLine = Math.max(1, Math.floor(constraints.maxWidth / CHAR_WIDTH));
+  const length = Math.max(1, text.length);
+  const lines: Line[] = Array.from({ length: Math.ceil(length / charsPerLine) }, (_, index) => ({
+    fromRun: 0,
+    fromChar: index * charsPerLine,
+    toRun: 0,
+    toChar: Math.min(length, (index + 1) * charsPerLine),
+    width: Math.min(charsPerLine, length - index * charsPerLine) * CHAR_WIDTH,
+    ascent: 8,
+    descent: 2,
+    lineHeight: LINE_HEIGHT,
+  }));
+  return { kind: 'paragraph', lines, totalHeight: lines.length * LINE_HEIGHT };
+};
 
 const makeParagraph = (id: string, text: string): FlowBlock => ({
   kind: 'paragraph',
@@ -74,136 +62,61 @@ const makeOrdinalHeading = (id: string, ordinal: number): FlowBlock => ({
   attrs: { styleId: 'Titre1', headingLevel: 1, listLevelOrdinal: ordinal },
 });
 
+const layoutWithChapterHeader = (heading: FlowBlock) =>
+  incrementalLayout(
+    [],
+    null,
+    [heading, makeParagraph('body', 'Body')],
+    {
+      pageSize: { w: 300, h: 300 },
+      margins: { top: 20, right: 20, bottom: 20, left: 20, header: 5 },
+      sectionMetadata: [{ sectionIndex: 0, numbering: { chapterStyle: 1, chapterSeparator: 'hyphen' } }],
+    },
+    measureByText,
+    {
+      headerBlocks: { default: [makeHeaderPageNumber()] },
+      constraints: { width: 40, height: 40 },
+    },
+  );
+
+const describeHeaderPrelayout = (result: IncrementalLayoutResult): string => {
+  const [firstPage] = result.layout.pages;
+  const header = result.headers?.find((entry) => entry.type === 'default');
+  return [
+    'header measure requests',
+    ...measureRequests.map((request) => `  ${request}`),
+    `final header height ${header?.layout.height}`,
+    'page 1 body',
+    ...(firstPage?.fragments ?? []).map((fragment) => `  ${fragment.blockId} at y ${fragment.y}`),
+    '',
+  ].join('\n');
+};
+
 describe('header/footer pre-layout', () => {
   beforeEach(() => {
-    measureCache.clear();
-    layoutEngineMocks.layoutDocument.mockReset();
-    layoutEngineMocks.resolvePageNumberTokens.mockReset();
-    headerFooterMocks.layoutHeaderFooterWithCache.mockReset();
-
-    layoutEngineMocks.layoutDocument.mockReturnValue({
-      pages: [{ number: 1, sectionIndex: 0, fragments: [{ kind: 'para', blockId: 'body' }] }],
-    });
-    layoutEngineMocks.resolvePageNumberTokens.mockReturnValue({
-      affectedBlockIds: new Set(),
-      updatedBlocks: new Map(),
-    });
-    headerFooterMocks.layoutHeaderFooterWithCache.mockResolvedValue({
-      default: { blocks: [makeHeaderPageNumber()], measures: [makeMeasure()], layout: makeHeaderFooterLayout() },
-    });
+    clearIncrementalModuleState();
+    measureRequests.length = 0;
   });
 
-  it('uses a chapter-aware page resolver when measuring header/footer height before body layout', async () => {
-    await incrementalLayout(
-      [],
-      null,
-      [makeHeading('heading-1', '123456789.'), makeParagraph('body', 'Body')],
-      {
-        pageSize: { w: 300, h: 300 },
-        margins: { top: 20, right: 20, bottom: 20, left: 20 },
-        sectionMetadata: [{ sectionIndex: 0, numbering: { chapterStyle: 1, chapterSeparator: 'hyphen' } }],
-      },
-      vi.fn(async () => makeMeasure()),
-      {
-        headerBlocks: { default: [makeHeaderPageNumber()] },
-        constraints: { width: 40, height: 40 },
-      },
+  it('reserves header room for the widest chapter page number before body layout', async () => {
+    const result = await layoutWithChapterHeader(makeHeading('heading-1', '123456789.'));
+    await expect(describeHeaderPrelayout(result)).toMatchFileSnapshot(
+      './__snapshots__/headerFooterPrelayout/style-heading-chapter.txt',
     );
-
-    const prelayoutPageResolver = headerFooterMocks.layoutHeaderFooterWithCache.mock.calls[0]?.[5];
-
-    expect(prelayoutPageResolver).toBeTypeOf('function');
-    expect(prelayoutPageResolver(1)).toMatchObject({
-      displayText: '123456789\u201110',
-      displayNumber: 10,
-      totalPages: 10,
-      sectionPageCount: 10,
-      pageFormat: 'decimal',
-      chapterNumberText: '123456789',
-      chapterSeparator: 'hyphen',
-    });
   });
 
   it('uses adapter-resolved heading levels for conservative chapter pre-layout', async () => {
-    await incrementalLayout(
-      [],
-      null,
-      [makeResolvedHeading('heading-1', '123456789.'), makeParagraph('body', 'Body')],
-      {
-        pageSize: { w: 300, h: 300 },
-        margins: { top: 20, right: 20, bottom: 20, left: 20 },
-        sectionMetadata: [{ sectionIndex: 0, numbering: { chapterStyle: 1, chapterSeparator: 'hyphen' } }],
-      },
-      vi.fn(async () => makeMeasure()),
-      {
-        headerBlocks: { default: [makeHeaderPageNumber()] },
-        constraints: { width: 40, height: 40 },
-      },
+    const result = await layoutWithChapterHeader(makeResolvedHeading('heading-1', '123456789.'));
+    await expect(describeHeaderPrelayout(result)).toMatchFileSnapshot(
+      './__snapshots__/headerFooterPrelayout/resolved-heading-level-chapter.txt',
     );
-
-    const prelayoutPageResolver = headerFooterMocks.layoutHeaderFooterWithCache.mock.calls[0]?.[5];
-
-    expect(prelayoutPageResolver).toBeTypeOf('function');
-    expect(prelayoutPageResolver(1)).toMatchObject({
-      displayText: '123456789\u201110',
-      chapterNumberText: '123456789',
-      chapterSeparator: 'hyphen',
-    });
   });
 
   it('uses heading ordinal fallback for conservative chapter pre-layout', async () => {
-    await incrementalLayout(
-      [],
-      null,
-      [makeOrdinalHeading('heading-1', 3), makeParagraph('body', 'Body')],
-      {
-        pageSize: { w: 300, h: 300 },
-        margins: { top: 20, right: 20, bottom: 20, left: 20 },
-        sectionMetadata: [{ sectionIndex: 0, numbering: { chapterStyle: 1, chapterSeparator: 'hyphen' } }],
-      },
-      vi.fn(async () => makeMeasure()),
-      {
-        headerBlocks: { default: [makeHeaderPageNumber()] },
-        constraints: { width: 40, height: 40 },
-      },
+    const result = await layoutWithChapterHeader(makeOrdinalHeading('heading-1', 3));
+    await expect(describeHeaderPrelayout(result)).toMatchFileSnapshot(
+      './__snapshots__/headerFooterPrelayout/heading-ordinal-chapter.txt',
     );
-
-    const prelayoutPageResolver = headerFooterMocks.layoutHeaderFooterWithCache.mock.calls[0]?.[5];
-
-    expect(prelayoutPageResolver).toBeTypeOf('function');
-    expect(prelayoutPageResolver(1)).toMatchObject({
-      displayText: '3\u201110',
-      chapterNumberText: '3',
-      chapterSeparator: 'hyphen',
-    });
-  });
-
-  it('uses a two-digit page component for conservative chapter pre-layout', async () => {
-    await incrementalLayout(
-      [],
-      null,
-      [makeHeading('heading-1', '123456789.'), makeParagraph('body', 'Body')],
-      {
-        pageSize: { w: 300, h: 300 },
-        margins: { top: 20, right: 20, bottom: 20, left: 20 },
-        sectionMetadata: [{ sectionIndex: 0, numbering: { chapterStyle: 1, chapterSeparator: 'hyphen' } }],
-      },
-      vi.fn(async () => makeMeasure()),
-      {
-        headerBlocks: { default: [makeHeaderPageNumber()] },
-        constraints: { width: 40, height: 40 },
-      },
-    );
-
-    const prelayoutPageResolver = headerFooterMocks.layoutHeaderFooterWithCache.mock.calls[0]?.[5];
-
-    expect(prelayoutPageResolver).toBeTypeOf('function');
-    expect(prelayoutPageResolver(1)).toMatchObject({
-      displayText: '123456789\u201110',
-      displayNumber: 10,
-      totalPages: 10,
-      sectionPageCount: 10,
-    });
   });
 
   it('reuses one validated geometry seed without enumerating body blocks or sections', async () => {
@@ -220,19 +133,9 @@ describe('header/footer pre-layout', () => {
       pageCountFieldsExact: false,
     };
     const ownerFingerprint = 'owner:options+furniture';
-    const first = await incrementalLayout(
-      [],
-      null,
-      body,
-      options,
-      vi.fn(async () => makeMeasure()),
-      furniture,
-      undefined,
-      undefined,
-      {
-        headerFooterGeometry: { ownerFingerprint, retainedSeed: null },
-      },
-    );
+    const first = await incrementalLayout([], null, body, options, measureByText, furniture, undefined, undefined, {
+      headerFooterGeometry: { ownerFingerprint, retainedSeed: null },
+    });
 
     expect(first.headerFooterGeometrySeed).not.toBeNull();
     expect(first.headerFooterGeometrySeed).toMatchObject({
@@ -244,9 +147,6 @@ describe('header/footer pre-layout', () => {
       headerFooterPreLayoutBodyBlocksEnumerated: 2,
       headerFooterPreLayoutSectionsEnumerated: 1,
     });
-    expect(headerFooterMocks.layoutHeaderFooterWithCache.mock.calls[0]?.[5]).toBe(
-      headerFooterMocks.layoutHeaderFooterWithCache.mock.calls[1]?.[5],
-    );
 
     const warmSectionMetadata = new Proxy(options.sectionMetadata, {
       get(target, property, receiver) {
@@ -261,7 +161,7 @@ describe('header/footer pre-layout', () => {
       first.layout,
       body,
       { ...options, sectionMetadata: warmSectionMetadata },
-      vi.fn(async () => makeMeasure()),
+      measureByText,
       furniture,
       first.measures,
       undefined,
@@ -293,7 +193,7 @@ describe('header/footer pre-layout', () => {
       first.layout,
       body,
       options,
-      vi.fn(async () => makeMeasure()),
+      measureByText,
       furniture,
       first.measures,
       undefined,

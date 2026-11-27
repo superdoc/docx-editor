@@ -1,0 +1,100 @@
+{
+  "definition": {
+    "description": "Retrieve details of a specific TC (table of contents entry) field.",
+    "expectedResult": "Returns a TocEntryInfo object with the instruction, text, level, and switch configuration.",
+    "memberPath": "toc.getEntry",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "toc/get-entry.mdx",
+    "referenceGroup": "toc",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "inline"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "nodeType": {
+              "const": "tableOfContentsEntry"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "nodeId"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "inline"
+        },
+        "nodeType": {
+          "const": "tableOfContentsEntry"
+        },
+        "properties": {
+          "additionalProperties": false,
+          "properties": {
+            "instruction": {
+              "type": "string"
+            },
+            "level": {
+              "type": "integer"
+            },
+            "omitPageNumber": {
+              "type": "boolean"
+            },
+            "tableIdentifier": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "instruction",
+            "text",
+            "level",
+            "omitPageNumber"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "nodeType",
+        "kind",
+        "properties"
+      ],
+      "type": "object"
+    }
+  }
+}

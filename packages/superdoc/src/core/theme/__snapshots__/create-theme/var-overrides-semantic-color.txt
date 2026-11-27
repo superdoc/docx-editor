@@ -1,0 +1,18 @@
+input:
+{
+  "name": "override",
+  "colors": {
+    "bg": "#000000"
+  },
+  "vars": {
+    "--sd-ui-bg": "#111111"
+  }
+}
+
+className: sd-theme-override
+
+css:
+.sd-theme-override {
+  --sd-ui-bg: #000000;
+  --sd-ui-bg: #111111;
+}

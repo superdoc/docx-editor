@@ -1,0 +1,46 @@
+{
+  "definition": {
+    "description": "Disable document-level editing restriction by setting enforcement to off. Preserves the protection element and its metadata for round-trip fidelity.",
+    "expectedResult": "Returns a ProtectionMutationResult with the updated protection state on success.",
+    "memberPath": "protection.clearEditingRestriction",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "protection/clear-editing-restriction.mdx",
+    "referenceGroup": "protection",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "failure": {
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    },
+    "success": {
+      "type": "object"
+    }
+  }
+}

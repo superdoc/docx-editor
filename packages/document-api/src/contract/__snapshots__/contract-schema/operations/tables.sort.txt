@@ -1,0 +1,227 @@
+{
+  "definition": {
+    "description": "Sort table rows by column values, preserving the leading repeating-header prefix unless skipHeaderRows specifies an exact override. Repetition flags and styling remain attached to their rows. Collaborative sessions reject structural table rewrites without mutation.",
+    "expectedResult": "Returns a TableMutationResult receipt confirming rows were reordered.",
+    "memberPath": "tables.sort",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_ARGUMENT"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "tables/sort.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "target"
+          ]
+        },
+        {
+          "required": [
+            "nodeId"
+          ]
+        }
+      ],
+      "properties": {
+        "keys": {
+          "description": "At least one sort key is required.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "columnIndex": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "direction": {
+                "enum": [
+                  "ascending",
+                  "descending"
+                ]
+              },
+              "type": {
+                "enum": [
+                  "text",
+                  "number",
+                  "date"
+                ]
+              }
+            },
+            "required": [
+              "columnIndex",
+              "direction",
+              "type"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "nodeId": {
+          "type": "string"
+        },
+        "skipHeaderRows": {
+          "description": "Exclude exactly this many leading rows, overriding automatic detection even when smaller than the repeating-header prefix. Omit to preserve the contiguous prefix of enabled repeating-header rows. Zero sorts all rows; the row count is a no-op; a larger count returns a nonmutating INVALID_TARGET failure receipt. Malformed counts throw INVALID_ARGUMENT before the adapter. Repetition flags and styling remain unchanged.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target": {
+          "$ref": "#/$defs/TableAddress"
+        }
+      },
+      "required": [
+        "keys"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "success": {
+              "const": true
+            },
+            "table": {
+              "$ref": "#/$defs/TableAddress"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "success": {
+          "const": true
+        },
+        "table": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

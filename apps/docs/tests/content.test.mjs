@@ -8,6 +8,8 @@ import { loader } from 'fumadocs-core/source';
 
 const appRoot = fileURLToPath(new URL('../', import.meta.url));
 const contentRoot = new URL('../content/docs/', import.meta.url);
+const RAW_TEXT = { serializers: [(text) => text] };
+const recording = (name) => fileURLToPath(new URL(`__snapshots__/content/${name}.txt`, import.meta.url));
 
 test('interaction permissions guide separates instance actions, resolver checks, and backend authorization', async () => {
   const page = await readFile(new URL('editor/interaction-permissions.mdx', contentRoot), 'utf8');
@@ -3969,7 +3971,7 @@ test('the Context menu configuration explorer renders valid canonical examples',
   assert.doesNotMatch(markdown, /customItems|includeDefaultItems/u);
 });
 
-test('the Search configuration explorer renders valid nested examples', async () => {
+test('the Search configuration explorer renders valid nested examples', async (t) => {
   const { searchConfigExplorer } = await import('../lib/search-config-explorer.ts');
   const { configFieldTemplate, renderConfigReferenceMarkdown } = await import('../lib/config-explorer.ts');
   const names = searchConfigExplorer.fields.map((field) => field.name);
@@ -3988,18 +3990,7 @@ test('the Search configuration explorer renders valid nested examples', async ()
   assert.equal(field('strings.noResults')?.default, "'No results'");
 
   const positionExample = configFieldTemplate(searchConfigExplorer, group('position'), field('floating.placement'));
-  assert.equal(
-    positionExample,
-    [
-      'ui: {',
-      '  search: {',
-      '    floating: {',
-      "      placement: 'bottom-right'",
-      '    },',
-      '  },',
-      '}',
-    ].join('\n'),
-  );
+  t.assert.fileSnapshot(positionExample, recording('search-floating-placement'), RAW_TEXT);
   const textExample = configFieldTemplate(searchConfigExplorer, group('text'), field('strings.noResults'));
   assert.match(textExample, /strings: \{\n\s+noResults: 'No matches'/u);
   assert.doesNotMatch(textExample, /noResultsLabel/u);
@@ -4011,7 +4002,7 @@ test('the Search configuration explorer renders valid nested examples', async ()
   assert.doesNotMatch(markdown, /replaceEnabled|includeDeletedText|noResultsLabel/u);
 });
 
-test('the Toolbar configuration explorer covers every canonical option', async () => {
+test('the Toolbar configuration explorer covers every canonical option', async (t) => {
   const generatedToolbarConfig = JSON.parse(await readFile(generatedToolbarConfigUrl, 'utf8'));
   const { toolbarConfigExplorer } = await import('../lib/toolbar-config-explorer.ts');
   const { configFieldTemplate, renderConfigReferenceMarkdown } = await import('../lib/config-explorer.ts');
@@ -4047,16 +4038,7 @@ test('the Toolbar configuration explorer covers every canonical option', async (
   const items = field('items');
   const controls = group('controls');
   assert.ok(items && controls);
-  assert.equal(
-    configFieldTemplate(toolbarConfigExplorer, controls, items),
-    [
-      'ui: {',
-      '  toolbar: {',
-      "    items: { left: ['undo', 'redo'], center: ['bold', 'italic'], right: ['document-mode'] }",
-      '  },',
-      '}',
-    ].join('\n'),
-  );
+  t.assert.fileSnapshot(configFieldTemplate(toolbarConfigExplorer, controls, items), recording('toolbar-items'), RAW_TEXT);
 
   const markdown = renderConfigReferenceMarkdown(toolbarConfigExplorer);
   assert.match(markdown, /\| `items` \|/u);
@@ -4068,7 +4050,7 @@ test('the Toolbar configuration explorer covers every canonical option', async (
   );
 });
 
-test('the Comments configuration explorer keeps layout and actions in their canonical namespaces', async () => {
+test('the Comments configuration explorer keeps layout and actions in their canonical namespaces', async (t) => {
   const [generatedCommentsConfig, generatedCommentsResponsiveConfig, generatedCommentInteractionConfig] =
     await Promise.all([
       readFile(generatedCommentsConfigUrl, 'utf8').then(JSON.parse),
@@ -4117,10 +4099,7 @@ test('the Comments configuration explorer keeps layout and actions in their cano
   const level = field('interaction.comments.level');
   const actions = group('actions');
   assert.ok(level && actions);
-  assert.equal(
-    configFieldTemplate(commentsConfigExplorer, actions, level),
-    ['interaction: {', '  comments: {', "    level: 'write'", '  },', '}'].join('\n'),
-  );
+  t.assert.fileSnapshot(configFieldTemplate(commentsConfigExplorer, actions, level), recording('comments-interaction-level'), RAW_TEXT);
 
   const markdown = renderConfigReferenceMarkdown(commentsConfigExplorer);
   assert.match(markdown, /\| `ui\.comments\.layout` \|/u);

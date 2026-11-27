@@ -42,11 +42,12 @@ const _readOnlyConfig: Config = {
 
 // ─── addCommentsList ────────────────────────────────────────────────
 // Mounts the comments side panel into the consumer-provided host
-// element. No-op when the comments module is disabled or role is
-// `viewer`.
+// element. Returns false, mounting nothing, when the comments module is
+// disabled or role is `viewer`.
 const _addCommentsListParamsOk: AssertEqual<Parameters<SuperDoc['addCommentsList']>, [element: HTMLElement]> = true;
-const _addCommentsListReturnOk: AssertEqual<ReturnType<SuperDoc['addCommentsList']>, void> = true;
-sd.addCommentsList(hostElement);
+const _addCommentsListReturnOk: AssertEqual<ReturnType<SuperDoc['addCommentsList']>, boolean> = true;
+const _mounted: boolean = sd.addCommentsList(hostElement);
+void _mounted;
 
 // ─── removeCommentsList ─────────────────────────────────────────────
 // Tears down the comments side panel mounted by `addCommentsList`.

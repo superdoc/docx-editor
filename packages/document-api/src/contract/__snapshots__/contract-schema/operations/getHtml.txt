@@ -1,0 +1,61 @@
+{
+  "definition": {
+    "description": "Extract the document content as an HTML string.",
+    "expectedResult": "Returns the full document content as an HTML-formatted string.",
+    "intentAction": "html",
+    "intentGroup": "get_content",
+    "memberPath": "getHtml",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "get-html.mdx",
+    "referenceGroup": "core",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "reviewMode": {
+          "$ref": "#/$defs/SDProjectionReviewMode"
+        },
+        "scope": {
+          "$ref": "#/$defs/SDProjectionScope"
+        },
+        "styling": {
+          "enum": [
+            "inline"
+          ],
+          "type": "string"
+        },
+        "unflattenLists": {
+          "description": "Deprecated and ignored by V2. V2 always emits canonical nested semantic lists.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "type": "string"
+    }
+  }
+}

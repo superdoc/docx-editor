@@ -1,0 +1,131 @@
+{
+  "definition": {
+    "description": "Find top-level body blocks containing a literal case-insensitive substring. Matches flattened block text, coalescing repeated hits and nested table paragraphs into one block. Scans at most 20,000 blocks inside the document host and returns compact previews without transferring full-text pages.",
+    "expectedResult": "Returns matching-block total within the scan, limited matches with zero-based ordinals and 100-character previews, firstMatchOrdinal even for limit:0, scannedBlocks, truncated, and revision. A failed read retains completed pages and reports scanError; revision is unknown if no page succeeded. Whitespace and Unicode are not normalized.",
+    "memberPath": "blocks.findText",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "blocks/find-text.mdx",
+    "referenceGroup": "blocks",
+    "requiresDocumentContext": true,
+    "skipAsATool": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "Maximum matches. Default: 8; zero returns counts only.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text": {
+          "description": "Literal case-insensitive substring. Whitespace is preserved.",
+          "pattern": "\\S",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "firstMatchOrdinal": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "matches": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "nodeId": {
+                "type": "string"
+              },
+              "nodeType": {
+                "enum": [
+                  "paragraph",
+                  "heading",
+                  "listItem",
+                  "table",
+                  "tableRow",
+                  "tableCell",
+                  "tableOfContents",
+                  "image",
+                  "sdt"
+                ]
+              },
+              "ordinal": {
+                "description": "Zero-based top-level body ordinal.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "preview": {
+                "maxLength": 100,
+                "type": "string"
+              }
+            },
+            "required": [
+              "ordinal",
+              "nodeId",
+              "nodeType",
+              "preview"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "scanError": {
+          "additionalProperties": false,
+          "properties": {
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "type": "object"
+        },
+        "scannedBlocks": {
+          "maximum": 20000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "total",
+        "matches",
+        "scannedBlocks",
+        "truncated",
+        "revision"
+      ],
+      "type": "object"
+    }
+  }
+}

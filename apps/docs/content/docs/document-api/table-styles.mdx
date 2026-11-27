@@ -106,6 +106,8 @@ Colors name a theme slot, not a fixed color. `accent1` is blue in Word's default
 
 `appearance` covers the header, the first banded row and the main borders. A property it leaves out is inherited, not white or borderless. Direct formatting on cells and text overrides the style.
 
+To read a cell's direct formatting, call `doc.get()`. Each table cell's `props` holds the shading, vertical alignment, padding in points, borders and no-wrap set on that cell, not what it inherits from the table style. Shading from `tables.setShading` reads back as `{ model: 'rgb', value }`, and Word theme shading as `{ model: 'theme', theme, tint, shade }`. A cell with no fill has no `shading`. Pass these `props` to `insert` to write the same formatting into a new table.
+
 ## Turn table regions on and off
 
 `styleOptions` matches the checkboxes under **Table Style Options** in Word:

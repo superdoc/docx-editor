@@ -1,0 +1,429 @@
+{
+  "definition": {
+    "description": "Insert a new list item before or after an existing list item. The new item inherits the target list context. Optional inheritFrom selects a same-story list item for paragraph and run formatting without changing placement or numbering. When omitted, existing paragraph-creation formatting, including next-style handling, is preserved.",
+    "expectedResult": "Returns a ListsInsertResult with the new list item address and block ID.",
+    "intentAction": "insert",
+    "intentGroup": "list",
+    "memberPath": "lists.insert",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "TARGET_NOT_FOUND",
+        "INVALID_CONTEXT",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "lists/insert.mdx",
+    "referenceGroup": "lists",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "INVALID_CONTEXT",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "inheritFrom": {
+          "$ref": "#/$defs/ListItemAddress",
+          "description": "Optional same-story list item to inherit paragraph and run formatting from without changing placement or numbering. When omitted, existing paragraph-creation formatting behavior, including next-style handling, is preserved."
+        },
+        "position": {
+          "description": "Required. Insert position relative to target: 'before' or 'after'.",
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/ListItemAddress",
+          "description": "The target list item. For 'insert': the item to insert relative to. For 'create' with mode 'fromParagraphs': use nodeType 'paragraph' instead. Format: {kind:'block', nodeType:'listItem', nodeId:'<id>'}."
+        },
+        "text": {
+          "description": "Text content for the new list item.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "position"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "affectedStories": {
+              "items": {
+                "$ref": "#/$defs/StoryLocator"
+              },
+              "type": "array"
+            },
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "changeTag": {
+              "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+              "type": "string"
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "effects": {
+              "$ref": "#/$defs/ReceiptEffects"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inserted": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "insertionPoint": {
+              "$ref": "#/$defs/TextAddress"
+            },
+            "invalidatedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRef"
+              },
+              "type": "array"
+            },
+            "item": {
+              "$ref": "#/$defs/ListItemAddress"
+            },
+            "remappedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRefRemapping"
+              },
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "status": {
+              "const": "NO_OP"
+            },
+            "success": {
+              "const": true
+            },
+            "temporary": {
+              "additionalProperties": false,
+              "properties": {
+                "cancelledBy": {
+                  "const": "native-edit",
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "onNativeEdit": {
+                  "enum": [
+                    "cancel",
+                    "preserve"
+                  ],
+                  "type": "string"
+                },
+                "phase": {
+                  "enum": [
+                    "begin",
+                    "replace",
+                    "rollback",
+                    "commit"
+                  ]
+                },
+                "tag": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "phase",
+                "tag"
+              ],
+              "type": "object"
+            },
+            "textRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TextRangeShift"
+              },
+              "type": "array"
+            },
+            "trackedChangeCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "type": "array"
+            },
+            "trackedTextRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TrackedTextRangeShift"
+              },
+              "type": "array"
+            },
+            "txId": {
+              "type": "string"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "warnings": {
+              "items": {
+                "$ref": "#/$defs/ReviewWarning"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success",
+            "item",
+            "insertionPoint"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "INVALID_CONTEXT",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "changeTag": {
+          "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "effects": {
+          "$ref": "#/$defs/ReceiptEffects"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "insertionPoint": {
+          "$ref": "#/$defs/TextAddress"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "item": {
+          "$ref": "#/$defs/ListItemAddress"
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "NO_OP"
+        },
+        "success": {
+          "const": true
+        },
+        "temporary": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelledBy": {
+              "const": "native-edit",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "onNativeEdit": {
+              "enum": [
+                "cancel",
+                "preserve"
+              ],
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "begin",
+                "replace",
+                "rollback",
+                "commit"
+              ]
+            },
+            "tag": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "phase",
+            "tag"
+          ],
+          "type": "object"
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/ReviewWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "item",
+        "insertionPoint"
+      ],
+      "type": "object"
+    }
+  }
+}

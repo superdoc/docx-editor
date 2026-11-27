@@ -1,0 +1,20 @@
+click 1: {
+  "target": {
+    "id": "inline-1",
+    "controlType": "checkbox",
+    "scope": "inline",
+    "tag": "inline-tag",
+    "alias": "Inline control"
+  },
+  "source": "pointer"
+}
+click 2: {
+  "target": {
+    "id": "block-1",
+    "controlType": "richText",
+    "scope": "block",
+    "tag": "block-tag",
+    "alias": "Block control"
+  },
+  "source": "pointer"
+}

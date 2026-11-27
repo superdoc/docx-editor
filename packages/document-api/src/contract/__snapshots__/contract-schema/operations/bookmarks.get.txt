@@ -1,0 +1,63 @@
+{
+  "definition": {
+    "description": "Get detailed information about a specific bookmark.",
+    "expectedResult": "Returns a BookmarkInfo object with the bookmark's name, range, and optional table-column data.",
+    "memberPath": "bookmarks.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "bookmarks/get.mdx",
+    "referenceGroup": "bookmarks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "bookmark"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "name": {
+              "type": "string"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

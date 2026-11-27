@@ -1,0 +1,115 @@
+{
+  "definition": {
+    "description": "List all tables of contents in the document.",
+    "expectedResult": "Returns a TocListResult with an array of TOC discovery items and pagination metadata.",
+    "memberPath": "toc.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": []
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "toc/list.mdx",
+    "referenceGroup": "toc",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "address": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "block"
+                  },
+                  "nodeId": {
+                    "type": "string"
+                  },
+                  "nodeType": {
+                    "const": "tableOfContents"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "nodeType",
+                  "nodeId"
+                ],
+                "type": "object"
+              },
+              "displayConfig": {
+                "type": "object"
+              },
+              "entryCount": {
+                "type": "integer"
+              },
+              "handle": {
+                "$ref": "#/$defs/ResolvedHandle"
+              },
+              "id": {
+                "type": "string"
+              },
+              "instruction": {
+                "type": "string"
+              },
+              "preserved": {
+                "type": "object"
+              },
+              "sourceConfig": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "handle",
+              "address",
+              "instruction",
+              "entryCount"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "page": {
+          "$ref": "#/$defs/PageInfo"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "total",
+        "items",
+        "page"
+      ],
+      "type": "object"
+    }
+  }
+}

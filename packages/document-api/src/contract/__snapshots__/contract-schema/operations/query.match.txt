@@ -1,0 +1,354 @@
+{
+  "definition": {
+    "description": "Deterministic selector-based search returning mutation-grade addresses and text ranges. Use this to discover targets before any mutation.",
+    "expectedResult": "Returns a QueryMatchOutput with the resolved target address and cardinality metadata.",
+    "intentAction": "match",
+    "intentGroup": "search",
+    "memberPath": "query.match",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "MATCH_NOT_FOUND",
+          "AMBIGUOUS_MATCH",
+          "INVALID_INPUT",
+          "INTERNAL_ERROR",
+          "STORY_NOT_FOUND",
+          "STORY_MISMATCH",
+          "STORY_NOT_SUPPORTED",
+          "CROSS_STORY_PLAN",
+          "MATERIALIZATION_FAILED"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "query/match.mdx",
+    "referenceGroup": "query",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "require": {
+            "const": "last"
+          }
+        },
+        "required": [
+          "require"
+        ]
+      },
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "includeNodes": {
+          "description": "When true, includes full node data in results. Default: false.",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "Maximum number of matches to return.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "mode": {
+          "description": "Search mode: 'strict' (default, exact matching) or 'candidates' (returns scored potential matches).",
+          "enum": [
+            "strict",
+            "candidates"
+          ]
+        },
+        "offset": {
+          "description": "Number of matches to skip for pagination.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "require": {
+          "description": "Match cardinality: 'any' (all matches), 'first' (only first), 'last' (final scoped match, without limit/offset), 'exactlyOne' (fail if != 1), 'all' (fail if 0). For 'last', page.offset reports the selected match's ordinal in the full set.",
+          "enum": [
+            "any",
+            "first",
+            "last",
+            "exactlyOne",
+            "all"
+          ]
+        },
+        "select": {
+          "description": "Search selector. Use {type:'text', pattern:'...'} for text search or {type:'node', nodeType:'paragraph'|'heading'|...} for node search.",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "caseSensitive": {
+                  "description": "Case-sensitive matching. Default: false.",
+                  "type": "boolean"
+                },
+                "includeDeletedText": {
+                  "description": "When true, includes text from pending tracked deletions. Default: false.",
+                  "type": "boolean"
+                },
+                "mode": {
+                  "description": "Match mode: 'contains' (literal substring, recommended for literal text) or 'regex' (validated regular expression).",
+                  "enum": [
+                    "contains",
+                    "regex"
+                  ]
+                },
+                "pattern": {
+                  "description": "Text to match. In regex mode, patterns are validated for syntax, maximum length, and safety before execution.",
+                  "type": "string"
+                },
+                "type": {
+                  "const": "text",
+                  "description": "Must be 'text' for text pattern search."
+                },
+                "wholeWord": {
+                  "description": "Require word-boundary matches. Default: false.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "type",
+                "pattern"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "description": "Filter: 'block' or 'inline'.",
+                  "enum": [
+                    "block",
+                    "inline"
+                  ]
+                },
+                "nodeType": {
+                  "description": "Block type to match (paragraph, heading, table, listItem, etc.).",
+                  "enum": [
+                    "paragraph",
+                    "heading",
+                    "listItem",
+                    "table",
+                    "tableRow",
+                    "tableCell",
+                    "tableOfContents",
+                    "image",
+                    "sdt",
+                    "run",
+                    "bookmark",
+                    "comment",
+                    "hyperlink",
+                    "footnoteRef",
+                    "endnoteRef",
+                    "crossRef",
+                    "indexEntry",
+                    "citation",
+                    "authorityEntry",
+                    "sequenceField",
+                    "tab",
+                    "lineBreak"
+                  ]
+                },
+                "type": {
+                  "const": "node",
+                  "description": "Must be 'node' for node type search."
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "within": {
+          "$ref": "#/$defs/BlockNodeAddress",
+          "description": "Limit search scope to within a specific block: {kind:'block', nodeType:'...', nodeId:'...'}."
+        }
+      },
+      "required": [
+        "select"
+      ],
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "limit"
+              ]
+            },
+            {
+              "required": [
+                "offset"
+              ]
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "address": {
+                    "$ref": "#/$defs/BlockNodeAddress"
+                  },
+                  "blocks": {
+                    "items": {
+                      "$ref": "#/$defs/MatchBlock"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "coordinateSpace": {
+                    "$ref": "#/$defs/TextCoordinateSpace"
+                  },
+                  "groups": {
+                    "description": "Regex-mode only: capture groups from the match, index i holding group i+1 (null for non-participating groups). Absent for plain text matches.",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "handle": {
+                    "$ref": "#/$defs/ResolvedHandle"
+                  },
+                  "highlightRange": {
+                    "$ref": "#/$defs/Range"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "matchKind": {
+                    "const": "text"
+                  },
+                  "snippet": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "$ref": "#/$defs/SelectionTarget"
+                  }
+                },
+                "required": [
+                  "id",
+                  "handle",
+                  "matchKind",
+                  "address",
+                  "target",
+                  "snippet",
+                  "highlightRange",
+                  "blocks"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "address": {
+                    "$ref": "#/$defs/NodeAddress"
+                  },
+                  "blocks": {
+                    "items": {
+                      "$ref": "#/$defs/MatchBlock"
+                    },
+                    "maxItems": 0,
+                    "type": "array"
+                  },
+                  "handle": {
+                    "$ref": "#/$defs/ResolvedHandle"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "matchKind": {
+                    "const": "node"
+                  }
+                },
+                "required": [
+                  "id",
+                  "handle",
+                  "matchKind",
+                  "address",
+                  "blocks"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "meta": {
+          "additionalProperties": false,
+          "properties": {
+            "diagnostics": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "tracked-view-unresolved",
+                      "theme-fallback",
+                      "style-parts-unavailable",
+                      "run-projection-unavailable"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "effectiveResolved": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "effectiveResolved"
+          ],
+          "type": "object"
+        },
+        "page": {
+          "$ref": "#/$defs/PageInfo"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "total",
+        "items",
+        "page",
+        "meta"
+      ],
+      "type": "object"
+    }
+  }
+}

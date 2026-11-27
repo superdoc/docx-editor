@@ -1,0 +1,21 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "horizontalRule": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "const": "horizontalRule"
+    }
+  },
+  "required": [
+    "kind",
+    "horizontalRule"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,68 @@
+step: click Comment three times on the pending comment
+
+document calls:
+comments.commitPendingComment {"text":"one delayed new comment","target":null}
+
+store:
+{
+  "activeComment": "pending-new-comment-delayed",
+  "editingCommentId": null,
+  "draft": "<p>one delayed new comment</p>",
+  "pendingComment": "pending-new-comment-delayed",
+  "draftMentions": [],
+  "rows": []
+}
+
+pending dialog:
+classes: is-active
+new comment composer
+buttons: Comment disabled
+
+---
+
+step: the document commits the comment
+
+document calls:
+comments.setActiveComment "comment-1"
+
+comments-update events:
+[
+  {
+    "type": "add",
+    "comment": {
+      "commentId": "comment-1",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "one delayed new comment",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    }
+  }
+]
+
+store:
+{
+  "activeComment": "comment-1",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "draftMentions": [],
+  "rows": [
+    {
+      "commentId": "comment-1",
+      "commentText": "one delayed new comment"
+    }
+  ]
+}
+
+pending dialog:
+classes: (none)
+buttons: (none)
+
+---

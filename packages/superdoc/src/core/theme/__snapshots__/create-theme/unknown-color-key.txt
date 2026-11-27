@@ -1,0 +1,15 @@
+input:
+{
+  "name": "unknown-test",
+  "colors": {
+    "action": "#ff0000",
+    "notAColor": "#000"
+  }
+}
+
+className: sd-theme-unknown-test
+
+css:
+.sd-theme-unknown-test {
+  --sd-ui-action: #ff0000;
+}

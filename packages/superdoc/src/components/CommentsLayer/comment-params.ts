@@ -5,6 +5,8 @@ export type TrackedChangeDecision = 'accept' | 'reject';
 
 export type SelectionBounds = { top: number; left: number; right: number; bottom: number };
 
+export type CommentFormat = 'html' | 'text';
+
 export type CommentMention = { name?: string | null; email?: string | null };
 
 export type CommentAuthor = { name?: string | null; email?: string | null };
@@ -53,6 +55,7 @@ export type CommentInputParams = CommentIdentity & {
   importedAuthor?: CommentAuthor | null;
   docxCommentJSON?: unknown;
   commentText?: string;
+  commentFormat?: CommentFormat;
   selection?: CommentSelectionParams | null;
   trackedChange?: boolean;
   trackedChangeType?: string | null;
@@ -71,9 +74,14 @@ export type CommentInputParams = CommentIdentity & {
   trackedChangeDetailLines?: TrackedChangeDetailLine[] | null;
   trackedChangeImagePreview?: TrackedChangeRowImagePreview | null;
   customAttributes?: readonly TrackChangeCustomAttribute[] | null;
+  isResolved?: boolean;
   resolvedTime?: number | null;
   resolvedById?: string | null;
   resolvedByEmail?: string | null;
   resolvedByName?: string | null;
   trackedChangeDecision?: TrackedChangeDecision | null;
 };
+
+export function isCommentResolved(comment?: Pick<CommentInputParams, 'isResolved' | 'resolvedTime'> | null): boolean {
+  return comment?.isResolved ?? Boolean(comment?.resolvedTime);
+}

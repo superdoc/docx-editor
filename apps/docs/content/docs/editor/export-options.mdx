@@ -66,8 +66,9 @@ const redline = await superdoc.export({
 
 The standalone Document API accepts the same `policies` object through `doc.export.toDocx({ policies })`
 and returns base64 bytes plus a warning report. Its `mode` alias selects `trackedChanges`.
-Document API export rejects collaborative sessions; use `superdoc.export()` or the active editor's
-`exportDocx()` for browser collaboration.
+In a collaborative room, Document API export first brings the session current with the room, then serializes like a
+standalone export; it can still reject when the room's saved state is not exportable. Browser collaboration can also
+export through `superdoc.export()` or the active editor's `exportDocx()`.
 
 Unknown values and conflicting aliases reject before export. Unsupported property or structural revision
 decisions, a decision that would discard a preserved comment anchor, and transformations of a fenced

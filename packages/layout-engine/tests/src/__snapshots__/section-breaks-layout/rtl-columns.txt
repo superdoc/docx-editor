@@ -1,0 +1,13 @@
+page 1 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=0 sectionRefs={-}
+  "P1" x=264 y=48
+  "P2" x=264 y=68
+  "P3" x=264 y=88
+  "P4" x=264 y=108
+  "P5" x=264 y=128
+  "P6" x=264 y=148
+  "P7" x=264 y=168
+  "P8" x=264 y=188
+  "P9" x=264 y=208
+  "P10" x=48 y=48
+  "P11" x=48 y=68
+  "P12" x=48 y=88

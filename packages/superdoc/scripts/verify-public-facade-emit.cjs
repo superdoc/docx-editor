@@ -125,6 +125,14 @@ const FACADE_ENTRIES = [
     ticket: 'collaboration-upgrade',
   },
   {
+    name: 'collaboration (./collaboration)',
+    esm: path.join(PUBLIC_DIST, 'collaboration.d.ts'),
+    cjs: path.join(PUBLIC_DIST, 'collaboration.d.cts'),
+    source: path.join(PUBLIC_SRC, 'collaboration.ts'),
+    runsCommandSignatureProbe: false,
+    ticket: 'SD-5304',
+  },
+  {
     name: 'collaboration-validation (./collaboration-validation)',
     esm: path.join(PUBLIC_DIST, 'collaboration-validation.d.ts'),
     cjs: null,

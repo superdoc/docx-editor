@@ -1,0 +1,387 @@
+{
+  "definition": {
+    "description": "Set options on a table row such as header repeat or page break.",
+    "expectedResult": "Returns a TableMutationResult receipt; reports NO_OP if row options already match.",
+    "intentAction": "set_row_options",
+    "intentGroup": "table",
+    "memberPath": "tables.setRowOptions",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "NO_OP",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "tables/set-row-options.mdx",
+    "referenceGroup": "tables",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allowBreakAcrossPages": {
+              "type": "boolean"
+            },
+            "gridAfter": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "gridBefore": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "repeatHeader": {
+              "type": "boolean"
+            },
+            "target": {
+              "$ref": "#/$defs/TableRowAddress"
+            },
+            "wAfter": {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "auto",
+                    "dxa",
+                    "nil",
+                    "pct"
+                  ]
+                },
+                "value": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "type"
+              ],
+              "type": "object"
+            },
+            "wBefore": {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "auto",
+                    "dxa",
+                    "nil",
+                    "pct"
+                  ]
+                },
+                "value": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "type"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allowBreakAcrossPages": {
+              "type": "boolean"
+            },
+            "gridAfter": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "gridBefore": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "repeatHeader": {
+              "type": "boolean"
+            },
+            "rowIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "target": {
+              "$ref": "#/$defs/TableAddress"
+            },
+            "wAfter": {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "auto",
+                    "dxa",
+                    "nil",
+                    "pct"
+                  ]
+                },
+                "value": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "type"
+              ],
+              "type": "object"
+            },
+            "wBefore": {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "auto",
+                    "dxa",
+                    "nil",
+                    "pct"
+                  ]
+                },
+                "value": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "type"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "target",
+            "rowIndex"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allowBreakAcrossPages": {
+              "type": "boolean"
+            },
+            "gridAfter": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "gridBefore": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "nodeId": {
+              "type": "string"
+            },
+            "repeatHeader": {
+              "type": "boolean"
+            },
+            "rowIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "wAfter": {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "auto",
+                    "dxa",
+                    "nil",
+                    "pct"
+                  ]
+                },
+                "value": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "type"
+              ],
+              "type": "object"
+            },
+            "wBefore": {
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "auto",
+                    "dxa",
+                    "nil",
+                    "pct"
+                  ]
+                },
+                "value": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "value",
+                "type"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "nodeId",
+            "rowIndex"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "success": {
+              "const": true
+            },
+            "table": {
+              "$ref": "#/$defs/TableAddress"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "success": {
+          "const": true
+        },
+        "table": {
+          "$ref": "#/$defs/TableAddress"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    }
+  }
+}

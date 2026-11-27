@@ -3,11 +3,6 @@ import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
 import type { DirectiveBinding } from 'vue';
 import vClickOutside from './v-click-outside';
 
-interface ClickOutsideElement extends HTMLElement {
-  __clickOutsideHandler?: (event: MouseEvent) => void;
-  __clickOutsideDocument?: Document;
-}
-
 type ClickOutsideHandler = (event: MouseEvent) => void;
 
 interface MockDocument {
@@ -51,13 +46,11 @@ describe('v-click-outside directive', () => {
     };
     const el = {
       contains: containsMock,
-      __clickOutsideHandler: undefined,
-    } as unknown as ClickOutsideElement;
+    } as unknown as HTMLElement;
 
     vClickOutside.mounted(el, binding);
 
     expect(addEventListenerMock).toHaveBeenCalledWith('click', expect.any(Function));
-    expect(typeof el.__clickOutsideHandler).toBe('function');
 
     const handler = addEventListenerMock.mock.calls[0][1];
 
@@ -74,15 +67,13 @@ describe('v-click-outside directive', () => {
 
     vClickOutside.unmounted(el);
     expect(removeEventListenerMock).toHaveBeenCalledWith('click', handler);
-    expect(el.__clickOutsideHandler).toBeUndefined();
   });
 
   it('shares one document click listener across high-cardinality consumers (SD-3852)', () => {
     const consumerCount = 1_316;
     const elements = Array.from({ length: consumerCount }, () => ({
       contains: mock().mockReturnValue(false),
-      __clickOutsideHandler: undefined,
-    })) as unknown as ClickOutsideElement[];
+    })) as unknown as HTMLElement[];
     const bindings = Array.from({ length: consumerCount }, () => ({
       value: mock(),
       oldValue: undefined,
@@ -107,7 +98,7 @@ describe('v-click-outside directive', () => {
     const second = mock();
     const el = {
       contains: mock().mockReturnValue(false),
-    } as unknown as ClickOutsideElement;
+    } as unknown as HTMLElement;
     const binding = (value: ClickOutsideHandler) =>
       ({
         value,
@@ -148,7 +139,7 @@ describe('v-click-outside directive', () => {
     const elements = [firstDocument, secondDocument].map((ownerDocument) => ({
       ownerDocument,
       contains: mock().mockReturnValue(false),
-    })) as unknown as ClickOutsideElement[];
+    })) as unknown as HTMLElement[];
     const binding = {
       value: mock(),
       oldValue: undefined,

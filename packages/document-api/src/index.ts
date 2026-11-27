@@ -13,6 +13,7 @@ export type {
   TemporaryMutationReceipt,
   TemporaryMutationMetadata,
   TemporaryMutationOperation,
+  TemporaryBlockInsertInput,
   TemporaryOperationResultTarget,
   TemporaryOperationEffects,
 } from './types/temporary-mutation.js';
@@ -140,6 +141,7 @@ import type { CommentInfo, CommentsListQuery, CommentsListResult } from './comme
 import type {
   CommentsAdapter,
   CommentsCreateReceipt,
+  CommentsPatchReceipt,
   CommentsApi,
   CommentsCreateInput,
   CommentsPatchInput,
@@ -576,6 +578,7 @@ import {
   executeTablesSortOp,
   executeRowLocatorOp,
   executeCellOrTableScopedCellLocatorOp,
+  normalizeInsertRowAtTableEdge,
   executeDocumentLevelTableOp,
   normalizeTablesSplitInput,
   executeTablesApplyStyle,
@@ -1905,6 +1908,7 @@ export type {
 } from './sections/sections.types.js';
 export type {
   CommentsCreateReceipt,
+  CommentsPatchReceipt,
   CommentsCreateInput,
   CommentCreateAttributionInput,
   CommentsPatchInput,
@@ -1979,7 +1983,13 @@ export type {
   NativeOoxmlInsertInput,
   LegacyInsertInput,
 } from './insert/insert.js';
-export { isStructuralInsertInput } from './insert/insert.js';
+export {
+  isStructuralInsertInput,
+  isTemporaryBlockInsertInput,
+  isTemporaryPlainTextInsertInput,
+  TEMPORARY_OPERATION_SUPPORT_MESSAGE,
+  temporaryBlockInsertNativeEditConflict,
+} from './insert/insert.js';
 export type {
   ReplaceInput,
   TextReplaceInput,
@@ -2816,7 +2826,7 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
       create(input: CommentsCreateInput, options?: RevisionGuardOptions): CommentsCreateReceipt {
         return executeCommentsCreate(adapters.comments, input, options);
       },
-      patch(input: CommentsPatchInput, options?: RevisionGuardOptions): Receipt {
+      patch(input: CommentsPatchInput, options?: RevisionGuardOptions): CommentsPatchReceipt {
         return executeCommentsPatch(adapters.comments, input, options);
       },
       delete(input: CommentsDeleteInput, options?: RevisionGuardOptions): Receipt {
@@ -3359,7 +3369,7 @@ export function createDocumentApi(adapters: DocumentApiAdapters): DocumentApi {
         return executeRowLocatorOp(
           'tables.insertRow',
           adapters.tables.insertRow.bind(adapters.tables),
-          input,
+          normalizeInsertRowAtTableEdge(input),
           options,
           { allowAppendShorthand: true },
         );

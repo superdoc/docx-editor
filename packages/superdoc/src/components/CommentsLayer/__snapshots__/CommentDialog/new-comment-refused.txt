@@ -1,0 +1,75 @@
+step: the pending comment holds "<p>Keep my draft</p>"
+
+document calls:
+(none)
+
+store:
+{
+  "activeComment": "pending-new-comment-denied",
+  "editingCommentId": null,
+  "draft": "<p>Keep my draft</p>",
+  "pendingComment": "pending-new-comment-denied",
+  "draftMentions": [],
+  "rows": []
+}
+
+pending dialog:
+classes: is-active
+new comment composer
+buttons: Comment enabled
+
+---
+
+step: click Comment
+
+document calls:
+comments.commitPendingComment {"text":"Keep my draft","target":null}
+
+store:
+{
+  "activeComment": "pending-new-comment-denied",
+  "editingCommentId": null,
+  "draft": "<p>Keep my draft</p>",
+  "pendingComment": "pending-new-comment-denied",
+  "draftMentions": [],
+  "rows": []
+}
+
+pending dialog:
+classes: is-active
+new comment composer
+buttons: Comment disabled
+
+---
+
+step: the document refuses the comment (PERMISSION_DENIED, document-mode-read-only)
+
+document calls:
+(none)
+
+comments-update events:
+[
+  {
+    "type": "pending",
+    "rejected": true,
+    "reason": "v2-create-failed"
+  }
+]
+
+store:
+{
+  "activeComment": "pending-new-comment-denied",
+  "editingCommentId": null,
+  "draft": "<p>Keep my draft</p>",
+  "pendingComment": "pending-new-comment-denied",
+  "draftMentions": [],
+  "rows": []
+}
+
+pending dialog:
+classes: is-active
+new comment composer
+alert: Your comment could not be saved because the document or connection is read-only. Your draft is still here. Try again or cancel.
+buttons: Comment enabled
+
+---

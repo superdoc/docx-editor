@@ -48,4 +48,54 @@ describe('renderCommentHtml', () => {
   it.each([null, undefined, 42, {}])('returns an empty string for the non-string %s', (input) => {
     expect(renderCommentHtml(input)).toBe('');
   });
+
+  it.each([
+    ['an event handler on an image', '<p>a<img src="x" onerror="probe()">b</p>', '<p>ab</p>'],
+    [
+      'an event handler on an allowed element',
+      '<p onclick="probe()"><b onmouseover="probe()">x</b></p>',
+      '<p><b>x</b></p>',
+    ],
+    ['a script element', '<p>a<script>probe()</script>b</p>', '<p>ab</p>'],
+    ['a style element', '<p>a<style>p{}</style>b</p>', '<p>ab</p>'],
+    ['an inline frame', '<p>a<iframe srcdoc="<p>x</p>"></iframe>b</p>', '<p>ab</p>'],
+    ['an object element', '<p>a<object data="x"></object>b</p>', '<p>ab</p>'],
+    ['an embed element', '<p>a<embed src="x">b</p>', '<p>ab</p>'],
+    ['an SVG load handler', '<p>a<svg onload="probe()"><circle r="1"></circle></svg>b</p>', '<p>ab</p>'],
+    ['MathML content', '<p>a<math><mi>x</mi></math>b</p>', '<p>ab</p>'],
+    ['a form and a button', '<form action="x"><button formaction="y">go</button></form>', 'go'],
+    ['an unknown element', '<p><marquee>moving</marquee></p>', '<p>moving</p>'],
+    ['a style attribute', '<p style="background:url(x)">x</p>', '<p>x</p>'],
+    ['a data URL link', '<a href="data:text/html,x">data</a>', 'data'],
+    ['a template element', '<p>a<template><img src="x" onerror="probe()"></template>b</p>', '<p>ab</p>'],
+  ])('removes %s', (_name, input, expected) => {
+    expect(renderCommentHtml(input)).toBe(expected);
+  });
+
+  it('keeps supported rich text, line breaks, and mention spans', () => {
+    const input =
+      '<p><strong>s</strong><em>e</em><u>u</u><s>x</s><br>' +
+      '<span data-type="mention" name="Ada Example" email="ada@example.com">@Ada Example</span></p>';
+    expect(renderCommentHtml(input)).toBe(input);
+  });
+
+  it.each([
+    ['divs', '<div>First line</div><div>Second line</div>'],
+    ['list items', '<ul><li>one</li><li>two</li></ul><ol><li>three</li></ol>'],
+    ['headings and quotes', '<h2>Title</h2><blockquote>quoted</blockquote>'],
+    ['table cells', '<table><tbody><tr><td>a</td><td>b</td></tr></tbody></table>'],
+  ])('keeps the block boundaries of %s', (_name, input) => {
+    expect(renderCommentHtml(input)).toBe(input);
+  });
+
+  it('strips attributes from structural elements', () => {
+    expect(renderCommentHtml('<div class="x" style="position:fixed"><ul onclick="probe()"><li>a</li></ul></div>')).toBe(
+      '<div><ul><li>a</li></ul></div>',
+    );
+  });
+
+  it('keeps entity-encoded markup as literal text', () => {
+    const input = '<p>&lt;img src="x" onerror="probe()"&gt; a &amp; b</p>';
+    expect(renderCommentHtml(input)).toBe(input);
+  });
 });

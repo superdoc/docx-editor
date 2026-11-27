@@ -1,0 +1,915 @@
+row fields not listed below match this blank row
+  fileId="doc-1"
+  fileType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  mentions=[]
+  commentElement=null
+  isFocused=false
+  creatorId=null
+  creatorEmail=null
+  creatorName=null
+  creatorImage=null
+  createdTime=1700000000000
+  isInternal=true
+  commentText=""
+  commentFormat="html"
+  selection={"documentId":"doc-1","page":1,"selectionBounds":{}}
+  floatingPosition={"top":0,"left":0,"right":0,"bottom":0}
+  deletedText=null
+  trackedChangeType=null
+  trackedChangeText=null
+  trackedChangeDisplayType=null
+  semanticColorKey=null
+  semanticColor=null
+  trackedChangeStory=null
+  trackedChangeStoryKind=null
+  trackedChangeStoryLabel=""
+  trackedChangeAnchorKey=null
+  trackedChangeCanonicalId=null
+  trackedChangePositionAliases=[]
+  trackedChangeDecision=null
+  trackedChangeLabel=null
+  trackedChangeDetailLines=null
+  trackedChangeImagePreview=null
+  customAttributes=null
+  resolvedTime=null
+  resolvedById=null
+  resolvedByEmail=null
+  resolvedByName=null
+  importedAuthor=null
+  docxCommentJSON=null
+  getValues.commentElement=undefined
+  getValues.isFocused=undefined
+  getValues.floatingPosition=undefined
+
+step 0: apply rows row-22 row-23 row-24 row-25 row-26, comments comment-10 comment-11
+  result.ok: true
+  result.commentItems: 2
+  result.trackedItems: 5
+  active: null
+  instance: null
+  editing: null
+  pending: null
+  text: ""
+  mentions: []
+  selectionPosition: null
+  presentations: {}
+  events: []
+  order: foreign row-22 row-23 row-24 row-25 row-26 comment-10 comment-11
+  row foreign added fileId="doc-2" fileType=undefined commentText="other" selection={"documentId":"doc-2","page":1,"selectionBounds":{}}
+  row row-22 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-22-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-22" trackedChangeCanonicalId="row-22" trackedChange=true
+  row row-23 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-23-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-23" trackedChangeCanonicalId="row-23" trackedChange=true
+  row row-24 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-24-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-24" trackedChangeCanonicalId="row-24" trackedChange=true
+  row row-25 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-25-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-25" trackedChangeCanonicalId="row-25" trackedChange=true
+  row row-26 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-26-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-26" trackedChangeCanonicalId="row-26" trackedChange=true
+  row comment-10 added fileType=undefined commentText="text-5"
+  row comment-11 added fileType=undefined commentText="text-4" parentCommentId="comment-10"
+
+step 0: apply rows row-22 row-23 row-24 row-25 row-26, comments comment-10 comment-11 again without a tracked-changes adapter
+  result.ok: false
+  result.reason: "tracked-changes-adapter-stale"
+  result.commentItems removed
+  result.trackedItems removed
+
+step 1: apply rows row-3 row-4 row-5 row-6 row-7 row-8 row-9 row-10, comments comment-3
+  result.ok: true
+  result.commentItems: 1
+  result.trackedItems: 8
+  order: foreign row-3 row-4 row-5 row-6 row-7 row-8 row-9 row-10 comment-3
+  result.reason removed
+  row row-3 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-3-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-3" trackedChangeCanonicalId="row-3" trackedChangePositionAliases=["alias-row-3"] trackedChange=true
+  row row-4 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-4-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-4" trackedChangeCanonicalId="row-4" trackedChange=true
+  row row-5 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-5-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-5" trackedChangeCanonicalId="row-5" trackedChange=true
+  row row-6 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-6-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-6" trackedChangeCanonicalId="row-6" trackedChangePositionAliases=["alias-row-6"] trackedChange=true
+  row row-7 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-7-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-7" trackedChangeCanonicalId="row-7" trackedChange=true
+  row row-8 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-8-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-8" trackedChangeCanonicalId="row-8" trackedChangePositionAliases=["alias-row-8"] trackedChange=true
+  row row-9 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-9-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-9" trackedChangeCanonicalId="row-9" trackedChange=true
+  row row-10 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-10-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-10" trackedChangeCanonicalId="row-10" trackedChangePositionAliases=["alias-row-10"] trackedChange=true
+  row comment-3 added fileType=undefined commentText="text-2"
+  row row-22 removed
+  row row-23 removed
+  row row-24 removed
+  row row-25 removed
+  row row-26 removed
+  row comment-10 removed
+  row comment-11 removed
+
+step 2: apply rows row-15 row-16 row-17 row-18 row-19 row-20, comments comment-3
+  result.trackedItems: 6
+  order: foreign comment-3 row-15 row-16 row-17 row-18 row-19 row-20
+  row comment-3 changed commentText="text-0"
+  row row-15 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-15-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-15" trackedChangeCanonicalId="row-15" trackedChange=true
+  row row-16 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-16-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-16" trackedChangeCanonicalId="row-16" trackedChangePositionAliases=["alias-row-16"] trackedChange=true
+  row row-17 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-17-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-17" trackedChangeCanonicalId="row-17" trackedChangePositionAliases=["alias-row-17"] trackedChange=true
+  row row-18 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-18-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-18" trackedChangeCanonicalId="row-18" trackedChangePositionAliases=["alias-row-18"] trackedChange=true
+  row row-19 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-19-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-19" trackedChangeCanonicalId="row-19" trackedChangePositionAliases=["alias-row-19"] trackedChange=true
+  row row-20 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-20-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-20" trackedChangeCanonicalId="row-20" trackedChange=true
+  row row-3 removed
+  row row-4 removed
+  row row-5 removed
+  row row-6 removed
+  row row-7 removed
+  row row-8 removed
+  row row-9 removed
+  row row-10 removed
+
+step 3: apply rows row-23 row-24 row-25 row-26 row-27, comments comment-11 comment-0 comment-1
+  result.commentItems: 3
+  result.trackedItems: 5
+  order: foreign row-23 row-24 row-25 row-26 row-27 comment-11 comment-0 comment-1
+  row row-23 returns trackedChangeText="row-23-1" trackedChangePositionAliases=["alias-row-23"]
+  row row-24 returns trackedChangeText="row-24-3"
+  row row-25 returns trackedChangeText="row-25-1"
+  row row-26 returns trackedChangeText="row-26-3"
+  row row-27 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-27-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-27" trackedChangeCanonicalId="row-27" trackedChangePositionAliases=["alias-row-27"] trackedChange=true
+  row comment-11 returns parentCommentId=undefined commentText="text-2"
+  row comment-0 added fileType=undefined commentText="text-3" parentCommentId="comment-11"
+  row comment-1 added fileType=undefined commentText="text-0" parentCommentId="comment-11"
+  row comment-3 removed
+  row row-15 removed
+  row row-16 removed
+  row row-17 removed
+  row row-18 removed
+  row row-19 removed
+  row row-20 removed
+
+step 4: apply rows row-7 row-8 row-9 row-10 row-11 row-12 row-13 row-14 row-15, comments comment-7 comment-8 comment-9
+  result.trackedItems: 9
+  active: "comment-1"
+  order: foreign comment-11 comment-0 comment-1 row-7 row-8 row-9 row-10 row-11 row-12 row-13 row-14 row-15 comment-7 comment-8 comment-9
+  row row-7 returns isInternal=true
+  row row-8 returns isInternal=true trackedChangePositionAliases=[]
+  row row-9 returns isInternal=true
+  row row-10 returns isInternal=true
+  row row-11 added selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-11-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-11" trackedChangeCanonicalId="row-11" trackedChangePositionAliases=["alias-row-11"] trackedChange=true
+  row row-12 added selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-12-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-12" trackedChangeCanonicalId="row-12" trackedChangePositionAliases=["alias-row-12"] trackedChange=true
+  row row-13 added selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-13-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-13" trackedChangeCanonicalId="row-13" trackedChange=true
+  row row-14 added selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-14-3" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-14" trackedChangeCanonicalId="row-14" trackedChange=true
+  row row-15 returns isInternal=true
+  row comment-7 added fileType=undefined commentText="text-2"
+  row comment-8 added fileType=undefined commentText="text-5" parentCommentId="comment-7"
+  row comment-9 added fileType=undefined commentText="text-2" parentCommentId="comment-7"
+  row row-23 removed
+  row row-24 removed
+  row row-25 removed
+  row row-26 removed
+  row row-27 removed
+
+step 5: apply rows row-2 row-3 row-4 row-5 row-6 row-7 row-8, comments comment-2 comment-3
+  result.commentItems: 2
+  result.trackedItems: 7
+  active: null
+  order: foreign row-7 row-8 row-2 row-3 row-4 row-5 row-6 comment-2 comment-3
+  row row-7 changed createdTime=null trackedChangeText="row-7-2"
+  row row-8 changed createdTime=null trackedChangeText="row-8-0"
+  row row-2 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-2-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-2" trackedChangeCanonicalId="row-2" trackedChangePositionAliases=["alias-row-2"] trackedChange=true
+  row row-3 returns trackedChangeText="row-3-2"
+  row row-4 returns trackedChangeText="row-4-0"
+  row row-5 returns trackedChangeText="row-5-2"
+  row row-6 returns trackedChangeText="row-6-0" trackedChangePositionAliases=[]
+  row comment-2 added fileType=undefined commentText="text-5"
+  row comment-3 returns parentCommentId="comment-2"
+  row comment-11 removed
+  row comment-0 removed
+  row comment-1 removed
+  row row-9 removed
+  row row-10 removed
+  row row-11 removed
+  row row-12 removed
+  row row-13 removed
+  row row-14 removed
+  row row-15 removed
+  row comment-7 removed
+  row comment-8 removed
+  row comment-9 removed
+
+step 6: apply rows row-3 row-4 row-5 row-6, comments comment-3
+  result.commentItems: 1
+  result.trackedItems: 4
+  order: foreign row-3 row-4 row-5 row-6 comment-3
+  row row-3 changed createdTime=null trackedChangeText="row-3-1"
+  row row-4 changed createdTime=null trackedChangeText="row-4-3"
+  row row-5 changed createdTime=null trackedChangeText="row-5-1"
+  row row-6 changed createdTime=null trackedChangeText="row-6-3" trackedChangePositionAliases=["alias-row-6"]
+  row comment-3 changed parentCommentId=undefined commentText="text-4" getValues.parentCommentId="comment-2"
+  row row-7 removed
+  row row-8 removed
+  row row-2 removed
+  row comment-2 removed
+
+step 7: apply rows row-7 row-8 row-9 row-10, comments comment-7
+  editing: "row-3"
+  order: foreign row-3 row-7 row-8 row-9 row-10 comment-7
+  row row-7 returns createdTime=1700000000000 isInternal=false trackedChangeText="row-7-1" trackedChangePositionAliases=["alias-row-7"]
+  row row-8 returns createdTime=1700000000000 isInternal=false trackedChangeText="row-8-3"
+  row row-9 returns isInternal=false trackedChangePositionAliases=["alias-row-9"]
+  row row-10 returns isInternal=false
+  row comment-7 returns commentText="text-0"
+  row row-4 removed
+  row row-5 removed
+  row row-6 removed
+  row comment-3 removed
+
+step 8: apply rows row-22 row-23 row-24 row-25 row-26 row-27 row-28, comments comment-10 comment-11
+  result.commentItems: 2
+  result.trackedItems: 7
+  active: "row-7"
+  editing: null
+  order: foreign row-7 row-22 row-23 row-24 row-25 row-26 row-27 row-28 comment-10 comment-11
+  row row-22 returns trackedChangePositionAliases=["alias-row-22"]
+  row row-23 returns trackedChangeText="row-23-2" trackedChangePositionAliases=[]
+  row row-24 returns trackedChangeText="row-24-0" trackedChangePositionAliases=["alias-row-24"]
+  row row-25 returns trackedChangeText="row-25-2"
+  row row-26 returns trackedChangeText="row-26-0" trackedChangePositionAliases=["alias-row-26"]
+  row row-27 returns trackedChangeText="row-27-2"
+  row row-28 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-28-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-28" trackedChangeCanonicalId="row-28" trackedChange=true
+  row comment-10 returns
+  row comment-11 returns commentText="text-0" parentCommentId="comment-10"
+  row row-3 removed
+  row row-8 removed
+  row row-9 removed
+  row row-10 removed
+  row comment-7 removed
+
+step 9: apply rows row-18 row-19 row-20 row-21 row-22 row-23, comments none
+  result.commentItems: 0
+  result.trackedItems: 6
+  active: null
+  order: foreign row-22 row-23 row-18 row-19 row-20 row-21
+  row row-22 changed createdTime=null
+  row row-23 changed createdTime=null
+  row row-18 returns trackedChangeText="row-18-0"
+  row row-19 returns trackedChangeText="row-19-2"
+  row row-20 returns trackedChangeText="row-20-0" trackedChangePositionAliases=["alias-row-20"]
+  row row-21 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-21-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-21" trackedChangeCanonicalId="row-21" trackedChangePositionAliases=["alias-row-21"] trackedChange=true
+  row row-7 removed
+  row row-24 removed
+  row row-25 removed
+  row row-26 removed
+  row row-27 removed
+  row row-28 removed
+  row comment-10 removed
+  row comment-11 removed
+
+step 10: apply rows row-18 row-19 row-20 row-21 row-22 row-23 row-24 row-25 row-26 row-27, comments none
+  result.trackedItems: 10
+  order: foreign row-22 row-23 row-18 row-19 row-20 row-21 row-24 row-25 row-26 row-27
+  row row-18 changed createdTime=null
+  row row-19 changed createdTime=null trackedChangePositionAliases=[]
+  row row-20 changed createdTime=null trackedChangePositionAliases=[]
+  row row-21 changed createdTime=null trackedChangePositionAliases=[]
+  row row-24 returns trackedChangePositionAliases=[]
+  row row-25 returns
+  row row-26 returns
+  row row-27 returns trackedChangePositionAliases=[]
+
+step 11: apply rows row-15 row-16 row-17 row-18 row-19 row-20 row-21 row-22 row-23, comments comment-3 comment-4 comment-5
+  result.commentItems: 3
+  result.trackedItems: 9
+  order: foreign row-22 row-23 row-18 row-19 row-20 row-21 row-15 row-16 row-17 comment-3 comment-4 comment-5
+  row row-22 changed trackedChangeText="row-22-3"
+  row row-23 changed trackedChangeText="row-23-1"
+  row row-18 changed trackedChangeText="row-18-3" trackedChangePositionAliases=[]
+  row row-19 changed trackedChangeText="row-19-1"
+  row row-20 changed trackedChangeText="row-20-3" trackedChangePositionAliases=["alias-row-20"]
+  row row-21 changed trackedChangeText="row-21-1"
+  row row-15 returns isInternal=false
+  row row-16 returns
+  row row-17 returns trackedChangePositionAliases=[]
+  row comment-3 returns commentText="text-2" getValues.parentCommentId matches live
+  row comment-4 added fileType=undefined commentText="text-1" parentCommentId="comment-3"
+  row comment-5 added fileType=undefined commentText="text-4" parentCommentId="comment-3"
+  row row-24 removed
+  row row-25 removed
+  row row-26 removed
+  row row-27 removed
+
+step 11: apply rows row-15 row-16 row-17 row-18 row-19 row-20 row-21 row-22 row-23, comments comment-3 comment-4 comment-5 again without a tracked-changes adapter
+  result.ok: false
+  result.reason: "tracked-changes-adapter-stale"
+  result.commentItems removed
+  result.trackedItems removed
+
+step 12: apply rows row-7 row-8 row-9 row-10, comments comment-7
+  result.ok: true
+  result.commentItems: 1
+  result.trackedItems: 4
+  active: "row-16"
+  order: foreign row-16 row-7 row-8 row-9 row-10 comment-7
+  result.reason removed
+  row row-7 returns trackedChangePositionAliases=[]
+  row row-8 returns trackedChangePositionAliases=["alias-row-8"]
+  row row-9 returns trackedChangePositionAliases=[]
+  row row-10 returns
+  row comment-7 returns commentText="text-4"
+  row row-22 removed
+  row row-23 removed
+  row row-18 removed
+  row row-19 removed
+  row row-20 removed
+  row row-21 removed
+  row row-15 removed
+  row row-17 removed
+  row comment-3 removed
+  row comment-4 removed
+  row comment-5 removed
+
+step 13: apply rows row-14 row-15 row-16 row-17, comments none
+  result.commentItems: 0
+  active: null
+  order: foreign row-16 row-14 row-15 row-17
+  row row-16 changed createdTime=null trackedChangeText="row-16-0" trackedChangePositionAliases=[]
+  row row-14 returns isInternal=false trackedChangeText="row-14-0"
+  row row-15 returns trackedChangeText="row-15-2" trackedChangePositionAliases=["alias-row-15"]
+  row row-17 returns trackedChangeText="row-17-2"
+  row row-7 removed
+  row row-8 removed
+  row row-9 removed
+  row row-10 removed
+  row comment-7 removed
+
+step 14: apply rows row-7 row-8 row-9 row-10 row-11, comments comment-7 comment-8 comment-9
+  result.commentItems: 3
+  result.trackedItems: 5
+  editing: "row-17"
+  order: foreign row-17 row-7 row-8 row-9 row-10 row-11 comment-7 comment-8 comment-9
+  row row-7 returns
+  row row-8 returns trackedChangePositionAliases=[]
+  row row-9 returns
+  row row-10 returns
+  row row-11 returns isInternal=false trackedChangePositionAliases=[]
+  row comment-7 returns commentText="text-2"
+  row comment-8 returns
+  row comment-9 returns commentText="text-4"
+  row row-16 removed
+  row row-14 removed
+  row row-15 removed
+
+step 15: apply rows row-18 row-19 row-20 row-21 row-22 row-23 row-24, comments comment-6 comment-7
+  result.commentItems: 2
+  result.trackedItems: 7
+  editing: null
+  order: foreign comment-7 comment-8 comment-9 row-18 row-19 row-20 row-21 row-22 row-23 row-24 comment-6
+  row comment-7 changed commentText="text-0" parentCommentId="comment-6" getValues.parentCommentId=undefined
+  row row-18 returns createdTime=1700000000000 trackedChangeText="row-18-0" trackedChangePositionAliases=["alias-row-18"]
+  row row-19 returns createdTime=1700000000000 trackedChangeText="row-19-2"
+  row row-20 returns createdTime=1700000000000 trackedChangeText="row-20-0" trackedChangePositionAliases=[]
+  row row-21 returns createdTime=1700000000000 trackedChangeText="row-21-2"
+  row row-22 returns createdTime=1700000000000 trackedChangeText="row-22-0" trackedChangePositionAliases=[]
+  row row-23 returns createdTime=1700000000000 trackedChangeText="row-23-2" trackedChangePositionAliases=["alias-row-23"]
+  row row-24 returns trackedChangePositionAliases=["alias-row-24"]
+  row comment-6 added fileType=undefined commentText="text-5"
+  row row-17 removed
+  row row-7 removed
+  row row-8 removed
+  row row-9 removed
+  row row-10 removed
+  row row-11 removed
+
+step 16: apply rows row-3 row-4 row-5, comments comment-3 comment-4 comment-5
+  result.commentItems: 3
+  result.trackedItems: 3
+  active: "row-24"
+  order: foreign row-24 row-3 row-4 row-5 comment-3 comment-4 comment-5
+  row row-3 returns createdTime=1700000000000 trackedChangePositionAliases=[]
+  row row-4 returns createdTime=1700000000000
+  row row-5 returns createdTime=1700000000000
+  row comment-3 returns commentText="text-0"
+  row comment-4 returns commentText="text-3"
+  row comment-5 returns
+  row comment-7 removed
+  row comment-8 removed
+  row comment-9 removed
+  row row-18 removed
+  row row-19 removed
+  row row-20 removed
+  row row-21 removed
+  row row-22 removed
+  row row-23 removed
+  row comment-6 removed
+
+step 17: apply rows row-10 row-11 row-12 row-13 row-14 row-15 row-16 row-17 row-18 row-19 row-20, comments comment-10 comment-11
+  result.commentItems: 2
+  result.trackedItems: 11
+  active: null
+  order: foreign row-10 row-11 row-12 row-13 row-14 row-15 row-16 row-17 row-18 row-19 row-20 comment-10 comment-11
+  row row-10 returns trackedChangeText="row-10-0" trackedChangePositionAliases=[]
+  row row-11 returns trackedChangeText="row-11-2"
+  row row-12 returns isInternal=false trackedChangeText="row-12-0" trackedChangePositionAliases=[]
+  row row-13 returns isInternal=false trackedChangeText="row-13-2"
+  row row-14 returns
+  row row-15 returns
+  row row-16 returns createdTime=1700000000000
+  row row-17 returns
+  row row-18 returns trackedChangePositionAliases=[]
+  row row-19 returns
+  row row-20 returns
+  row comment-10 returns commentText="text-3"
+  row comment-11 returns commentText="text-2"
+  row row-24 removed
+  row row-3 removed
+  row row-4 removed
+  row row-5 removed
+  row comment-3 removed
+  row comment-4 removed
+  row comment-5 removed
+
+step 18: apply rows row-19 row-20 row-21 row-22 row-23 row-24 row-25 row-26 row-27, comments comment-7 comment-8 comment-9
+  result.commentItems: 3
+  result.trackedItems: 9
+  order: foreign row-19 row-20 row-21 row-22 row-23 row-24 row-25 row-26 row-27 comment-7 comment-8 comment-9
+  row row-19 changed createdTime=null trackedChangeText="row-19-1"
+  row row-20 changed createdTime=null trackedChangeText="row-20-3" trackedChangePositionAliases=["alias-row-20"]
+  row row-21 returns trackedChangeText="row-21-1"
+  row row-22 returns trackedChangeText="row-22-3"
+  row row-23 returns trackedChangeText="row-23-1"
+  row row-24 returns trackedChangeText="row-24-3"
+  row row-25 returns trackedChangeText="row-25-1"
+  row row-26 returns trackedChangeText="row-26-3" trackedChangePositionAliases=[]
+  row row-27 returns trackedChangeText="row-27-1"
+  row comment-7 returns parentCommentId=undefined commentText="text-2" getValues.parentCommentId matches live
+  row comment-8 returns commentText="text-1"
+  row comment-9 returns commentText="text-2"
+  row row-10 removed
+  row row-11 removed
+  row row-12 removed
+  row row-13 removed
+  row row-14 removed
+  row row-15 removed
+  row row-16 removed
+  row row-17 removed
+  row row-18 removed
+  row comment-10 removed
+  row comment-11 removed
+
+step 19: apply rows row-14 row-15 row-16 row-17 row-18 row-19 row-20 row-21, comments none
+  result.commentItems: 0
+  result.trackedItems: 8
+  order: foreign row-19 row-20 row-21 row-14 row-15 row-16 row-17 row-18
+  row row-19 changed trackedChangeText="row-19-2"
+  row row-20 changed trackedChangeText="row-20-0" trackedChangePositionAliases=[]
+  row row-21 changed createdTime=null trackedChangeText="row-21-2"
+  row row-14 returns trackedChangePositionAliases=["alias-row-14"]
+  row row-15 returns
+  row row-16 returns
+  row row-17 returns
+  row row-18 returns
+  row row-22 removed
+  row row-23 removed
+  row row-24 removed
+  row row-25 removed
+  row row-26 removed
+  row row-27 removed
+  row comment-7 removed
+  row comment-8 removed
+  row comment-9 removed
+
+step 20: apply rows row-7 row-8 row-9 row-10 row-11 row-12 row-13 row-14 row-15 row-16 row-17, comments comment-7 comment-8 comment-9
+  result.commentItems: 3
+  result.trackedItems: 11
+  active: "row-14"
+  order: foreign row-14 row-15 row-16 row-17 row-7 row-8 row-9 row-10 row-11 row-12 row-13 comment-7 comment-8 comment-9
+  row row-14 changed createdTime=null trackedChangeText="row-14-3" trackedChangePositionAliases=[]
+  row row-15 changed createdTime=null trackedChangeText="row-15-1"
+  row row-16 changed createdTime=null trackedChangeText="row-16-3" trackedChangePositionAliases=["alias-row-16"]
+  row row-17 changed createdTime=null trackedChangeText="row-17-1" trackedChangePositionAliases=["alias-row-17"]
+  row row-7 returns trackedChangePositionAliases=["alias-row-7"]
+  row row-8 returns
+  row row-9 returns
+  row row-10 returns trackedChangeText="row-10-3"
+  row row-11 returns trackedChangeText="row-11-1"
+  row row-12 returns trackedChangeText="row-12-3"
+  row row-13 returns trackedChangeText="row-13-1"
+  row comment-7 returns commentText="text-0"
+  row comment-8 returns commentText="text-3"
+  row comment-9 returns commentText="text-0"
+  row row-19 removed
+  row row-20 removed
+  row row-21 removed
+  row row-18 removed
+
+step 21: apply rows row-22 row-23 row-24 row-25 row-26 row-27 row-28 row-29 row-30 row-31 row-0, comments comment-10 comment-11
+  result.commentItems: 2
+  active: null
+  editing: "row-8"
+  order: foreign row-8 row-22 row-23 row-24 row-25 row-26 row-27 row-28 row-29 row-30 row-31 row-0 comment-10 comment-11
+  row row-22 returns trackedChangeText="row-22-0"
+  row row-23 returns trackedChangeText="row-23-2"
+  row row-24 returns trackedChangeText="row-24-0"
+  row row-25 returns trackedChangeText="row-25-2"
+  row row-26 returns trackedChangeText="row-26-0" trackedChangePositionAliases=["alias-row-26"]
+  row row-27 returns trackedChangeText="row-27-2"
+  row row-28 returns
+  row row-29 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-29-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-29" trackedChangeCanonicalId="row-29" trackedChangePositionAliases=["alias-row-29"] trackedChange=true
+  row row-30 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-30-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-30" trackedChangeCanonicalId="row-30" trackedChangePositionAliases=["alias-row-30"] trackedChange=true
+  row row-31 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-31-2" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-31" trackedChangeCanonicalId="row-31" trackedChange=true
+  row row-0 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-0-0" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-0" trackedChangeCanonicalId="row-0" trackedChange=true
+  row comment-10 returns commentText="text-1"
+  row comment-11 returns commentText="text-0"
+  row row-14 removed
+  row row-15 removed
+  row row-16 removed
+  row row-17 removed
+  row row-7 removed
+  row row-9 removed
+  row row-10 removed
+  row row-11 removed
+  row row-12 removed
+  row row-13 removed
+  row comment-7 removed
+  row comment-8 removed
+  row comment-9 removed
+
+step 22: apply rows row-10 row-11 row-12 row-13 row-14 row-15 row-16, comments comment-10 comment-11
+  result.trackedItems: 7
+  editing: null
+  order: foreign comment-10 comment-11 row-10 row-11 row-12 row-13 row-14 row-15 row-16
+  row row-10 returns trackedChangeText="row-10-0"
+  row row-11 returns trackedChangeText="row-11-2" trackedChangePositionAliases=["alias-row-11"]
+  row row-12 returns trackedChangeText="row-12-0"
+  row row-13 returns trackedChangeText="row-13-2"
+  row row-14 returns createdTime=1700000000000 trackedChangeText="row-14-0"
+  row row-15 returns createdTime=1700000000000 trackedChangeText="row-15-2" trackedChangePositionAliases=[]
+  row row-16 returns createdTime=1700000000000 trackedChangeText="row-16-0" trackedChangePositionAliases=[]
+  row row-8 removed
+  row row-22 removed
+  row row-23 removed
+  row row-24 removed
+  row row-25 removed
+  row row-26 removed
+  row row-27 removed
+  row row-28 removed
+  row row-29 removed
+  row row-30 removed
+  row row-31 removed
+  row row-0 removed
+
+step 22: apply rows row-10 row-11 row-12 row-13 row-14 row-15 row-16, comments comment-10 comment-11 again without a tracked-changes adapter
+  result.ok: false
+  result.reason: "tracked-changes-adapter-stale"
+  result.commentItems removed
+  result.trackedItems removed
+
+step 23: apply rows row-19 row-20 row-21 row-22, comments comment-7
+  result.ok: true
+  result.commentItems: 1
+  result.trackedItems: 4
+  order: foreign row-19 row-20 row-21 row-22 comment-7
+  result.reason removed
+  row row-19 returns createdTime=1700000000000 trackedChangeText="row-19-1"
+  row row-20 returns createdTime=1700000000000 trackedChangeText="row-20-3" trackedChangePositionAliases=["alias-row-20"]
+  row row-21 returns createdTime=1700000000000 trackedChangeText="row-21-1"
+  row row-22 returns trackedChangeText="row-22-3"
+  row comment-7 returns commentText="text-4"
+  row comment-10 removed
+  row comment-11 removed
+  row row-10 removed
+  row row-11 removed
+  row row-12 removed
+  row row-13 removed
+  row row-14 removed
+  row row-15 removed
+  row row-16 removed
+
+step 24: apply rows row-15 row-16 row-17 row-18 row-19 row-20 row-21, comments comment-3 comment-4 comment-5
+  result.commentItems: 3
+  result.trackedItems: 7
+  active: "row-22"
+  order: foreign row-19 row-20 row-21 row-22 row-15 row-16 row-17 row-18 comment-3 comment-4 comment-5
+  row row-19 changed createdTime=null
+  row row-20 changed createdTime=null trackedChangePositionAliases=[]
+  row row-21 changed createdTime=null trackedChangePositionAliases=["alias-row-21"]
+  row row-15 returns trackedChangeText="row-15-1"
+  row row-16 returns trackedChangeText="row-16-3"
+  row row-17 returns createdTime=1700000000000 trackedChangePositionAliases=[]
+  row row-18 returns trackedChangeText="row-18-3"
+  row comment-3 returns
+  row comment-4 returns commentText="text-5"
+  row comment-5 returns commentText="text-2"
+  row comment-7 removed
+
+step 25: apply rows row-14 row-15 row-16 row-17 row-18 row-19 row-20 row-21 row-22 row-23 row-24, comments comment-2 comment-3
+  result.commentItems: 2
+  result.trackedItems: 11
+  active: null
+  order: foreign row-19 row-20 row-21 row-22 row-15 row-16 row-17 row-18 comment-3 comment-4 comment-5 row-14 row-23 row-24 comment-2
+  row row-19 changed trackedChangeText="row-19-2" trackedChangePositionAliases=["alias-row-19"]
+  row row-20 changed trackedChangeText="row-20-0"
+  row row-21 changed trackedChangeText="row-21-2"
+  row row-22 changed createdTime=null trackedChangeText="row-22-0"
+  row row-15 changed createdTime=null trackedChangeText="row-15-2" trackedChangePositionAliases=["alias-row-15"]
+  row row-16 changed createdTime=null trackedChangeText="row-16-0"
+  row row-17 changed createdTime=null trackedChangeText="row-17-2"
+  row row-18 changed createdTime=null trackedChangeText="row-18-0"
+  row comment-3 changed commentText="text-2" parentCommentId="comment-2" getValues.parentCommentId=undefined
+  row row-14 returns
+  row row-23 returns trackedChangePositionAliases=[]
+  row row-24 returns
+  row comment-2 returns commentText="text-3"
+
+step 26: apply rows row-23 row-24 row-25 row-26 row-27, comments comment-11 comment-0 comment-1
+  result.commentItems: 3
+  result.trackedItems: 5
+  order: foreign row-23 row-24 row-25 row-26 row-27 comment-11 comment-0 comment-1
+  row row-23 changed createdTime=null trackedChangeText="row-23-1" trackedChangePositionAliases=["alias-row-23"]
+  row row-24 changed createdTime=null trackedChangeText="row-24-3"
+  row row-25 returns trackedChangeText="row-25-1" trackedChangePositionAliases=["alias-row-25"]
+  row row-26 returns trackedChangeText="row-26-3" trackedChangePositionAliases=[]
+  row row-27 returns trackedChangeText="row-27-1" trackedChangePositionAliases=["alias-row-27"]
+  row comment-11 returns parentCommentId=undefined
+  row comment-0 returns commentText="text-5"
+  row comment-1 returns
+  row row-19 removed
+  row row-20 removed
+  row row-21 removed
+  row row-22 removed
+  row row-15 removed
+  row row-16 removed
+  row row-17 removed
+  row row-18 removed
+  row comment-3 removed
+  row comment-4 removed
+  row comment-5 removed
+  row row-14 removed
+  row comment-2 removed
+
+step 27: apply rows row-15 row-16 row-17 row-18 row-19 row-20 row-21 row-22 row-23, comments comment-3 comment-4 comment-5
+  result.trackedItems: 9
+  order: foreign row-23 row-15 row-16 row-17 row-18 row-19 row-20 row-21 row-22 comment-3 comment-4 comment-5
+  row row-23 changed trackedChangePositionAliases=[]
+  row row-15 returns createdTime=1700000000000 trackedChangeText="row-15-1"
+  row row-16 returns createdTime=1700000000000 trackedChangeText="row-16-3" trackedChangePositionAliases=["alias-row-16"]
+  row row-17 returns createdTime=1700000000000 trackedChangeText="row-17-1" trackedChangePositionAliases=["alias-row-17"]
+  row row-18 returns createdTime=1700000000000 trackedChangeText="row-18-3" trackedChangePositionAliases=["alias-row-18"]
+  row row-19 returns createdTime=1700000000000 trackedChangeText="row-19-1" trackedChangePositionAliases=[]
+  row row-20 returns createdTime=1700000000000 trackedChangeText="row-20-3"
+  row row-21 returns createdTime=1700000000000 trackedChangeText="row-21-1" trackedChangePositionAliases=[]
+  row row-22 returns createdTime=1700000000000 trackedChangeText="row-22-3"
+  row comment-3 returns parentCommentId=undefined getValues.parentCommentId matches live
+  row comment-4 returns commentText="text-1"
+  row comment-5 returns commentText="text-0"
+  row row-24 removed
+  row row-25 removed
+  row row-26 removed
+  row row-27 removed
+  row comment-11 removed
+  row comment-0 removed
+  row comment-1 removed
+
+step 28: apply rows row-2 row-3 row-4 row-5 row-6, comments comment-2 comment-3
+  result.commentItems: 2
+  result.trackedItems: 5
+  active: "row-17"
+  editing: "row-16"
+  order: foreign row-16 row-17 comment-3 comment-4 comment-5 row-2 row-3 row-4 row-5 row-6 comment-2
+  row comment-3 changed commentText="text-4" parentCommentId="comment-2" getValues.parentCommentId=undefined
+  row row-2 returns trackedChangePositionAliases=[]
+  row row-3 returns trackedChangeText="row-3-2" trackedChangePositionAliases=["alias-row-3"]
+  row row-4 returns trackedChangeText="row-4-0"
+  row row-5 returns trackedChangeText="row-5-2"
+  row row-6 returns createdTime=1700000000000 trackedChangeText="row-6-0" trackedChangePositionAliases=[]
+  row comment-2 returns commentText="text-1"
+  row row-23 removed
+  row row-15 removed
+  row row-18 removed
+  row row-19 removed
+  row row-20 removed
+  row row-21 removed
+  row row-22 removed
+
+step 29: apply rows row-17 row-18 row-19 row-20 row-21 row-22 row-23 row-24, comments comment-5 comment-6 comment-7
+  result.commentItems: 3
+  result.trackedItems: 8
+  active: null
+  editing: null
+  order: foreign row-17 comment-5 row-18 row-19 row-20 row-21 row-22 row-23 row-24 comment-6 comment-7
+  row row-17 changed createdTime=null trackedChangeText="row-17-3"
+  row comment-5 changed parentCommentId=undefined getValues.parentCommentId="comment-3"
+  row row-18 returns trackedChangeText="row-18-1"
+  row row-19 returns trackedChangeText="row-19-3" trackedChangePositionAliases=["alias-row-19"]
+  row row-20 returns trackedChangeText="row-20-1"
+  row row-21 returns trackedChangeText="row-21-3"
+  row row-22 returns trackedChangeText="row-22-1"
+  row row-23 returns createdTime=1700000000000 trackedChangeText="row-23-3"
+  row row-24 returns createdTime=1700000000000 trackedChangeText="row-24-1"
+  row comment-6 returns commentText="text-1" parentCommentId="comment-5"
+  row comment-7 returns commentText="text-2" parentCommentId="comment-5"
+  row row-16 removed
+  row comment-3 removed
+  row comment-4 removed
+  row row-2 removed
+  row row-3 removed
+  row row-4 removed
+  row row-5 removed
+  row row-6 removed
+  row comment-2 removed
+
+step 30: apply rows row-7 row-8 row-9 row-10 row-11 row-12 row-13 row-14 row-15 row-16, comments comment-7
+  result.commentItems: 1
+  result.trackedItems: 10
+  order: foreign comment-7 row-7 row-8 row-9 row-10 row-11 row-12 row-13 row-14 row-15 row-16
+  row comment-7 changed parentCommentId=undefined getValues.parentCommentId="comment-5"
+  row row-7 returns
+  row row-8 returns trackedChangePositionAliases=["alias-row-8"]
+  row row-9 returns trackedChangePositionAliases=["alias-row-9"]
+  row row-10 returns trackedChangeText="row-10-3"
+  row row-11 returns trackedChangeText="row-11-1" trackedChangePositionAliases=[]
+  row row-12 returns trackedChangeText="row-12-3"
+  row row-13 returns trackedChangeText="row-13-1"
+  row row-14 returns trackedChangeText="row-14-3"
+  row row-15 returns trackedChangePositionAliases=[]
+  row row-16 returns trackedChangePositionAliases=[]
+  row row-17 removed
+  row comment-5 removed
+  row row-18 removed
+  row row-19 removed
+  row row-20 removed
+  row row-21 removed
+  row row-22 removed
+  row row-23 removed
+  row row-24 removed
+  row comment-6 removed
+
+step 31: apply rows row-23 row-24 row-25 row-26 row-27 row-28 row-29 row-30 row-31 row-0 row-1, comments comment-11 comment-0 comment-1
+  result.commentItems: 3
+  result.trackedItems: 11
+  order: foreign row-23 row-24 row-25 row-26 row-27 row-28 row-29 row-30 row-31 row-0 row-1 comment-11 comment-0 comment-1
+  row row-23 returns trackedChangeText="row-23-1"
+  row row-24 returns trackedChangeText="row-24-3" trackedChangePositionAliases=[]
+  row row-25 returns trackedChangePositionAliases=[]
+  row row-26 returns
+  row row-27 returns
+  row row-28 returns trackedChangeText="row-28-3"
+  row row-29 returns trackedChangeText="row-29-1"
+  row row-30 returns trackedChangeText="row-30-3"
+  row row-31 returns trackedChangeText="row-31-1" trackedChangePositionAliases=["alias-row-31"]
+  row row-0 returns trackedChangeText="row-0-3"
+  row row-1 added isInternal=false selection={"selectionBounds":{},"source":"document-editor"} floatingPosition={} trackedChangeType="insert" trackedChangeText="row-1-1" trackedChangeDisplayType="insert" trackedChangeAnchorKey="tc::body::row-1" trackedChangeCanonicalId="row-1" trackedChangePositionAliases=["alias-row-1"] trackedChange=true
+  row comment-11 returns commentText="text-4"
+  row comment-0 returns commentText="text-1"
+  row comment-1 returns commentText="text-4"
+  row comment-7 removed
+  row row-7 removed
+  row row-8 removed
+  row row-9 removed
+  row row-10 removed
+  row row-11 removed
+  row row-12 removed
+  row row-13 removed
+  row row-14 removed
+  row row-15 removed
+  row row-16 removed
+
+step 32: apply rows row-11 row-12 row-13 row-14, comments comment-11
+  result.commentItems: 1
+  result.trackedItems: 4
+  active: "comment-11"
+  order: foreign comment-11 comment-0 comment-1 row-11 row-12 row-13 row-14
+  row comment-11 changed commentText="text-0"
+  row row-11 returns isInternal=true
+  row row-12 returns isInternal=true trackedChangePositionAliases=["alias-row-12"]
+  row row-13 returns isInternal=true
+  row row-14 returns isInternal=true
+  row row-23 removed
+  row row-24 removed
+  row row-25 removed
+  row row-26 removed
+  row row-27 removed
+  row row-28 removed
+  row row-29 removed
+  row row-30 removed
+  row row-31 removed
+  row row-0 removed
+  row row-1 removed
+
+step 33: apply rows row-18 row-19 row-20 row-21, comments none
+  result.commentItems: 0
+  active: null
+  order: foreign row-18 row-19 row-20 row-21
+  row row-18 returns trackedChangeText="row-18-0" trackedChangePositionAliases=[]
+  row row-19 returns trackedChangeText="row-19-2"
+  row row-20 returns trackedChangeText="row-20-0" trackedChangePositionAliases=["alias-row-20"]
+  row row-21 returns trackedChangeText="row-21-2"
+  row comment-11 removed
+  row comment-0 removed
+  row comment-1 removed
+  row row-11 removed
+  row row-12 removed
+  row row-13 removed
+  row row-14 removed
+
+step 33: apply rows row-18 row-19 row-20 row-21, comments none again without a tracked-changes adapter
+  result.ok: false
+  result.reason: "tracked-changes-adapter-stale"
+  result.commentItems removed
+  result.trackedItems removed
+
+step 34: apply rows row-11 row-12 row-13 row-14 row-15, comments comment-11 comment-0 comment-1
+  result.ok: true
+  result.commentItems: 3
+  result.trackedItems: 5
+  order: foreign row-11 row-12 row-13 row-14 row-15 comment-11 comment-0 comment-1
+  result.reason removed
+  row row-11 returns isInternal=false trackedChangePositionAliases=["alias-row-11"]
+  row row-12 returns isInternal=false trackedChangePositionAliases=[]
+  row row-13 returns isInternal=false
+  row row-14 returns isInternal=false trackedChangePositionAliases=["alias-row-14"]
+  row row-15 returns
+  row comment-11 returns commentText="text-4"
+  row comment-0 returns commentText="text-5"
+  row comment-1 returns commentText="text-2"
+  row row-18 removed
+  row row-19 removed
+  row row-20 removed
+  row row-21 removed
+
+step 35: apply rows row-11 row-12 row-13 row-14 row-15 row-16 row-17 row-18 row-19, comments comment-11 comment-0 comment-1
+  result.trackedItems: 9
+  editing: "row-14"
+  order: foreign row-11 row-12 row-13 row-14 row-15 comment-11 comment-0 comment-1 row-16 row-17 row-18 row-19
+  row row-11 changed createdTime=null trackedChangePositionAliases=[]
+  row row-12 changed createdTime=null
+  row row-13 changed createdTime=null
+  row row-14 changed createdTime=null trackedChangePositionAliases=[]
+  row row-15 changed createdTime=null
+  row comment-11 changed commentText="text-2"
+  row comment-0 changed commentText="text-3"
+  row row-16 returns
+  row row-17 returns createdTime=1700000000000 trackedChangeText="row-17-1" trackedChangePositionAliases=[]
+  row row-18 returns trackedChangeText="row-18-3" trackedChangePositionAliases=["alias-row-18"]
+  row row-19 returns trackedChangeText="row-19-1" trackedChangePositionAliases=[]
+
+step 36: apply rows row-14 row-15 row-16 row-17 row-18 row-19 row-20 row-21 row-22, comments comment-2 comment-3
+  result.commentItems: 2
+  active: "comment-1"
+  editing: null
+  order: foreign row-14 row-15 comment-11 comment-0 comment-1 row-16 row-17 row-18 row-19 row-20 row-21 row-22 comment-2 comment-3
+  row row-14 changed trackedChangeText="row-14-0"
+  row row-15 changed trackedChangeText="row-15-2"
+  row row-16 changed createdTime=null trackedChangeText="row-16-0" trackedChangePositionAliases=["alias-row-16"]
+  row row-17 changed createdTime=null trackedChangeText="row-17-2"
+  row row-18 changed createdTime=null trackedChangeText="row-18-0"
+  row row-19 changed createdTime=null trackedChangeText="row-19-2"
+  row row-20 returns isInternal=true trackedChangePositionAliases=[]
+  row row-21 returns isInternal=true
+  row row-22 returns isInternal=true trackedChangeText="row-22-0"
+  row comment-2 returns
+  row comment-3 returns getValues.parentCommentId matches live
+  row row-11 removed
+  row row-12 removed
+  row row-13 removed
+
+step 37: apply rows row-5 row-6 row-7 row-8 row-9 row-10 row-11, comments comment-5
+  result.commentItems: 1
+  result.trackedItems: 7
+  active: null
+  order: foreign row-5 row-6 row-7 row-8 row-9 row-10 row-11 comment-5
+  row row-5 returns trackedChangeText="row-5-3"
+  row row-6 returns trackedChangeText="row-6-1" trackedChangePositionAliases=["alias-row-6"]
+  row row-7 returns trackedChangeText="row-7-3" trackedChangePositionAliases=[]
+  row row-8 returns trackedChangeText="row-8-1"
+  row row-9 returns trackedChangeText="row-9-3" trackedChangePositionAliases=[]
+  row row-10 returns trackedChangeText="row-10-1" trackedChangePositionAliases=["alias-row-10"]
+  row row-11 returns createdTime=1700000000000 trackedChangeText="row-11-3"
+  row comment-5 returns commentText="text-2" getValues.parentCommentId matches live
+  row row-14 removed
+  row row-15 removed
+  row comment-11 removed
+  row comment-0 removed
+  row comment-1 removed
+  row row-16 removed
+  row row-17 removed
+  row row-18 removed
+  row row-19 removed
+  row row-20 removed
+  row row-21 removed
+  row row-22 removed
+  row comment-2 removed
+  row comment-3 removed
+
+step 38: apply rows row-15 row-16 row-17 row-18 row-19 row-20, comments comment-3
+  result.trackedItems: 6
+  order: foreign row-15 row-16 row-17 row-18 row-19 row-20 comment-3
+  row row-15 returns createdTime=1700000000000 trackedChangeText="row-15-1"
+  row row-16 returns createdTime=1700000000000 trackedChangeText="row-16-3"
+  row row-17 returns createdTime=1700000000000 trackedChangeText="row-17-1" trackedChangePositionAliases=["alias-row-17"]
+  row row-18 returns createdTime=1700000000000 trackedChangeText="row-18-3" trackedChangePositionAliases=[]
+  row row-19 returns createdTime=1700000000000 trackedChangeText="row-19-1"
+  row row-20 returns isInternal=false trackedChangeText="row-20-3"
+  row comment-3 returns parentCommentId=undefined commentText="text-2"
+  row row-5 removed
+  row row-6 removed
+  row row-7 removed
+  row row-8 removed
+  row row-9 removed
+  row row-10 removed
+  row row-11 removed
+  row comment-5 removed
+
+step 39: apply rows row-15 row-16 row-17 row-18 row-19 row-20, comments comment-3
+  row row-15 changed createdTime=null trackedChangePositionAliases=["alias-row-15"]
+  row row-16 changed createdTime=null trackedChangePositionAliases=[]
+  row row-17 changed createdTime=null
+  row row-18 changed createdTime=null trackedChangePositionAliases=["alias-row-18"]
+  row row-19 changed createdTime=null trackedChangePositionAliases=["alias-row-19"]
+  row row-20 changed createdTime=null
+  row comment-3 changed commentText="text-0"

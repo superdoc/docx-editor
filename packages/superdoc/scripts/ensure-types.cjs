@@ -155,6 +155,11 @@ const cjsDeclarationShims = [
     target: './collaboration-upgrade-engine.js',
   },
   {
+    file: path.join(distRoot, 'superdoc/src/public/collaboration.d.cts'),
+    source: path.join(distRoot, 'superdoc/src/public/collaboration.d.ts'),
+    target: './collaboration.js',
+  },
+  {
     file: path.join(distRoot, 'superdoc/src/public/collaboration-worker.d.cts'),
     source: path.join(distRoot, 'superdoc/src/public/collaboration-worker.d.ts'),
     target: './collaboration-worker.js',

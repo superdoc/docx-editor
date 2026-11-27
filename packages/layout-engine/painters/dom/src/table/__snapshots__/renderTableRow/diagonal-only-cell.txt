@@ -1,0 +1,24 @@
+<div>
+  data-superdoc-table-row-role="body"
+  style height: 20px
+  style left: 6px
+  style padding-bottom: 0px
+  style padding-left: 4px
+  style padding-right: 4px
+  style padding-top: 0px
+  style top: 0px
+  style width: 100px
+<svg>
+  aria-hidden="true"
+  data-superdoc-cell-border-overlay="true"
+  viewBox="0 0 100 20"
+  style height: 20px
+  style left: 6px
+  style top: 0px
+  style width: 100px
+  <path>
+    d="M 0 0 L 100 20"
+    data-side="tl2br"
+    fill="none"
+    stroke="#000080"
+    stroke-width="1.3333333333333333"

@@ -1,0 +1,123 @@
+{
+  "definition": {
+    "description": "Read the document theme: its 12 theme colors, major and minor fonts, and the color mapping from settings.xml. A missing or malformed theme part returns the default Office theme labeled source 'fallback', with part status and diagnostics. Same theme as doc.get().theme, without the rest of the document.",
+    "expectedResult": "Returns a StylesGetThemeResult with the theme (always present, labeled document or fallback), the theme and settings part status, and diagnostics.",
+    "memberPath": "styles.getTheme",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "styles/get-theme.mdx",
+    "referenceGroup": "styles",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostics": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "part": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "info",
+                  "warning",
+                  "error"
+                ]
+              }
+            },
+            "required": [
+              "severity",
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "sourceStatus": {
+          "additionalProperties": false,
+          "properties": {
+            "settings": {
+              "enum": [
+                "present",
+                "missing",
+                "malformed"
+              ]
+            },
+            "theme": {
+              "enum": [
+                "present",
+                "missing",
+                "malformed"
+              ]
+            }
+          },
+          "required": [
+            "theme",
+            "settings"
+          ],
+          "type": "object"
+        },
+        "theme": {
+          "additionalProperties": false,
+          "properties": {
+            "colorScheme": {
+              "type": "object"
+            },
+            "colorSchemeMapping": {
+              "type": "object"
+            },
+            "fontScheme": {
+              "type": "object"
+            },
+            "source": {
+              "enum": [
+                "document",
+                "fallback"
+              ]
+            }
+          },
+          "required": [
+            "source",
+            "colorScheme"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "theme",
+        "sourceStatus",
+        "diagnostics"
+      ],
+      "type": "object"
+    }
+  }
+}

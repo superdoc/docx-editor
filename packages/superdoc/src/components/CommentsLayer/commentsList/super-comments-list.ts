@@ -20,6 +20,8 @@ type DirectoryHandle = Pick<SnapshotSubscribable<DirectorySlice>, 'observe' | 'g
 
 type DirectoryItems = Record<DirectoryFamily, readonly unknown[] | null>;
 
+type DirectoryReadiness = Record<DirectoryFamily, boolean>;
+
 const reviewAnalysisOf = (snapshot: DirectorySlice | null | undefined): ReviewAnalysisProgress | null => {
   const analysis = snapshot?.analysis;
   return analysis && typeof analysis.done === 'number' && typeof analysis.total === 'number' && analysis.total > 0
@@ -79,6 +81,7 @@ export class SuperComments extends EventEmitter {
   stopDirectoryObservers: Array<() => void>;
   directorySnapshots: DirectoryItems;
   directoryItemRefs: DirectoryItems;
+  directoryReady: DirectoryReadiness;
   directoryGeneration: number;
 
   constructor(options: SuperCommentsOptions | undefined, superdoc: SuperDoc) {
@@ -90,6 +93,7 @@ export class SuperComments extends EventEmitter {
     this.stopDirectoryObservers = [];
     this.directorySnapshots = { comments: null, trackChanges: null };
     this.directoryItemRefs = { comments: null, trackChanges: null };
+    this.directoryReady = { comments: false, trackChanges: false };
     this.directoryGeneration = 0;
     this.open();
   }
@@ -99,7 +103,6 @@ export class SuperComments extends EventEmitter {
     if (!store) return;
     const comments = this.directorySnapshots.comments;
     const trackChanges = this.directorySnapshots.trackChanges;
-    store.isReviewDirectoryLoading = comments == null || trackChanges == null;
     if (comments == null && trackChanges == null) return;
     store.setReviewDirectoryFromV2({
       superdoc: this.superdoc,
@@ -110,40 +113,34 @@ export class SuperComments extends EventEmitter {
 
   startDirectoryObservers() {
     const generation = ++this.directoryGeneration;
+    const isReady = (snapshot: DirectorySlice) => (snapshot?.listStatus ?? snapshot?.status) === 'ready';
     const subscribe = (handle: DirectoryHandle, family: DirectoryFamily) => {
-      const acceptDirectorySnapshot = (snapshot: DirectorySlice) => {
-        if (generation !== this.directoryGeneration) return;
-        if ((snapshot?.listStatus ?? snapshot?.status) !== 'ready') {
-          const store = readCommentsStore(this.superdoc);
-          if (store) {
-            store.isReviewDirectoryLoading = true;
-            if (family === 'trackChanges') store.reviewAnalysisProgress = reviewAnalysisOf(snapshot);
-          }
-          return;
-        }
-        if (family === 'trackChanges') {
-          const store = readCommentsStore(this.superdoc);
-          if (store) store.reviewAnalysisProgress = null;
-        }
+      const showItems = (snapshot: DirectorySlice) => {
         const items = Array.isArray(snapshot.items) ? snapshot.items : [];
-        if (this.directoryItemRefs[family] === items) {
-          const store = readCommentsStore(this.superdoc);
-          if (store) {
-            store.isReviewDirectoryLoading =
-              this.directorySnapshots.comments == null || this.directorySnapshots.trackChanges == null;
-          }
-          return;
-        }
+        if (this.directoryItemRefs[family] === items) return;
         this.directoryItemRefs[family] = items;
         this.directorySnapshots[family] = items;
         this.syncDirectory();
       };
-      const stop = handle.observe((snapshot) => {
-        acceptDirectorySnapshot(snapshot);
-      });
-      const readAfterLeaseAcquisition = () => acceptDirectorySnapshot(handle.getSnapshot());
-      if (typeof globalThis.queueMicrotask === 'function') globalThis.queueMicrotask(readAfterLeaseAcquisition);
-      else void Promise.resolve().then(readAfterLeaseAcquisition);
+      const acceptDirectorySnapshot = (snapshot: DirectorySlice) => {
+        if (generation !== this.directoryGeneration) return;
+        const ready = isReady(snapshot);
+        this.directoryReady[family] = ready;
+        const store = readCommentsStore(this.superdoc);
+        if (store && family === 'trackChanges')
+          store.reviewAnalysisProgress = ready ? null : reviewAnalysisOf(snapshot);
+        if (ready) showItems(snapshot);
+        if (store) store.isReviewDirectoryLoading = !this.directoryReady.comments || !this.directoryReady.trackChanges;
+      };
+      const showPaintedPagesWhileLoading = () => {
+        const snapshot = handle.getSnapshot();
+        if (generation === this.directoryGeneration && !this.directoryReady[family] && isReady(snapshot)) {
+          showItems(snapshot);
+        }
+      };
+      const stop = handle.observe(acceptDirectorySnapshot);
+      if (typeof globalThis.queueMicrotask === 'function') globalThis.queueMicrotask(showPaintedPagesWhileLoading);
+      else void Promise.resolve().then(showPaintedPagesWhileLoading);
       return stop;
     };
     const ui = this.superdoc?.ui;
@@ -183,6 +180,7 @@ export class SuperComments extends EventEmitter {
     for (const stop of this.stopDirectoryObservers.splice(0)) stop?.();
     this.directorySnapshots = { comments: null, trackChanges: null };
     this.directoryItemRefs = { comments: null, trackChanges: null };
+    this.directoryReady = { comments: false, trackChanges: false };
     const store = readCommentsStore(this.superdoc);
     if (store) {
       store.clearReviewDirectory();

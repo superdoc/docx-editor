@@ -1,0 +1,302 @@
+{
+  "definition": {
+    "description": "Remove border for a specific side or all sides of a paragraph.",
+    "expectedResult": "Returns a ParagraphMutationResult; reports NO_OP if the border is already absent.",
+    "memberPath": "format.paragraph.clearBorder",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "format/paragraph/clear-border.mdx",
+    "referenceGroup": "format.paragraph",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "resolution": {
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ParagraphAddress"
+                },
+                {
+                  "$ref": "#/$defs/HeadingAddress"
+                },
+                {
+                  "$ref": "#/$defs/ListItemAddress"
+                }
+              ]
+            }
+          },
+          "required": [
+            "target"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "side": {
+          "enum": [
+            "top",
+            "bottom",
+            "left",
+            "right",
+            "between",
+            "bar",
+            "all"
+          ]
+        },
+        "target": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ParagraphAddress"
+            },
+            {
+              "$ref": "#/$defs/HeadingAddress"
+            },
+            {
+              "$ref": "#/$defs/ListItemAddress"
+            }
+          ]
+        }
+      },
+      "required": [
+        "target",
+        "side"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "resolution": {
+              "additionalProperties": false,
+              "properties": {
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/ParagraphAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/HeadingAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/ListItemAddress"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "target"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            },
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ParagraphAddress"
+                },
+                {
+                  "$ref": "#/$defs/HeadingAddress"
+                },
+                {
+                  "$ref": "#/$defs/ListItemAddress"
+                }
+              ]
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success",
+            "target",
+            "resolution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "resolution": {
+              "additionalProperties": false,
+              "properties": {
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/ParagraphAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/HeadingAddress"
+                    },
+                    {
+                      "$ref": "#/$defs/ListItemAddress"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "target"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "resolution": {
+          "additionalProperties": false,
+          "properties": {
+            "target": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ParagraphAddress"
+                },
+                {
+                  "$ref": "#/$defs/HeadingAddress"
+                },
+                {
+                  "$ref": "#/$defs/ListItemAddress"
+                }
+              ]
+            }
+          },
+          "required": [
+            "target"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        },
+        "target": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ParagraphAddress"
+            },
+            {
+              "$ref": "#/$defs/HeadingAddress"
+            },
+            {
+              "$ref": "#/$defs/ListItemAddress"
+            }
+          ]
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "target",
+        "resolution"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -97,6 +97,7 @@ export function translateRenderReadinessDiagnostic(
   if (!diag || typeof diag.code !== 'string') return null;
   const { code, reason, severity } = diag;
   if (severity !== 'error' && severity !== 'warn') return null;
+  if (code === 'render.numbering.unsupported-numFmt' && severity === 'warn') return null;
 
   // Classify by code first, then gate by severity per bucket. The real
   // producers (render-readiness.ts) emit `page-geometry.failed`,
@@ -175,12 +176,11 @@ export function translateRenderReadinessDiagnostic(
 const BOOT_ERROR_NAME_TO_DIAGNOSTIC: Partial<Record<string, SuperDocDiagnosticCode>> = {
   OpenRenderNoProgressError: 'PERFORMANCE_ERROR',
   BoundedLocalPageCapError: 'PERFORMANCE_ERROR',
-  MountedEnginePassInterrupt: 'RENDER_ERROR',
   // Render-scheduler mount termination (see scheduler.ts's
   // `#terminateRecoveryMount`), e.g. cold-recovery giving up after a
   // source-completion failure. `.code` on this error class is always the
   // generic `'scheduler-disposed'`, so classification here matches by
-  // `.name`, the same as the other three entries -- the `message` (see
+  // `.name`, the same as the other entries -- the `message` (see
   // render-surface.ts's `sourceCompletionFailureReason`) still carries the
   // specific underlying reason for anyone reading it in Labs.
   RenderSchedulerWaitError: 'RENDER_ERROR',

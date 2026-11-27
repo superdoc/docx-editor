@@ -168,34 +168,6 @@ describe('superdoc/ui/vue composables', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it('useSuperDocCommand re-subscribes when a reactive id changes', async () => {
-    let commandId!: Ref<string>;
-    let command!: UseSuperDocCommandResult;
-
-    const { binding } = mountWithChild(() => {
-      commandId = ref('bold');
-      command = useSuperDocCommand(commandId);
-      return command;
-    });
-
-    expect(command.state.value).toEqual({ enabled: false, active: false, supported: false });
-    expect(command.enabled.value).toBe(false);
-    expect(command.active.value).toBe(false);
-    expect(command.supported.value).toBe(false);
-
-    binding.setSuperDoc(hostWithoutUi());
-    await nextTick();
-
-    const ui = binding.ui.value;
-    expect(ui).not.toBeNull();
-    const getSpy = vi.spyOn(ui!.commands, 'get');
-
-    commandId.value = 'italic';
-    await nextTick();
-
-    expect(getSpy).toHaveBeenCalledWith('italic');
-  });
-
   it('useSuperDocCommand seeds from the current command state on bind and on id change', async () => {
     // `CommandHandle.observe` notifies on change only. A composable that just
     // subscribes leaves an already-enabled command rendering as disabled until

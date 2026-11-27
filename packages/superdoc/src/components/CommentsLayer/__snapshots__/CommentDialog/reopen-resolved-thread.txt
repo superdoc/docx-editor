@@ -1,0 +1,92 @@
+before:
+
+store:
+{
+  "activeComment": "comment-allow-resolve-omitted",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-allow-resolve-omitted",
+      "commentText": "Open",
+      "resolvedTime": 1795089540000
+    },
+    {
+      "commentId": "reply-allow-resolve-omitted",
+      "parentCommentId": "comment-allow-resolve-omitted",
+      "commentText": "Reply in the same thread",
+      "resolvedTime": 1795089540000
+    }
+  ]
+}
+
+dialog:
+classes: is-active is-resolved
+badge: Resolved 11:59AM Nov 19
+comment-allow-resolve-omitted: comment: Open
+reply-allow-resolve-omitted: comment: Reply in the same thread
+
+action: header emits reopen
+
+document calls:
+comments.reopen {"commentId":"comment-allow-resolve-omitted"}
+comments.setActiveComment "comment-allow-resolve-omitted"
+
+comments-update events:
+[
+  {
+    "type": "update",
+    "comment": {
+      "commentId": "comment-allow-resolve-omitted",
+      "fileId": "doc-1",
+      "createdTime": 1795089600000,
+      "isInternal": true,
+      "commentText": "Open",
+      "commentFormat": "html",
+      "selection": {
+        "documentId": "doc-1",
+        "page": 1,
+        "selectionBounds": {},
+        "source": "<undefined>"
+      }
+    },
+    "changes": [
+      {
+        "key": "resolvedTime",
+        "value": null
+      }
+    ]
+  }
+]
+
+superdoc.focus calls: [
+  []
+]
+
+after:
+
+store:
+{
+  "activeComment": "comment-allow-resolve-omitted",
+  "editingCommentId": null,
+  "draft": "",
+  "pendingComment": null,
+  "rows": [
+    {
+      "commentId": "comment-allow-resolve-omitted",
+      "commentText": "Open"
+    },
+    {
+      "commentId": "reply-allow-resolve-omitted",
+      "parentCommentId": "comment-allow-resolve-omitted",
+      "commentText": "Reply in the same thread"
+    }
+  ]
+}
+
+dialog:
+classes: is-active
+comment-allow-resolve-omitted: comment: Open
+reply-allow-resolve-omitted: comment: Reply in the same thread
+reply pill

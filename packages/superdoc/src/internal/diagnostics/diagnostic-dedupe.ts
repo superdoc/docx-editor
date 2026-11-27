@@ -18,45 +18,30 @@ export function getV2DiagnosticGeneration(payload?: { generation?: unknown } | n
 }
 
 export interface V2DiagnosticDedupe {
+  markRenderRecovered(documentId: string | null | undefined, generation: number): void;
   shouldEmit(
     documentId: string | null | undefined,
     generation: number,
     internalCode: string | null | undefined,
+    presentationCurrent?: boolean,
   ): boolean;
 }
 
-/**
- * Creates a dedupe tracker for diagnostic emissions, scoped by documentId
- * and generation. The key is `internalCode` only (per active generation) --
- * it deliberately does NOT include the diagnostic's message/reason text,
- * because the real producers embed dynamic detail in it (e.g.
- * `render.provider-error`'s reason includes the underlying caught error's
- * message; `render.exact-content-hydration-failed` included a lease
- * generation and page-index list before it was excluded entirely). Keying
- * on that text would let the same recurring root cause re-fire `onException`
- * every time the embedded detail differs even slightly, defeating the
- * purpose of dedupe. Collapsing to one emission per (documentId, generation,
- * internalCode) treats repeated occurrences of the same code within one
- * open/replace attempt as one customer-facing issue, which is what an
- * integrator actually wants to see once per attempt.
- *
- * Memory: a scope's `Set` is reset whenever its generation advances, rather
- * than accumulating every generation's entries forever. This is safe --
- * dedupe only ever looks up the CURRENT generation, so a prior generation's
- * entries can never be matched again once the generation has moved on --
- * and bounds a single document's footprint to "distinct codes seen in the
- * current attempt" instead of "every code ever seen across every attempt."
- * It does not bound the outer map across many *different* documentIds over
- * a long-lived SuperDoc instance's life (e.g. a document-management app
- * cycling through many files); evicting on document removal would need to
- * hook document-lifecycle wiring, which is out of scope here.
- */
 export function createV2DiagnosticDedupe(): V2DiagnosticDedupe {
   const seenByScope = new Map<string, Set<string>>();
   const generationByScope = new Map<string, number>();
 
   return {
-    shouldEmit(documentId, generation, internalCode) {
+    markRenderRecovered(documentId, generation) {
+      const scopeKey = documentId ?? '';
+      if (generationByScope.get(scopeKey) !== generation) return;
+      const seen = seenByScope.get(scopeKey);
+      seen?.delete('render.typed.failed');
+      seen?.delete('worker-dom.failed');
+    },
+    shouldEmit(documentId, generation, internalCode, presentationCurrent = false) {
+      if (presentationCurrent && (internalCode === 'worker-dom.failed' || internalCode === 'render.typed.failed'))
+        return false;
       const scopeKey = documentId ?? '';
       let seen = seenByScope.get(scopeKey);
       if (!seen || generationByScope.get(scopeKey) !== generation) {

@@ -1,0 +1,26 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "range": {
+      "$ref": "#/$defs/TextMutationRange"
+    },
+    "requestedTarget": {
+      "$ref": "#/$defs/TextAddress"
+    },
+    "selectionTarget": {
+      "$ref": "#/$defs/SelectionTarget"
+    },
+    "target": {
+      "$ref": "#/$defs/TextAddress"
+    },
+    "text": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "target",
+    "range",
+    "text"
+  ],
+  "type": "object"
+}

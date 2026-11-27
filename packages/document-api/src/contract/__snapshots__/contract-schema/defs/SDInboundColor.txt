@@ -1,0 +1,17 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "model": {
+      "const": "rgb"
+    },
+    "value": {
+      "pattern": "^[0-9A-Fa-f]{6}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "model",
+    "value"
+  ],
+  "type": "object"
+}

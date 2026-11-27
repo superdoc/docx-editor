@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vite-plus/test';
+import { describe, it, expect, expectTypeOf } from 'vite-plus/test';
 
 import { toSliceSource, useSuperDocSlice } from './react.js';
 import type { BorrowedSuperDocUI, Subscribable } from './types.js';
@@ -74,12 +74,9 @@ describe('superdoc/ui/react — useSuperDocSlice source normalization', () => {
   });
 
   it('accepts a raw Subscribable pick as a SliceSource (type-level)', () => {
-    // Compile-time contract for Fix B: `useSuperDocSlice`'s `pick` accepts a raw
-    // `ui.select(...)` Subscribable (get/subscribe), not only snapshot handles.
-    // Never invoked; the body exists only to be type-checked.
-    const rawSubscribablePickIsAccepted = (): void => {
-      useSuperDocSlice((ui: BorrowedSuperDocUI) => ui.select((s) => s.document.mode), null);
-    };
-    expect(typeof rawSubscribablePickIsAccepted).toBe('function');
+    expectTypeOf(useSuperDocSlice).toBeCallableWith(
+      (ui: BorrowedSuperDocUI) => ui.select((s) => s.document.mode),
+      null,
+    );
   });
 });

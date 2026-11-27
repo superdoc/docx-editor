@@ -251,6 +251,13 @@ const stages = [
       'then runs every typecheck scenario.',
   },
   {
+    name: 'collaboration-room-name-runtime',
+    cwd: REPO_ROOT,
+    cmd: 'node',
+    args: ['--test', 'tests/consumer-typecheck/collaboration-room-name.test.ts'],
+    blurb: 'Packed ESM and CommonJS room resolution works in a windowless host.',
+  },
+  {
     name: 'deep-type-audit-supported-root',
     cwd: resolve(REPO_ROOT, 'tests/consumer-typecheck'),
     cmd: 'node',

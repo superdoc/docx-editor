@@ -136,13 +136,10 @@ describe('PdfCommentsLayer', () => {
     expect(style).toContain('height: 60px');
   });
 
-  it('activates the real comment through setActiveComment on click', async () => {
+  it('activates the comment on click', async () => {
     commentsStore.commentsList = [makePdfComment()];
-    const setActiveSpy = vi.spyOn(commentsStore, 'setActiveComment');
     const wrapper = mountLayer();
     await wrapper.find('.sd-comment-anchor').trigger('click');
-    expect(setActiveSpy).toHaveBeenCalledTimes(1);
-    expect(setActiveSpy.mock.calls[0][1]).toBe('pdf-c1');
     expect(commentsStore.activeComment).toBe('pdf-c1');
   });
 

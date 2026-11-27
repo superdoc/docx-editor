@@ -25,6 +25,10 @@ call targets an empty paragraph and replaces it with the supplied HTML content:
 
 <include>../../../../snippets/editor/add-template-fields.ts</include>
 
+When supplying `content`, `html`, or `json` to a block control at a text selection, place the caret so both
+endpoints are at the same text position. A noncollapsed text selection returns `CAPABILITY_UNAVAILABLE` and
+leaves the document and history unchanged. Omit the preset to wrap a supported range in a block control.
+
 `kind` controls placement. `controlType` controls field behavior:
 
 | Property      | This example         | Meaning                                          |

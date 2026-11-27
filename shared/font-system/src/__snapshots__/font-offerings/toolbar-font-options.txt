@@ -1,0 +1,28 @@
+no pack configured
+  Arial -> Arial, sans-serif
+  Courier New -> Courier New, monospace
+  Times New Roman -> Times New Roman, serif
+
+pack configured
+  Arial -> Arial, sans-serif
+  Arial Black -> Arial Black, sans-serif
+  Arial Narrow -> Arial Narrow, sans-serif
+  Baskerville Old Face -> Baskerville Old Face, serif
+  Bookman Old Style -> Bookman Old Style, serif
+  Brush Script MT -> Brush Script MT, serif
+  Calibri -> Calibri, sans-serif
+  Century -> Century, serif
+  Century Gothic -> Century Gothic, sans-serif
+  Comic Sans MS -> Comic Sans MS, sans-serif
+  Cooper Black -> Cooper Black, serif
+  Courier New -> Courier New, monospace
+  Garamond -> Garamond, serif
+  Georgia -> Georgia, serif
+  Gill Sans MT Condensed -> Gill Sans MT Condensed, sans-serif
+  Helvetica -> Helvetica, sans-serif
+  Lucida Console -> Lucida Console, monospace
+  Segoe UI -> Segoe UI, sans-serif
+  Tahoma -> Tahoma, sans-serif
+  Times New Roman -> Times New Roman, serif
+  Trebuchet MS -> Trebuchet MS, sans-serif
+  Verdana -> Verdana, sans-serif

@@ -1,0 +1,181 @@
+{
+  "definition": {
+    "description": "Move a paragraph within the same story to a new anchor paragraph (before or after). Cross-story and relationship-bearing moves reject with named reasons. Tracked-mode authoring emits paired `<w:moveFrom>` / `<w:moveTo>` review state with explicit move range marker identity; safe content (no comment/bookmark/permission anchors and no pre-existing tracked wrappers) is required for tracked authoring.",
+    "expectedResult": "Returns a BlocksMoveResult; on success carries the moved paragraph address plus affectedStories and a txId. Tracked-mode results include `trackedChangeRefs` pointing at the paired move review entity.",
+    "memberPath": "blocks.move",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "INVALID_TARGET",
+        "TARGET_NOT_FOUND",
+        "CAPABILITY_UNAVAILABLE",
+        "INVALID_CONTEXT",
+        "INVALID_INPUT"
+      ],
+      "returnsReceipt": true,
+      "supportsDryRun": false,
+      "supportsTrackedMode": true,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "always"
+    },
+    "referenceDocPath": "blocks/move.mdx",
+    "referenceGroup": "blocks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE",
+                "INVALID_TARGET",
+                "INVALID_INPUT"
+              ]
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "destination": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        },
+        "placement": {
+          "enum": [
+            "before",
+            "after"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        }
+      },
+      "required": [
+        "source",
+        "destination",
+        "placement"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "moved": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "success": {
+          "const": true
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "success",
+        "moved"
+      ],
+      "type": "object"
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "moved": {
+          "$ref": "#/$defs/BlockNodeAddress"
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "success": {
+          "const": true
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "success",
+        "moved"
+      ],
+      "type": "object"
+    }
+  }
+}

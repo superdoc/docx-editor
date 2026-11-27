@@ -1,3 +1,4 @@
+import { isCommentResolved } from '../../components/CommentsLayer/comment-params.js';
 import { buildTrackedChangeThreadOwnerIndex } from './tracked-change-thread-index.js';
 
 type CommentId = string | number;
@@ -14,6 +15,7 @@ export type GroupableComment = {
   trackedChangeThreadParentId?: CommentId | null;
   semanticColorKey?: string | null;
   createdTime?: number | null;
+  isResolved?: boolean;
   resolvedTime?: number | null;
 };
 
@@ -43,7 +45,7 @@ export const groupComments = <Comment extends GroupableComment>(
     if (!isVisible(comment)) continue;
     const trackedChangeThreadParentId = trackedChangeThreadOwnerIndex.get(comment)?.commentId ?? null;
     const parentId = comment.trackedChange ? null : comment.parentCommentId || trackedChangeThreadParentId;
-    if (comment.resolvedTime) resolvedComments.push(comment);
+    if (isCommentResolved(comment)) resolvedComments.push(comment);
     else if (!parentId) parentComments.push({ ...comment });
   }
 
@@ -81,4 +83,4 @@ export const groupCommittedComments = <Comment extends GroupableComment>(
 };
 
 export const hasOpenTrackedChange = ({ parentComments }: GroupedComments<GroupableComment>): boolean =>
-  parentComments.some((comment) => comment.trackedChange && !comment.resolvedTime);
+  parentComments.some((comment) => comment.trackedChange && !isCommentResolved(comment));

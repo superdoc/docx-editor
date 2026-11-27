@@ -1,0 +1,299 @@
+{
+  "definition": {
+    "description": "Register a new citation source in the document store.",
+    "expectedResult": "Returns a CitationSourceMutationResult indicating success with the source address or a failure.",
+    "memberPath": "citations.sources.insert",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "non-idempotent",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_TARGET",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "citations/sources-insert.mdx",
+    "referenceGroup": "citations",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {},
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "additionalProperties": false,
+          "properties": {
+            "authors": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "first": {
+                    "type": "string"
+                  },
+                  "last": {
+                    "type": "string"
+                  },
+                  "middle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "last"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "city": {
+              "type": "string"
+            },
+            "doi": {
+              "type": "string"
+            },
+            "edition": {
+              "type": "string"
+            },
+            "editor": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "first": {
+                    "type": "string"
+                  },
+                  "last": {
+                    "type": "string"
+                  },
+                  "middle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "last"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "issue": {
+              "type": "string"
+            },
+            "journalName": {
+              "type": "string"
+            },
+            "medium": {
+              "type": "string"
+            },
+            "pages": {
+              "type": "string"
+            },
+            "publisher": {
+              "type": "string"
+            },
+            "shortTitle": {
+              "type": "string"
+            },
+            "standardNumber": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "translator": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "first": {
+                    "type": "string"
+                  },
+                  "last": {
+                    "type": "string"
+                  },
+                  "middle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "last"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "url": {
+              "type": "string"
+            },
+            "volume": {
+              "type": "string"
+            },
+            "year": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": {
+          "enum": [
+            "book",
+            "journalArticle",
+            "conferenceProceedings",
+            "report",
+            "website",
+            "patent",
+            "case",
+            "statute",
+            "thesis",
+            "film",
+            "interview",
+            "misc"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "additionalProperties": false,
+              "properties": {
+                "entityType": {
+                  "const": "citationSource"
+                },
+                "kind": {
+                  "const": "entity"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "entityType",
+                "sourceId"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": true
+            }
+          },
+          "required": [
+            "success",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "details": {},
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "entityType": {
+              "const": "citationSource"
+            },
+            "kind": {
+              "const": "entity"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entityType",
+            "sourceId"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": true
+        }
+      },
+      "required": [
+        "success",
+        "source"
+      ],
+      "type": "object"
+    }
+  }
+}

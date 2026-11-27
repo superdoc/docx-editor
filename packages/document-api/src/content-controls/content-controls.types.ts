@@ -286,10 +286,6 @@ interface CreateContentControlCommonInput {
 
 type CreateContentControlPlacement =
   | {
-      /**
-       * Text range to wrap in the new content control. When `content` is also
-       * provided, it replaces the selected text inside the new SDT.
-       */
       at?: SelectionTarget;
       target?: never;
     }

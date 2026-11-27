@@ -284,7 +284,7 @@ describe('WebFlowPainter', () => {
     expect(work).toMatchObject({ kind: 'splice', createdNodes: 1, removedNodes: 1, touchedItems: 1 });
   });
 
-  it('returns localized bindings without materializing a whole-root snapshot', () => {
+  it('returns bindings for only the changed item', () => {
     const root = mount();
     const painter = createWebFlowPainter(root);
     commit(painter, {
@@ -292,7 +292,6 @@ describe('WebFlowPainter', () => {
       epoch: 1,
       items: [item('a', 'alpha'), item('b', 'beta'), item('c', 'gamma')],
     });
-    const snapshot = vi.spyOn(painter, 'snapshot');
     const transaction = painter.prepare({
       kind: 'splice',
       expectedBaseEpoch: 1,
@@ -307,7 +306,6 @@ describe('WebFlowPainter', () => {
     const applied = transaction.apply();
     transaction.finalize();
 
-    expect(snapshot).not.toHaveBeenCalled();
     expect(applied.touchedBindings).toEqual([expect.objectContaining({ key: 'b', blockId: 'block-b' })]);
     expect(applied.changedBindings).toEqual([expect.objectContaining({ key: 'b', blockId: 'block-b' })]);
   });

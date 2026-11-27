@@ -1,0 +1,107 @@
+yjs comments:
+[
+  {
+    "createdTime": 1767225600000,
+    "commentId": "c1",
+    "commentText": "Hello",
+    "creatorName": "Alice",
+    "creatorEmail": "alice@example.com"
+  },
+  {
+    "createdTime": 1767225600000,
+    "commentId": "c1",
+    "commentText": "Duplicate",
+    "creatorName": "Bob",
+    "creatorEmail": "bob@example.com"
+  },
+  {
+    "createdTime": 1767225600000,
+    "commentId": "c2",
+    "commentText": "Another",
+    "parentCommentId": "c1",
+    "isInternal": false
+  }
+]
+
+store:
+[
+  {
+    "commentId": "c1",
+    "mentions": [],
+    "creatorId": null,
+    "creatorEmail": "alice@example.com",
+    "creatorName": "Alice",
+    "creatorImage": null,
+    "createdTime": 1767225600000,
+    "importedAuthor": null,
+    "docxCommentJSON": null,
+    "isInternal": true,
+    "commentText": "Hello",
+    "commentFormat": "html",
+    "selection": {
+      "page": 1,
+      "selectionBounds": {}
+    },
+    "trackedChangeText": null,
+    "trackedChangeType": null,
+    "trackedChangeDisplayType": null,
+    "semanticColorKey": null,
+    "semanticColor": null,
+    "trackedChangeStory": null,
+    "trackedChangeStoryKind": null,
+    "trackedChangeStoryLabel": "",
+    "trackedChangeAnchorKey": null,
+    "trackedChangeCanonicalId": null,
+    "trackedChangePositionAliases": [],
+    "trackedChangeDecision": null,
+    "trackedChangeLabel": null,
+    "trackedChangeDetailLines": null,
+    "trackedChangeImagePreview": null,
+    "customAttributes": null,
+    "deletedText": null,
+    "resolvedTime": null,
+    "resolvedById": null,
+    "resolvedByEmail": null,
+    "resolvedByName": null
+  },
+  {
+    "commentId": "c2",
+    "parentCommentId": "c1",
+    "mentions": [],
+    "creatorId": null,
+    "creatorEmail": null,
+    "creatorName": null,
+    "creatorImage": null,
+    "createdTime": 1767225600000,
+    "importedAuthor": null,
+    "docxCommentJSON": null,
+    "isInternal": false,
+    "commentText": "Another",
+    "commentFormat": "html",
+    "selection": {
+      "page": 1,
+      "selectionBounds": {}
+    },
+    "trackedChangeText": null,
+    "trackedChangeType": null,
+    "trackedChangeDisplayType": null,
+    "semanticColorKey": null,
+    "semanticColor": null,
+    "trackedChangeStory": null,
+    "trackedChangeStoryKind": null,
+    "trackedChangeStoryLabel": "",
+    "trackedChangeAnchorKey": null,
+    "trackedChangeCanonicalId": null,
+    "trackedChangePositionAliases": [],
+    "trackedChangeDecision": null,
+    "trackedChangeLabel": null,
+    "trackedChangeDetailLines": null,
+    "trackedChangeImagePreview": null,
+    "customAttributes": null,
+    "deletedText": null,
+    "resolvedTime": null,
+    "resolvedById": null,
+    "resolvedByEmail": null,
+    "resolvedByName": null
+  }
+]

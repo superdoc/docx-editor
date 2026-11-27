@@ -1,0 +1,51 @@
+{
+  "definition": {
+    "description": "List anchored-metadata entries in the document, optionally filtered by consumer namespace and/or a `within` selection (returns only entries whose anchor overlaps `within`).",
+    "expectedResult": "Returns an AnchoredMetadataListResult with summary entries (no payload); fetch payload via get.",
+    "memberPath": "metadata.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "metadata/list.mdx",
+    "referenceGroup": "metadata",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "offset": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "within": {
+          "$ref": "#/$defs/SelectionTarget"
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

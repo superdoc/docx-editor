@@ -114,7 +114,7 @@ function requireFormatReadResult(value: unknown): FormatReadSelectionResult {
 function emptyStylesSlice(): StylesSlice {
   return {
     ready: false,
-    status: 'ready',
+    status: 'pending',
     catalogRevision: null,
     quickGallery: [],
     activeParagraphStyleId: null,

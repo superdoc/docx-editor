@@ -1,0 +1,14 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "memory",
+    "documentId": "room-1"
+  }
+}
+
+result:
+{
+  "ok": false,
+  "reason": "unsupported-provider-family",
+  "message": "SuperDoc v2 collaboration does not support the \"memory\" provider family. Supported families are y-websocket, hocuspocus, liveblocks, and extension."
+}

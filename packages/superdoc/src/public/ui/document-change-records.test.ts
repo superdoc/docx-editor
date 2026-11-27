@@ -123,6 +123,53 @@ describe('remote change records helpers', () => {
 });
 
 describe('document change records delivery', () => {
+  it('delivers settled accepted preview records once without the discarded display records', async () => {
+    const { changes, emit } = mountController();
+    const draft = record({
+      id: 'draft',
+      changes: [{ kind: 'create', story: body, blockId: 'D', text: 'Discarded draft' }],
+    });
+    const accepted = record({
+      id: 'accepted',
+      seq: 2,
+      changes: [{ kind: 'create', story: body, blockId: 'F', text: 'Accepted content' }],
+    });
+    emit({ type: 'changes:recorded', displayOnly: true, records: [draft, accepted] });
+    await Promise.resolve();
+    expect(changes).toEqual([]);
+    emit({ type: 'collaboration:remote-changed', records: [accepted] });
+    await Promise.resolve();
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({
+      cause: 'remote',
+      scope: { kind: 'known', stories: [body] },
+      records: [accepted],
+    });
+    expect(JSON.stringify(changes)).not.toContain('Discarded draft');
+  });
+
+  it('keeps a genuine pending edit with an accepted preview in the same callback', async () => {
+    const { changes, emit } = mountController();
+    const accepted = record({ id: 'accepted', seq: 1 });
+    const genuine = record({ id: 'peer', seq: 2, actor: { id: 'another-peer' } });
+    emit({ type: 'changes:recorded', records: [genuine] });
+    emit({ type: 'collaboration:remote-changed', records: [accepted] });
+    await Promise.resolve();
+    expect(changes).toHaveLength(1);
+    expect(changes[0]?.records).toEqual([accepted, genuine]);
+  });
+
+  it('retains an ordinary mixed record when its identity also owns the accepted projection', async () => {
+    const { changes, emit } = mountController();
+    const genuine = record();
+    const accepted = record({ changes: [{ kind: 'create', story: body, blockId: 'F', text: 'Accepted content' }] });
+    emit({ type: 'changes:recorded', records: [genuine] });
+    emit({ type: 'collaboration:remote-changed', records: [accepted] });
+    await Promise.resolve();
+    expect(changes).toHaveLength(1);
+    expect(changes[0]?.records).toEqual([genuine]);
+  });
+
   it('attaches remote records to the remote change that follows them', () => {
     const { changes, emit, remoteChanged } = mountController();
     const first = record();

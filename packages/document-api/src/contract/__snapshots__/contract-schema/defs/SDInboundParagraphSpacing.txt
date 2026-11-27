@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "after": {
+      "type": "number"
+    },
+    "before": {
+      "type": "number"
+    },
+    "line": {
+      "type": "number"
+    },
+    "lineRule": {
+      "enum": [
+        "auto",
+        "exact",
+        "atLeast"
+      ]
+    }
+  },
+  "type": "object"
+}

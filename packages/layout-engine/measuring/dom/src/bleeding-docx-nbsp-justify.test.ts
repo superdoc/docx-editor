@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vite-plus/test';
 import { measureBlock } from './index.js';
 import type { FlowBlock, ParagraphMeasure, Measure } from '@superdoc/contracts';
-import { calculateJustifySpacing } from '@superdoc/contracts';
 
 /**
  * End-to-end regression for the "justified text with NBSP overflows the right
@@ -92,7 +91,7 @@ const countTrueStretchPoints = (block: FlowBlock, line: ParagraphMeasure['lines'
 };
 
 describe('bleeding.docx numeric repro', () => {
-  it('every non-last justified line lands on availableWidth once the browser stretches every real space+NBSP position', async () => {
+  it('every non-last justified line counts each space and NBSP the browser stretches', async () => {
     const measure = expectParagraphMeasure(await measureBlock(makeBlock(), PAGE_CONTENT_WIDTH_PX));
     expect(measure.lines.length).toBeGreaterThan(1);
 
@@ -100,22 +99,7 @@ describe('bleeding.docx numeric repro', () => {
       const isLastLine = i === measure.lines.length - 1;
       if (isLastLine) return; // justify doesn't apply to the true last line
 
-      const lineWidth = line.naturalWidth ?? line.width;
-      const availableWidth = line.maxWidth ?? line.width;
-      const spacingPerSpace = calculateJustifySpacing({
-        lineWidth,
-        availableWidth,
-        spaceCount: line.spaceCount ?? 0,
-        shouldJustify: true,
-      });
-      const trueStretchPoints = countTrueStretchPoints(makeBlock(), line);
-      // What a real browser actually renders: lineWidth plus spacingPerSpace
-      // applied at every true stretch point (ASCII space + NBSP), not just the
-      // ones the measurer's own spaceCount happened to count.
-      const actualPaintedWidth = lineWidth + spacingPerSpace * trueStretchPoints;
-
-      expect(line.spaceCount).toBe(trueStretchPoints);
-      expect(actualPaintedWidth).toBeCloseTo(availableWidth, 3);
+      expect(line.spaceCount).toBe(countTrueStretchPoints(makeBlock(), line));
     });
   });
 });

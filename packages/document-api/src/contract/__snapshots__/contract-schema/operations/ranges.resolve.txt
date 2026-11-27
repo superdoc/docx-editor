@@ -1,0 +1,271 @@
+{
+  "definition": {
+    "description": "Resolve two explicit anchors into a contiguous document range. Returns a transparent SelectionTarget, handle metadata, and preview metadata. handle.ref is nullable and present only when the resolved range is mutation-ready; callers must check handle.ref !== null and/or coversFullTarget before using it for mutations. Stateless and deterministic.",
+    "expectedResult": "Returns a ResolveRangeOutput with evaluatedRevision, handle.ref may be null, handle.coversFullTarget, target (SelectionTarget), and preview metadata.",
+    "memberPath": "ranges.resolve",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "INVALID_INPUT",
+          "INVALID_TARGET",
+          "TARGET_NOT_FOUND",
+          "INVALID_CONTEXT",
+          "REVISION_MISMATCH",
+          "AMBIGUOUS_MATCH",
+          "ADDRESS_STALE",
+          "STORY_MISMATCH"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "ranges/resolve.mdx",
+    "referenceGroup": "ranges",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "edge": {
+                  "enum": [
+                    "start",
+                    "end"
+                  ]
+                },
+                "kind": {
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind",
+                "edge"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "point"
+                },
+                "point": {
+                  "$ref": "#/$defs/SelectionPoint"
+                }
+              },
+              "required": [
+                "kind",
+                "point"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "boundary": {
+                  "enum": [
+                    "start",
+                    "end"
+                  ]
+                },
+                "kind": {
+                  "const": "ref"
+                },
+                "ref": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "ref",
+                "boundary"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "expectedRevision": {
+          "type": "string"
+        },
+        "in": {
+          "$ref": "#/$defs/StoryLocator"
+        },
+        "start": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "edge": {
+                  "enum": [
+                    "start",
+                    "end"
+                  ]
+                },
+                "kind": {
+                  "const": "document"
+                }
+              },
+              "required": [
+                "kind",
+                "edge"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "point"
+                },
+                "point": {
+                  "$ref": "#/$defs/SelectionPoint"
+                }
+              },
+              "required": [
+                "kind",
+                "point"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "boundary": {
+                  "enum": [
+                    "start",
+                    "end"
+                  ]
+                },
+                "kind": {
+                  "const": "ref"
+                },
+                "ref": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "ref",
+                "boundary"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluatedRevision": {
+          "type": "string"
+        },
+        "handle": {
+          "additionalProperties": false,
+          "properties": {
+            "coversFullTarget": {
+              "type": "boolean"
+            },
+            "ref": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "refStability": {
+              "const": "ephemeral"
+            }
+          },
+          "required": [
+            "ref",
+            "refStability",
+            "coversFullTarget"
+          ],
+          "type": "object"
+        },
+        "preview": {
+          "additionalProperties": false,
+          "properties": {
+            "blocks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "nodeId": {
+                    "type": "string"
+                  },
+                  "nodeType": {
+                    "enum": [
+                      "paragraph",
+                      "heading",
+                      "listItem",
+                      "table",
+                      "tableRow",
+                      "tableCell",
+                      "tableOfContents",
+                      "image",
+                      "sdt"
+                    ]
+                  },
+                  "textPreview": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "nodeId",
+                  "nodeType",
+                  "textPreview"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "text": {
+              "type": "string"
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "text",
+            "truncated",
+            "blocks"
+          ],
+          "type": "object"
+        },
+        "target": {
+          "$ref": "#/$defs/SelectionTarget"
+        }
+      },
+      "required": [
+        "evaluatedRevision",
+        "handle",
+        "target",
+        "preview"
+      ],
+      "type": "object"
+    }
+  }
+}

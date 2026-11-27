@@ -1,0 +1,11 @@
+input: null
+active paragraph style: Heading1
+direct formatting state: unset
+
+doc.format.readSelection calls:
+  {"selection":"current","keys":["bold","italic","underline","color","fontSize","rFonts","rStyle"],"view":"effective"}
+  {"selection":"current","keys":["bold","italic","underline","color","fontSize","rFonts","rStyle"],"view":"direct"}
+
+doc.styles.apply calls:
+
+receipt: {"success":false,"failure":{"code":"NO_OP","message":"The selection already matches the style."}}

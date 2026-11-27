@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "blockId": {
+      "type": "string"
+    },
+    "changeIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "commentIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "kind": {
+      "const": "text"
+    },
+    "output": {
+      "$ref": "#/$defs/Range"
+    },
+    "source": {
+      "$ref": "#/$defs/TextTarget"
+    }
+  },
+  "required": [
+    "kind",
+    "output",
+    "source",
+    "blockId"
+  ],
+  "type": "object"
+}

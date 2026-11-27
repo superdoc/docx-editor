@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "affectedObjectId": {
+      "type": "string"
+    },
+    "affectedPartUri": {
+      "type": "string"
+    },
+    "canProceed": {
+      "type": "boolean"
+    },
+    "code": {
+      "type": "string"
+    },
+    "feature": {
+      "enum": [
+        "comments",
+        "trackedChanges"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "severity": {
+      "const": "warning"
+    }
+  },
+  "required": [
+    "code",
+    "message",
+    "feature",
+    "severity",
+    "canProceed"
+  ],
+  "type": "object"
+}

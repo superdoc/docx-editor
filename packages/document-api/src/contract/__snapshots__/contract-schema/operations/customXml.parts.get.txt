@@ -1,0 +1,77 @@
+{
+  "definition": {
+    "description": "Get a single Custom XML Data Storage Part by itemID or package part name, including its full content. v1 partName targeting is limited to Word-style customXml/itemN.xml paths.",
+    "expectedResult": "Returns a CustomXmlPartInfo with id, partName, namespaces, schemaRefs, and content; or null if not found.",
+    "memberPath": "customXml.parts.get",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "custom-xml/parts/get.mdx",
+    "referenceGroup": "customXml",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "partName": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "partName"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

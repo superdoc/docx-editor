@@ -1,0 +1,13 @@
+page 1
+  heading-1 lines 0-1 at x 20, y 20
+  filler-a lines 0-6 at x 20, y 30
+  page-field-1 lines 0-1 at x 20, y 90 text "1‑1"
+  filler-b lines 0-2 at x 20, y 100
+page 2
+  filler-b lines 2-8 at x 20, y 20
+  page-field-2 lines 0-1 at x 20, y 80 text "2‑2"
+  filler-c lines 0-1 at x 20, y 90
+  heading-2 lines 0-1 at x 20, y 100
+  filler-d lines 0-1 at x 20, y 110
+page 3
+  filler-d lines 1-9 at x 20, y 20

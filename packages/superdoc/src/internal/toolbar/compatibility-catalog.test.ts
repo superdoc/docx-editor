@@ -166,9 +166,11 @@ describe('built-in toolbar compatibility catalog', () => {
     }
   });
 
-  it('exposes items by group and a stable name index', () => {
+  it('exposes items by group and a stable name index', async () => {
     expect(listBuiltInToolbarItemsByGroup('left').map((e) => e.name)).toEqual(expect.arrayContaining(['undo', 'redo']));
-    expect(ALL_BUILT_IN_TOOLBAR_ITEM_NAMES).toEqual(BUILT_IN_TOOLBAR_CATALOG.map((e) => e.name));
     expect(new Set(ALL_BUILT_IN_TOOLBAR_ITEM_NAMES).size).toBe(ALL_BUILT_IN_TOOLBAR_ITEM_NAMES.length);
+    await expect(`${ALL_BUILT_IN_TOOLBAR_ITEM_NAMES.join('\n')}\n`).toMatchFileSnapshot(
+      './__snapshots__/compatibility-catalog/built-in-item-names.txt',
+    );
   });
 });

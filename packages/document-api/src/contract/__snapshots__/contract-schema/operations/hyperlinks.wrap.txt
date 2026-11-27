@@ -1,0 +1,524 @@
+{
+  "definition": {
+    "description": "Wrap an existing text range with a hyperlink. A range inside one pending tracked insertion is linked without authoring a revision: the insertion keeps its author and date and is split at the range boundaries. Ranges that cross a revision boundary or touch deleted, moved or several revisions are refused.",
+    "expectedResult": "Returns a HyperlinkMutationResult with the created hyperlink address on success, or a failure code on no-op or an unsupported revision context.",
+    "memberPath": "hyperlinks.wrap",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "conditional",
+      "mutates": true,
+      "possibleFailureCodes": [
+        "NO_OP",
+        "INVALID_CONTEXT",
+        "CAPABILITY_UNAVAILABLE"
+      ],
+      "supportsConditionalTrackedMode": true,
+      "supportsDryRun": true,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_TARGET",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "conditional"
+    },
+    "referenceDocPath": "hyperlinks/wrap.mdx",
+    "referenceGroup": "hyperlinks",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "NO_OP",
+                "INVALID_TARGET",
+                "TARGET_NOT_FOUND",
+                "CAPABILITY_UNAVAILABLE"
+              ]
+            },
+            "details": {
+              "type": "object"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "success": {
+          "const": false
+        }
+      },
+      "required": [
+        "success",
+        "failure"
+      ],
+      "type": "object"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "link": {
+          "additionalProperties": false,
+          "properties": {
+            "destination": {
+              "additionalProperties": false,
+              "properties": {
+                "anchor": {
+                  "type": "string"
+                },
+                "docLocation": {
+                  "type": "string"
+                },
+                "href": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "rel": {
+              "description": "Browser relationship tokens kept for the current editing session; not persisted in DOCX or reviewed by Word.",
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "tooltip": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "destination"
+          ],
+          "type": "object"
+        },
+        "target": {
+          "$ref": "#/$defs/TextAddress"
+        }
+      },
+      "required": [
+        "target",
+        "link"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "affectedStories": {
+              "items": {
+                "$ref": "#/$defs/StoryLocator"
+              },
+              "type": "array"
+            },
+            "appliedChangeMode": {
+              "enum": [
+                "direct",
+                "tracked"
+              ]
+            },
+            "changeTag": {
+              "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+              "type": "string"
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "createdRId": {
+              "type": "string"
+            },
+            "effects": {
+              "$ref": "#/$defs/ReceiptEffects"
+            },
+            "hyperlink": {
+              "additionalProperties": false,
+              "properties": {
+                "anchor": {
+                  "$ref": "#/$defs/InlineAnchor"
+                },
+                "kind": {
+                  "const": "inline"
+                },
+                "nodeType": {
+                  "const": "hyperlink"
+                },
+                "story": {
+                  "$ref": "#/$defs/StoryLocator"
+                }
+              },
+              "required": [
+                "kind",
+                "nodeType",
+                "anchor"
+              ],
+              "type": "object"
+            },
+            "hyperlinkNodeId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "inserted": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "invalidatedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRef"
+              },
+              "type": "array"
+            },
+            "partsCreated": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "partsModified": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "remappedRefs": {
+              "items": {
+                "$ref": "#/$defs/AffectedRefRemapping"
+              },
+              "type": "array"
+            },
+            "removed": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "status": {
+              "const": "NO_OP"
+            },
+            "success": {
+              "const": true
+            },
+            "temporary": {
+              "additionalProperties": false,
+              "properties": {
+                "cancelledBy": {
+                  "const": "native-edit",
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "onNativeEdit": {
+                  "enum": [
+                    "cancel",
+                    "preserve"
+                  ],
+                  "type": "string"
+                },
+                "phase": {
+                  "enum": [
+                    "begin",
+                    "replace",
+                    "rollback",
+                    "commit"
+                  ]
+                },
+                "tag": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "phase",
+                "tag"
+              ],
+              "type": "object"
+            },
+            "textRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TextRangeShift"
+              },
+              "type": "array"
+            },
+            "trackedChangeCount": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "trackedChangeRefs": {
+              "items": {
+                "$ref": "#/$defs/TrackedChangeAddress"
+              },
+              "type": "array"
+            },
+            "trackedTextRangeShifts": {
+              "items": {
+                "$ref": "#/$defs/TrackedTextRangeShift"
+              },
+              "type": "array"
+            },
+            "txId": {
+              "type": "string"
+            },
+            "updated": {
+              "items": {
+                "$ref": "#/$defs/EntityAddress"
+              },
+              "type": "array"
+            },
+            "warnings": {
+              "items": {
+                "$ref": "#/$defs/ReviewWarning"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "success",
+            "hyperlink"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "failure": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "enum": [
+                    "NO_OP",
+                    "INVALID_TARGET",
+                    "TARGET_NOT_FOUND",
+                    "CAPABILITY_UNAVAILABLE"
+                  ]
+                },
+                "details": {
+                  "type": "object"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "success": {
+              "const": false
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "success": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedStories": {
+          "items": {
+            "$ref": "#/$defs/StoryLocator"
+          },
+          "type": "array"
+        },
+        "appliedChangeMode": {
+          "enum": [
+            "direct",
+            "tracked"
+          ]
+        },
+        "changeTag": {
+          "description": "Caller correlation for this commit only; never persisted or replayed on Undo/Redo.",
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "createdRId": {
+          "type": "string"
+        },
+        "effects": {
+          "$ref": "#/$defs/ReceiptEffects"
+        },
+        "hyperlink": {
+          "additionalProperties": false,
+          "properties": {
+            "anchor": {
+              "$ref": "#/$defs/InlineAnchor"
+            },
+            "kind": {
+              "const": "inline"
+            },
+            "nodeType": {
+              "const": "hyperlink"
+            },
+            "story": {
+              "$ref": "#/$defs/StoryLocator"
+            }
+          },
+          "required": [
+            "kind",
+            "nodeType",
+            "anchor"
+          ],
+          "type": "object"
+        },
+        "hyperlinkNodeId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "inserted": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "invalidatedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRef"
+          },
+          "type": "array"
+        },
+        "partsCreated": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "partsModified": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remappedRefs": {
+          "items": {
+            "$ref": "#/$defs/AffectedRefRemapping"
+          },
+          "type": "array"
+        },
+        "removed": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "status": {
+          "const": "NO_OP"
+        },
+        "success": {
+          "const": true
+        },
+        "temporary": {
+          "additionalProperties": false,
+          "properties": {
+            "cancelledBy": {
+              "const": "native-edit",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "onNativeEdit": {
+              "enum": [
+                "cancel",
+                "preserve"
+              ],
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "begin",
+                "replace",
+                "rollback",
+                "commit"
+              ]
+            },
+            "tag": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "phase",
+            "tag"
+          ],
+          "type": "object"
+        },
+        "textRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TextRangeShift"
+          },
+          "type": "array"
+        },
+        "trackedChangeCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trackedChangeRefs": {
+          "items": {
+            "$ref": "#/$defs/TrackedChangeAddress"
+          },
+          "type": "array"
+        },
+        "trackedTextRangeShifts": {
+          "items": {
+            "$ref": "#/$defs/TrackedTextRangeShift"
+          },
+          "type": "array"
+        },
+        "txId": {
+          "type": "string"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/EntityAddress"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/ReviewWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "success",
+        "hyperlink"
+      ],
+      "type": "object"
+    }
+  }
+}

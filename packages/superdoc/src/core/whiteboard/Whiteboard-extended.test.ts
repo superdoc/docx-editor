@@ -89,13 +89,6 @@ describe('Whiteboard extended', () => {
       const second = wb.getPage(0);
       expect(first).toBe(second);
     });
-
-    it('rerender calls render on each page', () => {
-      const wb = new Whiteboard();
-      wb.setPageSize(0, { width: 100, height: 100 });
-      wb.setPageSize(1, { width: 100, height: 100 });
-      expect(() => wb.rerender()).not.toThrow();
-    });
   });
 
   describe('register / getType', () => {

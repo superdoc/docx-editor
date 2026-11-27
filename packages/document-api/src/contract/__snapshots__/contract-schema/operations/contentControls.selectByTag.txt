@@ -1,0 +1,163 @@
+{
+  "definition": {
+    "description": "Select content controls matching a specific tag value.",
+    "expectedResult": "Returns a ContentControlsListResult with matching items.",
+    "memberPath": "contentControls.selectByTag",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "TARGET_NOT_FOUND",
+          "INVALID_INPUT",
+          "CAPABILITY_UNAVAILABLE"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "content-controls/select-by-tag.mdx",
+    "referenceGroup": "contentControls",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "tag": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tag"
+      ],
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "binding": {
+                "additionalProperties": false,
+                "properties": {
+                  "prefixMappings": {
+                    "type": "string"
+                  },
+                  "storeItemId": {
+                    "type": "string"
+                  },
+                  "xpath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "storeItemId",
+                  "xpath"
+                ],
+                "type": "object"
+              },
+              "controlType": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "isEmpty": {
+                "type": "boolean"
+              },
+              "kind": {
+                "enum": [
+                  "block",
+                  "inline"
+                ]
+              },
+              "lockMode": {
+                "type": "string"
+              },
+              "nodeType": {
+                "const": "sdt"
+              },
+              "properties": {
+                "type": "object"
+              },
+              "raw": {
+                "type": "object"
+              },
+              "selectionTarget": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/SelectionTarget"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "target": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "block",
+                      "inline"
+                    ]
+                  },
+                  "nodeId": {
+                    "type": "string"
+                  },
+                  "nodeType": {
+                    "const": "sdt"
+                  },
+                  "story": {
+                    "$ref": "#/$defs/StoryLocator"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "nodeType",
+                  "nodeId"
+                ],
+                "type": "object"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodeType",
+              "kind",
+              "id",
+              "controlType",
+              "lockMode",
+              "properties",
+              "target"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "total"
+      ],
+      "type": "object"
+    }
+  }
+}

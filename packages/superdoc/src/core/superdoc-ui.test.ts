@@ -245,14 +245,77 @@ describe('superdoc.ui — usable before the document is ready', () => {
 
     expect(superdoc.ui.document.getSnapshot().ready).toBe(false);
 
-    // Every slice a custom UI wires up on the first tick must answer safely.
-    const sliceStatuses = ['ready', 'pending', 'stale'];
-    expect(sliceStatuses).toContain(superdoc.ui.comments.getSnapshot().listStatus);
-    expect(sliceStatuses).toContain(superdoc.ui.selection.getSnapshot().status);
-    expect(sliceStatuses).toContain(superdoc.ui.trackChanges.getSnapshot().status);
+    const comments = superdoc.ui.comments.getSnapshot();
+    const selection = superdoc.ui.selection.getSnapshot();
+    const trackChanges = superdoc.ui.trackChanges.getSnapshot();
+    expect({
+      comments: { items: comments.items, total: comments.total },
+      selection: { empty: selection.empty, target: selection.target, activeCommentIds: selection.activeCommentIds },
+      trackChanges: { items: trackChanges.items, total: trackChanges.total },
+    }).toEqual({
+      comments: { items: [], total: 0 },
+      selection: { empty: true, target: null, activeCommentIds: [] },
+      trackChanges: { items: [], total: 0 },
+    });
+    expect([comments.listStatus, selection.status, trackChanges.status]).not.toContain('stale');
 
     // A disabled command is a truthful answer; an exception is not.
     expect(superdoc.ui.commands.get('bold').getState().enabled).toBe(false);
+  });
+
+  it('reports pending, not ready, until a document loads', async () => {
+    const label = (comments: { listStatus: string; items: readonly { parentCommentId?: string }[] }) =>
+      comments.listStatus === 'pending'
+        ? 'Loading comments...'
+        : `${comments.items.filter((comment) => !comment.parentCommentId).length} threads`;
+    const read = () => {
+      const comments = superdoc.ui.comments.getSnapshot();
+      const trackChanges = superdoc.ui.trackChanges.getSnapshot();
+      return {
+        documentReady: superdoc.ui.document.getSnapshot().ready,
+        statuses: [
+          comments.status,
+          comments.listStatus,
+          superdoc.ui.selection.getSnapshot().status,
+          trackChanges.status,
+          trackChanges.listStatus,
+          superdoc.ui.contentControls.getSnapshot().status,
+          superdoc.ui.styles.getSnapshot().status,
+        ],
+        label: label(comments),
+      };
+    };
+    const superdoc = mount();
+
+    expect(read()).toEqual({
+      documentReady: false,
+      statuses: Array(7).fill('pending'),
+      label: 'Loading comments...',
+    });
+
+    const target = { kind: 'text', segments: [{ blockId: 'p1', range: { start: 0, end: 2 } }] };
+    superdoc.setActiveEditor({
+      id: 'loaded',
+      editorVersion: 2,
+      doc: {
+        comments: { list: () => ({ items: [{ commentId: 'c1', text: 'Check this' }] }) },
+        trackChanges: { list: () => ({ items: [{ id: 'tc1', type: 'insert' }] }) },
+        selection: { current: () => ({ empty: false, text: 'hi', target }) },
+      },
+    } as never);
+
+    await vi.waitFor(() =>
+      expect(read()).toEqual({
+        documentReady: true,
+        statuses: Array(7).fill('ready'),
+        label: '1 threads',
+      }),
+    );
+    expect({
+      comments: superdoc.ui.comments.getSnapshot().items.map((comment) => comment.commentId),
+      selection: superdoc.ui.selection.getSnapshot().quotedText,
+      trackChanges: superdoc.ui.trackChanges.getSnapshot().items.map((change) => change.id),
+    }).toEqual({ comments: ['c1'], selection: 'hi', trackChanges: ['tc1'] });
   });
 
   it('accepts observers before readiness and releases them on unsubscribe', () => {

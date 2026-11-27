@@ -1,0 +1,49 @@
+{
+  "definition": {
+    "description": "List all footnotes and endnotes in the document.",
+    "expectedResult": "Returns a FootnotesListResult containing notes with address, content, and inline body reference addresses in references. V2 returns an empty references array for an unreferenced note.",
+    "memberPath": "footnotes.list",
+    "metadata": {
+      "deterministicTargetResolution": true,
+      "idempotency": "idempotent",
+      "mutates": false,
+      "possibleFailureCodes": [],
+      "supportsDryRun": false,
+      "supportsTrackedMode": false,
+      "throws": {
+        "postApplyForbidden": true,
+        "preApply": [
+          "CAPABILITY_UNAVAILABLE",
+          "INVALID_INPUT"
+        ]
+      },
+      "trackedSupport": "never"
+    },
+    "referenceDocPath": "footnotes/list.mdx",
+    "referenceGroup": "footnotes",
+    "requiresDocumentContext": true
+  },
+  "schemas": {
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "type": {
+          "enum": [
+            "footnote",
+            "endnote"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "output": {
+      "type": "object"
+    }
+  }
+}

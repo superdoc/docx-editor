@@ -12,6 +12,7 @@ import { useSuperDocInstance } from '../../composables/use-superdoc-instance';
 import CommentsDropdown from './CommentsDropdown.vue';
 import { trackedChangeThreadParentIdForComment } from './tracked-change-threading.js';
 import type { CommentModel } from './use-comment';
+import { isCommentResolved } from './comment-params';
 
 type HeaderConfig = { readOnly?: boolean; allowResolve?: boolean };
 
@@ -144,7 +145,7 @@ const trackedChangeDecisionsVisible = computed(() => {
 
 const generallyAllowed = computed(() => {
   if (!props.comment) return false;
-  if (props.comment.resolvedTime) return false;
+  if (isCommentResolved(props.comment)) return false;
   if (commentsStore.pendingComment) return false;
   if (props.isPendingInput) return false;
   return true;
@@ -205,7 +206,7 @@ const allowReopen = computed(() => {
   if (resolveIsDisabled()) return false;
   if (!props.reopenSupported) return false;
   if (!props.comment) return false;
-  if (!props.comment.resolvedTime) return false;
+  if (!isCommentResolved(props.comment)) return false;
   if (commentsStore.pendingComment) return false;
   if (props.isPendingInput) return false;
   if (props.comment.parentCommentId) return false;

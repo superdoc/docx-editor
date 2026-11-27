@@ -1,0 +1,20 @@
+input:
+{
+  "v2Collaboration": {
+    "providerType": "liveblocks",
+    "roomId": "room-2",
+    "publicApiKey": "pk_live_123",
+    "roomMode": "create"
+  }
+}
+
+result:
+{
+  "ok": true,
+  "target": {
+    "providerFamily": "liveblocks",
+    "documentId": "room-2",
+    "roomMode": "create",
+    "publicApiKey": "pk_live_123"
+  }
+}

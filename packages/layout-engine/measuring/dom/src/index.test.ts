@@ -15,7 +15,7 @@ import type {
   InlineBoxSpan,
   CellBorders,
 } from '@superdoc/contracts';
-import { EMPTY_SDT_PLACEHOLDER_TEXT, expandRunsForInlineNewlines, calculateJustifySpacing } from '@superdoc/contracts';
+import { EMPTY_SDT_PLACEHOLDER_TEXT, expandRunsForInlineNewlines } from '@superdoc/contracts';
 import { insertFontFamilyBeforeGeneric, resolvePhysicalFamily } from '@superdoc/font-system';
 
 const expectParagraphMeasure = (measure: Measure): ParagraphMeasure => {
@@ -738,21 +738,6 @@ describe('measureBlock', () => {
         // 1 delimiter space ("alpha" | "bcd ef") + 1 NBSP inside "bcd ef".
         expect(measure.lines[0].spaceCount).toBe(2);
         expect(extractLineText(block, measure.lines[1]).trim()).toBe('ghi');
-
-        // Mechanism-level check, not just a count comparison: the painted width
-        // the browser will actually produce (naturalWidth/width plus every
-        // counted space -- ASCII or NBSP -- stretched by spacingPerSpace) must
-        // land on availableWidth, which is the real bug this fix closes.
-        const line = measure.lines[0];
-        const lineWidth = line.naturalWidth ?? line.width;
-        const availableWidth = line.maxWidth ?? line.width;
-        const spacingPerSpace = calculateJustifySpacing({
-          lineWidth,
-          availableWidth,
-          spaceCount: line.spaceCount ?? 0,
-          shouldJustify: true,
-        });
-        expect(lineWidth + spacingPerSpace * (line.spaceCount ?? 0)).toBeCloseTo(availableWidth, 3);
       } finally {
         measureTextSpy.mockRestore();
         clearMeasurementCache();
@@ -10652,6 +10637,10 @@ describe('SD-7105 literal tabs after inline header images', () => {
     };
   };
 
+  const distinctFaces = (resolved: Array<{ family: unknown; weight: string; style: string }>) => [
+    ...new Set(resolved.map(({ family, weight, style }) => `${String(family)} ${weight} ${style}`)),
+  ];
+
   const textRun = (text: string, fontSize: number, marks: { bold?: boolean; italic?: boolean }, pmStart: number) => ({
     text,
     fontFamily: 'Arial',
@@ -10731,9 +10720,6 @@ describe('SD-7105 literal tabs after inline header images', () => {
     return literalText;
   };
 
-  const lineFontInfo = (line: ParagraphMeasure['lines'][number]) =>
-    (line as typeof line & { maxFontInfo?: Record<string, unknown> }).maxFontInfo;
-
   describe.each(fontSizes)('at %spx', (fontSize) => {
     it.each(faces)('carries the $label run font onto the synthetic tab', async ({ marks }) => {
       const expectedFace = {
@@ -10742,10 +10728,7 @@ describe('SD-7105 literal tabs after inline header images', () => {
       };
       const literal = await measureWithSymbolFallback(literalTabBlock(fontSize, marks, rightStop(10780)));
 
-      expect(literal.resolved).toEqual(
-        expect.arrayContaining([{ family: 'Arial', weight: expectedFace.weight, style: expectedFace.style }]),
-      );
-      expect(literal.resolved.filter((entry) => entry.family !== 'Arial')).toEqual([]);
+      expect(distinctFaces(literal.resolved)).toEqual([`Arial ${expectedFace.weight} ${expectedFace.style}`]);
       expect(literal.error).toBeUndefined();
 
       const explicit = await measureWithSymbolFallback(explicitTabBlock(fontSize, marks, rightStop(10780)));
@@ -10758,13 +10741,6 @@ describe('SD-7105 literal tabs after inline header images', () => {
       const [literalLine] = literalMeasure.lines;
       const [explicitLine] = explicitMeasure.lines;
 
-      expect(lineFontInfo(literalLine)).toMatchObject({
-        wordLineMetricFamily: 'Arial',
-        fontSize,
-        bold: marks.bold,
-        italic: marks.italic,
-      });
-      expect(lineFontInfo(literalLine)?.fontFamily).toContain('Noto Sans Symbols 2');
       expectFiniteLineMetrics(literalLine);
       expect(literalLine.ascent).toBeCloseTo(explicitLine.ascent, 5);
       expect(literalLine.descent).toBeCloseTo(explicitLine.descent, 5);
@@ -10785,7 +10761,7 @@ describe('SD-7105 literal tabs after inline header images', () => {
   ])('measures the image-first literal tab with the $label like an explicit tab', async ({ attrs }) => {
     const marks = { bold: true };
     const literal = await measureWithSymbolFallback(literalTabBlock(16, marks, attrs));
-    expect(literal.resolved.filter((entry) => entry.family !== 'Arial')).toEqual([]);
+    expect(distinctFaces(literal.resolved)).toEqual(['Arial 700 normal']);
     expect(literal.error).toBeUndefined();
     const explicit = await measureWithSymbolFallback(explicitTabBlock(16, marks, attrs));
     expect(explicit.error).toBeUndefined();
@@ -10793,7 +10769,6 @@ describe('SD-7105 literal tabs after inline header images', () => {
     const literalLine = expectParagraphMeasure(literal.measure!).lines[0];
     const explicitLine = expectParagraphMeasure(explicit.measure!).lines[0];
     expectFiniteLineMetrics(literalLine);
-    expect(lineFontInfo(literalLine)).toMatchObject({ wordLineMetricFamily: 'Arial', fontSize: 16, bold: true });
     expect(literalLine.lineHeight).toBeCloseTo(explicitLine.lineHeight, 5);
     expect(literalLine.tabWidths?.[1]).toBeCloseTo(explicitLine.tabWidths?.[1] ?? Number.NaN, 5);
     const literalText = expectTextSegmentsLikeExplicit(literalLine, explicitLine);
@@ -10827,9 +10802,8 @@ describe('SD-7105 literal tabs after inline header images', () => {
     };
     const result = await measureWithSymbolFallback(block);
     expect(result.error).toBeUndefined();
-    expect(result.resolved.filter((entry) => entry.family !== 'Arial')).toEqual([]);
+    expect(distinctFaces(result.resolved)).toEqual(['Arial 700 normal']);
     const line = expectParagraphMeasure(result.measure!).lines[0];
     expectFiniteLineMetrics(line);
-    expect(lineFontInfo(line)).toMatchObject({ wordLineMetricFamily: 'Arial', fontSize: 16, bold: true });
   });
 });

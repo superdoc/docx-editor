@@ -1,0 +1,18 @@
+page 1 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=0 sectionRefs={headerRefs={default=header-1} footerRefs={default=footer-1}}
+  "Both refs" x=48 y=48
+page 2 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=1 sectionRefs={headerRefs={default=header-2} footerRefs={default=footer-1}}
+  "Header only" x=48 y=48
+page 3 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=2 sectionRefs={headerRefs={default=header-2} footerRefs={first=footer-first even=footer-even}}
+  "Footer variants" x=48 y=48
+page 4 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=3 sectionRefs={headerRefs={default=header-2} footerRefs={first=footer-first even=footer-even}}
+  "Empty refs" x=48 y=48
+  "Continuous header 1" x=48 y=68
+  "Continuous header 2" x=48 y=88
+  "Continuous header 3" x=48 y=108
+  "Continuous header 4" x=48 y=128
+  "Continuous header 5" x=48 y=148
+  "Continuous header 6" x=48 y=168
+  "Continuous header 7" x=48 y=188
+  "Continuous header 8" x=48 y=208
+page 5 size=480x288 orientation=landscape margins={top=48 bottom=48 left=48 right=48 header=24 footer=24} vAlign=- baseMargins={top=48 bottom=48} sectionIndex=4 sectionRefs={headerRefs={default=header-3} footerRefs={first=footer-first even=footer-even}}
+  "Continuous header 9" x=48 y=48

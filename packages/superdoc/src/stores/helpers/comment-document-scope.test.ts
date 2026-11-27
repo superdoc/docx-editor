@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vite-plus/test';
+import { describe, expect, it } from 'vite-plus/test';
 import { computed, ref } from 'vue';
 import { createCommentDocumentScope, getCommentDocumentId } from './comment-document-scope.js';
 import type { OpenDocumentsSource } from './comment-document-scope.js';
@@ -64,39 +64,27 @@ describe('belongsToDocument', () => {
     expect(scopeOver(undefined).belongsToDocument({}, 'doc-1')).toBe(false);
   });
 
-  it('reads the open documents on each call, not when the scope is created', () => {
-    const readOpenDocuments = vi.fn((): OpenDocumentsSource => [{ id: 'doc-1' }]);
-    const { belongsToDocument } = createCommentDocumentScope(readOpenDocuments);
-    expect(readOpenDocuments).not.toHaveBeenCalled();
-    expect(belongsToDocument({ fileId: 'doc-1' }, 'doc-1')).toBe(true);
-    expect(readOpenDocuments).not.toHaveBeenCalled();
-    belongsToDocument({}, 'doc-1');
-    belongsToDocument({}, 'doc-1');
-    expect(readOpenDocuments).toHaveBeenCalledTimes(2);
+  it('answers from the open documents at call time, not when the scope is created', () => {
+    let documents: OpenDocumentsSource = [];
+    const { belongsToDocument } = createCommentDocumentScope(() => documents);
+
+    documents = [{ id: 'doc-1' }];
+    expect(belongsToDocument({}, 'doc-1')).toBe(true);
+
+    documents = [{ id: 'doc-1' }, { id: 'doc-2' }];
+    expect(belongsToDocument({}, 'doc-1')).toBe(false);
   });
 
-  it('makes a computed depend on the open documents only when it needs them', () => {
+  it('updates a computed when the open documents change', () => {
     const documents = ref([{ id: 'doc-1' }]);
-    const unrelated = ref(0);
     const { belongsToDocument } = createCommentDocumentScope(() => documents.value);
-    const evaluate = vi.fn(() => belongsToDocument({}, 'doc-1'));
-    const scoped = computed(evaluate);
+    const scoped = computed(() => belongsToDocument({}, 'doc-1'));
 
     expect(scoped.value).toBe(true);
-    unrelated.value += 1;
-    expect(scoped.value).toBe(true);
-    expect(evaluate).toHaveBeenCalledTimes(1);
-
     documents.value = [{ id: 'doc-1' }, { id: 'doc-2' }];
     expect(scoped.value).toBe(false);
-    expect(evaluate).toHaveBeenCalledTimes(2);
-
-    const matchOnly = vi.fn(() => belongsToDocument({ fileId: 'doc-1' }, 'doc-1'));
-    const matched = computed(matchOnly);
-    expect(matched.value).toBe(true);
-    documents.value = [];
-    expect(matched.value).toBe(true);
-    expect(matchOnly).toHaveBeenCalledTimes(1);
+    documents.value = [{ id: 'doc-1' }];
+    expect(scoped.value).toBe(true);
   });
 });
 

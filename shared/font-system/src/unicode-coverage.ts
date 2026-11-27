@@ -186,6 +186,21 @@ function cssUnicodeRange(ranges: readonly UnicodeRange[]): string {
     .join(', ');
 }
 
+export function unicodeCoverageFromCss(value: string): UnicodeCoverage {
+  const collector = new RangeCollector();
+  for (const part of value.split(',')) {
+    const match = /^u\+([0-9a-f?]{1,6})(?:-([0-9a-f]{1,6}))?$/i.exec(part.trim());
+    const from = match?.[1];
+    if (!from) continue;
+    collector.add(
+      Number.parseInt(from.replace(/\?/g, '0'), 16),
+      Number.parseInt(match?.[2] ?? from.replace(/\?/g, 'F'), 16),
+    );
+  }
+  const ranges = collector.finish();
+  return { ranges, cssUnicodeRange: cssUnicodeRange(ranges) };
+}
+
 export function parseUnicodeCoverage(bytes: ArrayBuffer | ArrayBufferView): UnicodeCoverage | null {
   const view = dataViewOf(bytes);
   if (!rangeIsReadable(view, 0, SFNT_HEADER_LENGTH)) return null;

@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+import { createPinia, setActivePinia } from 'pinia';
+import { reactive } from 'vue';
+import useComment from '../components/CommentsLayer/use-comment.js';
+import useDocument from '../composables/use-document.js';
+import { useCommentsStore } from '../stores/comments-store.js';
+import { useSuperdocStore } from '../stores/superdoc-store.js';
 import { createFakeV2Runtime } from './editor-runtime/conformance/fake-v2-runtime.js';
 import type { EditorRuntime } from './editor-runtime/index.js';
 import { __resetDeprecationWarnings } from './helpers/normalize-track-changes-config.js';
 import type { Config, RuntimeDocument } from './types/index.js';
 
-vi.mock('./v2-integration/v2-integration.js', () => ({
+vi.mock('./v2-integration/v2-integration.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./v2-integration/v2-integration.js')>()),
   loadDefaultV2IntegrationOrFallback: () => new Promise(() => {}),
 }));
 
@@ -48,6 +55,43 @@ function makeReady(instance: SuperDocInstance, documents: Partial<RuntimeDocumen
   harness.superdocStore = { documents };
   harness.commentsStore = { setViewingVisibility, clearEditorCommentPositions };
   return { harness, setViewingVisibility, clearEditorCommentPositions };
+}
+
+function makeReviewReady(instance: SuperDocInstance) {
+  const harness = instance as unknown as SuperDocTestHarness;
+  const document = reactive(
+    useDocument(
+      { id: 'doc-1', type: 'docx', conversations: [{ commentId: 'comment-1', fileId: 'doc-1' }] },
+      instance.config,
+    ),
+  );
+  setActivePinia(createPinia());
+  const superdocStore = useSuperdocStore();
+  const commentsStore = useCommentsStore();
+  superdocStore.documents = [document];
+  harness.superdocStore = superdocStore;
+  harness.commentsStore = commentsStore;
+  commentsStore.commentsList = [
+    useComment({ commentId: 'comment-1', fileId: 'doc-1', createdTime: 1 }),
+    useComment({ commentId: 'change-1', fileId: 'doc-1', trackedChange: true, createdTime: 2 }),
+  ];
+  const { runtime, setTrackedChangesRenderOptions } = makeRuntime('doc-1');
+  harness.registerEditorRuntime(runtime);
+  const steps: string[] = [];
+  const record = (step: string) => {
+    const { parentComments } = commentsStore.getGroupedComments;
+    steps.push(
+      [
+        step,
+        `  documentMode: ${instance.config.documentMode}`,
+        `  viewing: ${JSON.stringify(instance.config.viewing)}`,
+        `  doc-1 conversations: ${JSON.stringify(document.conversations.map((comment) => comment.commentId))}`,
+        `  visible threads: ${JSON.stringify(parentComments.map((comment) => comment.commentId))}`,
+        `  review geometry rendered: ${commentsStore.shouldRenderReviewInViewing}`,
+      ].join('\n'),
+    );
+  };
+  return { setTrackedChangesRenderOptions, record, recording: () => `${steps.join('\n\n')}\n` };
 }
 
 afterEach(() => {
@@ -173,21 +217,20 @@ describe('viewing options', () => {
     expect(instance.config.comments).toEqual({ visible: true, readOnly: true });
   });
 
-  it('applies canonical viewing options after a live mode switch', () => {
-    const restoreComments = vi.fn();
-    const documentEntry = { id: 'doc-1', restoreComments };
+  it('applies canonical viewing options after a live mode switch', async () => {
     const instance = mount({
       documentMode: 'editing',
+      modules: { comments: {} },
       viewing: { comments: true, trackedChanges: 'final' },
     });
-    const { harness } = makeReady(instance, [documentEntry]);
-    const { runtime, setTrackedChangesRenderOptions } = makeRuntime('doc-1');
-    harness.registerEditorRuntime(runtime);
+    const { setTrackedChangesRenderOptions, record, recording } = makeReviewReady(instance);
+    record('mounted');
 
     instance.setDocumentMode('viewing');
+    record("setDocumentMode('viewing')");
 
     expect(setTrackedChangesRenderOptions).toHaveBeenCalledWith({ mode: 'final', enabled: true });
-    expect(restoreComments).toHaveBeenCalledOnce();
+    await expect(recording()).toMatchFileSnapshot('./__snapshots__/viewing-options/live-mode-switch.txt');
   });
 
   it('uses the default viewing projection after a live mode switch', () => {
@@ -204,32 +247,27 @@ describe('viewing options', () => {
     expect(setTrackedChangesRenderOptions).toHaveBeenCalledWith({ mode: 'original', enabled: true });
   });
 
-  it('updates one viewing option without resetting the other', () => {
-    const restoreComments = vi.fn();
-    const documentEntry = { id: 'doc-1', restoreComments };
+  it('updates one viewing option without resetting the other', async () => {
     const instance = mount({
       documentMode: 'viewing',
+      modules: { comments: {} },
       viewing: { comments: false, trackedChanges: 'final' },
     });
-    const { harness, setViewingVisibility } = makeReady(instance, [documentEntry]);
-    const { runtime, setTrackedChangesRenderOptions } = makeRuntime('doc-1');
-    harness.registerEditorRuntime(runtime);
+    const { setTrackedChangesRenderOptions, record, recording } = makeReviewReady(instance);
+    instance.setDocumentMode('viewing');
+    setTrackedChangesRenderOptions.mockClear();
+    record("setDocumentMode('viewing')");
 
     instance.setViewingOptions({ comments: true });
+    record('setViewingOptions({ comments: true })');
 
-    expect(instance.config.viewing).toEqual({ comments: true, trackedChanges: 'final' });
     expect(setTrackedChangesRenderOptions).not.toHaveBeenCalled();
-    expect(setViewingVisibility).toHaveBeenLastCalledWith({
-      documentMode: 'viewing',
-      commentsVisible: true,
-      trackChangesVisible: false,
-    });
-    expect(restoreComments).toHaveBeenCalledOnce();
 
     instance.setViewingOptions({ trackedChanges: 'markup' });
+    record("setViewingOptions({ trackedChanges: 'markup' })");
 
-    expect(instance.config.viewing).toEqual({ comments: true, trackedChanges: 'markup' });
     expect(setTrackedChangesRenderOptions).toHaveBeenCalledWith({ mode: 'review', enabled: true });
+    await expect(recording()).toMatchFileSnapshot('./__snapshots__/viewing-options/one-option-at-a-time.txt');
   });
 
   it('keeps legacy comment policy during live visibility updates', () => {
@@ -298,32 +336,24 @@ describe('viewing options', () => {
     expect(setTrackedChangesRenderOptions).toHaveBeenCalledWith({ mode: 'final', enabled: true });
   });
 
-  it('preserves hidden comments across projection-only viewing updates', () => {
-    let conversations = ['comment-1'];
-    let conversationsBackup: string[] = [];
-    const removeComments = vi.fn(() => {
-      conversationsBackup = conversations;
-      conversations = [];
-    });
-    const restoreComments = vi.fn(() => {
-      conversations = conversationsBackup;
-    });
-    const documentEntry = { id: 'doc-1', removeComments, restoreComments };
+  it('preserves hidden comments across projection-only viewing updates', async () => {
     const instance = mount({
       documentMode: 'viewing',
+      modules: { comments: {} },
       viewing: { comments: false, trackedChanges: 'original' },
     });
-    const { harness } = makeReady(instance, [documentEntry]);
-    const { runtime } = makeRuntime('doc-1');
-    harness.registerEditorRuntime(runtime);
+    const { record, recording } = makeReviewReady(instance);
 
     instance.setDocumentMode('viewing');
+    record("setDocumentMode('viewing')");
     instance.setViewingOptions({ trackedChanges: 'final' });
+    record("setViewingOptions({ trackedChanges: 'final' })");
     instance.setViewingOptions({ comments: true });
+    record('setViewingOptions({ comments: true })');
 
-    expect(removeComments).toHaveBeenCalledOnce();
-    expect(restoreComments).toHaveBeenCalledOnce();
-    expect(conversations).toEqual(['comment-1']);
+    await expect(recording()).toMatchFileSnapshot(
+      './__snapshots__/viewing-options/hidden-comments-survive-projection.txt',
+    );
   });
 
   it('routes the deprecated setter to every mounted v2 runtime and the compatibility fallback', () => {

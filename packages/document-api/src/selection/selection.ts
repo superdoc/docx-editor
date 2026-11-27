@@ -124,7 +124,7 @@ export function executeSelectionExtractOoxml(
   return adapter.extractOoxml(input as unknown as SelectionExtractOoxmlInput);
 }
 
-const SELECTION_CURRENT_ALLOWED_KEYS = new Set(['includeText']);
+const SELECTION_CURRENT_ALLOWED_KEYS = new Set(['includeText', 'includeLogicalChanges']);
 
 function validateSelectionCurrentInput(input: unknown): asserts input is SelectionCurrentInput {
   if (input === undefined) return;
@@ -139,11 +139,24 @@ function validateSelectionCurrentInput(input: unknown): asserts input is Selecti
       { field: 'includeText', value: input.includeText },
     );
   }
+  if (input.includeLogicalChanges !== undefined && typeof input.includeLogicalChanges !== 'boolean') {
+    throw new DocumentApiValidationError('INVALID_INPUT', 'includeLogicalChanges must be a boolean.', {
+      field: 'includeLogicalChanges',
+      value: input.includeLogicalChanges,
+    });
+  }
 }
 
 export function executeSelectionCurrent(adapter: SelectionAdapter, input?: SelectionCurrentInput): SelectionInfo {
   validateSelectionCurrentInput(input);
-  return adapter.current(input ?? {});
+  const result = adapter.current(input ?? {});
+  if (input?.includeLogicalChanges && result.logicalChangeIds === undefined) {
+    throw new DocumentApiValidationError(
+      'CAPABILITY_UNAVAILABLE',
+      'The current selection host does not provide a complete logical change inventory.',
+    );
+  }
+  return result;
 }
 
 export function executeSelectionReleaseSnapshot(
